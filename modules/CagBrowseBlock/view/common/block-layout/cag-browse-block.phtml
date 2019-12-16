@@ -1,0 +1,101 @@
+<?php
+$translate = $this->plugin('translate');
+?>
+<div class="section section--default">
+  <div class="container">
+
+    <?php if ($this->heading): ?>
+    <h2><?php echo $this->heading; ?></h2>
+    <?php endif; ?>
+
+    <?php if($block->dataValue('text')):?>
+    <div class="grid spacer">
+        <div class="grid__12 grid__8@med">
+            <?php echo $block->dataValue('text');?>
+        </div>
+    </div>
+    <?php endif; ?>
+
+
+    <div class="grid grid--<?php echo $block->dataValue('columns');?>-col@med spacer--xsm">
+      <?php
+      $headingTerm = $this->siteSetting('browse_heading_property_term', 'dcterms:title');
+      $bodyTerm = $this->siteSetting('browse_body_property_term', 'dcterms:description');
+      $templates = array(
+        'Beeld' => 'beeldbank',
+        'Verhaal' => 'verhalen',
+        'Project' => 'projecten',
+        'Film' => 'films',
+        'Filmkopie' => 'filmkopies',
+        'Collecite' => 'collecties'
+      );
+      foreach ($this->resources as $resource):
+          $heading = $resource->value($headingTerm, ['default' => $translate('[Untitled]')]);
+          $body = $resource->value($bodyTerm);
+          $type = $resource->resourceTemplate();
+          if($type):
+            $type= $type->label();
+          else:
+            $type= "Object";
+          endif;
+      ?>
+      <div class="grid__item">
+        <div class="card card--gray card--clickable card--link">
+            <?php
+              $media = $resource->media();
+              if($media):
+                $mediaurl = $media[0]->thumbnailUrl('large');
+              else:
+                $mediaurl = "";
+              endif;
+
+
+              if($type == 'Verhaal' || $type == 'Project'):
+                $url = $block->page()->site()->url()."/page/".$resource->value('dcterms:relation');
+              else:
+                $url = $resource->url();
+              endif;
+            ?>
+            <a href="<?php echo $url;?>">
+              <div class="card__img card__img_3"
+                style="background:url(<?php echo  $mediaurl;?>) no-repeat center center;background-color:#7fb5b2;background-size: cover;"
+                >
+              </div>
+              <div class="card__body panel panel--light">
+                <?php if($type == 'Project'):?>
+                  <div style="margin-bottom:13px;" class="label spacer"><?php echo $type;?></div>
+                <?php endif;?>
+                <h2 class="heading--3 card__title spacer--xsm">
+                  <a href="<?php echo $url;?>"><?php echo $resource->value('dcterms:title');?></a>
+                </h2>
+                <?php if ($body): ?>
+                  <?php
+                    if(strlen($body) > 200):
+                      $body = substr($body, 0, 200);
+                      $body = substr($body, 0, strrpos($body, ' ')).' ...';
+                    endif;
+                  ?>
+                  <p>
+                    <?php echo $body; ?>
+                  </p>
+                <?php endif; ?>
+                <div class="link link--ext card__link">
+                  <a href="<?php echo $url;?>"><?php echo $type.' bekijken';?></a>
+                </div>
+              </div>
+            </a>
+        </div>
+      </div>
+      <?php endforeach; ?>
+    </div>
+
+    <?php if ($this->linkText):?>
+      <div class="text--center u-mt-med">
+        <a href="<?php echo $block->page()->site()->url().'/'.$templates[$type].'?q='?>" class="btn btn--ext">
+          <?php echo $this->linkText;?>
+        </a>
+      </div>
+    <?php endif;?>
+
+  </div>
+</div>

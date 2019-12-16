@@ -1,0 +1,16 @@
+version: '2'
+
+services:
+  
+  omeka-s:    
+    build: ./
+    ports:
+      - "9001:80"
+    volumes:
+      - ./modules/:/var/www/html/cag/modules/
+      - ./themes/:/var/www/html/cag/themes/
+      - ./files/:/var/www/html/cag/files/
+      - ./config/:/var/www/html/cag/config/
+      - ./htaccess:/var/www/html/cag/.htaccess
+      - ./imagemagick-policy.xml:/var/www/html/cag/imagemagick-policy.xml
+    restart: always

@@ -1,0 +1,244 @@
+<?php
+$translate = $this->plugin('translate');
+$escape = $this->plugin('escapeHtml');
+$this->htmlElement('body')->appendAttribute('class', 'item resource show');
+$embedMedia = $this->siteSetting('item_media_embed', false);
+$itemMedia = $item->media();
+$template = $item->resourceTemplate();
+
+if($template):
+  $type = $template->label();
+else:
+  $type = "";
+endif;
+
+$thumb = $item->primaryMedia();
+?>
+
+<!-- beeldbank: image / table -->
+<div class="section section--default">
+  <div class="container">
+    <div class="breadcrumb spacer">
+        <span itemscope="" itemtype="http://data-vocabulary.org/Breadcrumb" class="breadcrumb__scope">
+            <a href="<?php echo $site->url();?>" itemprop="url" class="breadcrumb__item"><span itemprop="title">Home</span></a>
+        </span>
+        <span itemscope="" itemtype="http://data-vocabulary.org/Breadcrumb" class="breadcrumb__scope">
+          <?php if($type == "Beeld"): ?>
+            <a href="<?php echo $site->url();?>/beeldbank?q=" itemprop="url" class="breadcrumb__item"><span itemprop="title">Beeldbank</span></a>
+          <?php elseif($type == "Collectie"):?>
+            <a href="<?php echo $site->url();?>/collecties?q=" itemprop="url" class="breadcrumb__item"><span itemprop="title">Collectie</span></a>
+          <?php elseif($type == "Nieuws"):?>
+            <a href="<?php echo $site->url();?>/nieuws?q=" itemprop="url" class="breadcrumb__item"><span itemprop="title">Nieuws</span></a>
+          <?php elseif($type == "Agendapunt"):?>
+            <a href="<?php echo $site->url();?>/agenda?q=" itemprop="url" class="breadcrumb__item"><span itemprop="title">Agenda</span></a>
+          <?php elseif($type == "Film"):?>
+            <a href="<?php echo $site->url();?>/films?q=" itemprop="url" class="breadcrumb__item"><span itemprop="title">Films</span></a>
+          <?php elseif($type == "Filmkopie"):?>
+            <a href="<?php echo $site->url();?>/filmkopies?q=" itemprop="url" class="breadcrumb__item"><span itemprop="title">Filmkopies</span></a>
+          <?php endif;?>
+        </span>
+        <span itemscope="" itemtype="http://data-vocabulary.org/Breadcrumb" class="breadcrumb__scope">
+            <span itemprop="title"><?php echo $item->displayTitle();?></span>
+        </span>
+    </div>
+    <h1><?php echo $this->pageTitle($item->displayTitle(), 2); ?></h1>
+  </div>
+</div>
+
+<!-- Beeld centered -->
+<?php if($type == "Beeld"): ?>
+  <?php if ($embedMedia && $itemMedia): ?>
+    <div class="section section--default">
+      <div class="container">
+        <!-- beeld -->
+        <?php if(sizeof($itemMedia) > 1):?>
+          <div class="slider-for">
+            <?php foreach($itemMedia as $media):?>
+              <div class="beeld">
+                <img src="<?php echo $media->thumbnailUrl('large');?>">
+              </div>
+            <?php endforeach;?>
+          </div>
+          <div class="slider-nav" role="toolbar">
+            <?php foreach($itemMedia as $media):?>
+              <div class="beeld-nav">
+                <img src="<?php echo $media->thumbnailUrl('square');?>">
+              </div>
+            <?php endforeach;?>
+          </div>
+          <script>
+          $(document).ready(function(){
+            $('.slider-for').slick({
+              slidesToShow: 1,
+              slidesToScroll: 1,
+              arrows: false,
+              fade: true,
+              centerMode: true,
+              asNavFor: '.slider-nav'
+            });
+            $('.slider-nav').slick({
+              slidesToShow: 10,
+              slidesToScroll: 1,
+              asNavFor: '.slider-for',
+              focusOnSelect: true
+            });
+          });
+          </script>
+        <?php else: ?>
+          <div class="beeld">
+            <img src="<?php echo $itemMedia[0]->thumbnailUrl('large');?>">
+          </div>
+        <?php endif;?>
+      </div>
+    </div>
+  <?php endif; ?>
+  <div class="section section--default">
+    <div class="container">
+      <div class="panel panel--light">
+        <p><?php echo $item->displayDescription(); ?></p>
+      </div>
+    </div>
+  </div>
+<?php endif?>
+
+<!-- 2 columns if not Beeld and has thumbnail -->
+<?php if($type != "Beeld"  && $thumb): ?>
+  <div class="section section--default">
+    <div class="container">
+      <div class="grid grid--2-col@med">
+        <div class="grid__item">
+          <?php echo $item->displayDescription(); ?>
+        </div>
+        <div class="grid__item">
+               <?php echo $this->thumbnail($thumb, 'large');?>
+        </div>
+      </div>
+    </div>
+  </div>
+<?php endif; ?>
+
+<div class="section section--default">
+  <div class="container">
+        <?php if($type == "Collectie"):?>
+          <h2>Praktische info</h2>
+        <?php endif;?>
+        <span> <!-- content text must be in a wrapper if it's directly in a grid__item -->
+            <table class="">
+                <tbody>
+                
+                  <?php echo $item->displayValues(); ?>
+                </tbody>
+            </table>
+
+        </span>
+  </div>
+</div>
+
+
+
+<?php
+$translate = $this->plugin('translate');
+
+if($type == "Collectie"):
+  $provincie = $item->value('dcterms:coverage');
+  parse_str("property[0][joiner]=and&property[0][property]=14&property[0][type]=eq&property[0][text]=".$provincie."&resource_class_id[]=&resource_template_id[]=7&item_set_id[]=&site_id=&submit=Zoeken", $query);
+elseif($type == "Beeld"):
+  parse_str("property[0][joiner]=and&property[0][property]=3&property[0][type]=eq&property[0][text]=&resource_class_id[]=&resource_template_id[]=6&item_set_id[]=&site_id=&submit=Zoeken", $query);
+  $query['property'][0]['text'] = $item->value('dcterms:subject');
+endif;
+
+$originalQuery = $query;
+
+$query['site_id'] = $site->id();
+$query['limit'] = 4000;
+$query['sort_by'] = 'created';
+$query['sort_order'] = 'desc';
+
+$items = $this->api()->search('items',$query);
+$items = $items->getContent();
+
+//pick random items
+if(sizeof($items) > 1):
+  $keys = array_rand($items,3);
+  $resources = array();
+  foreach($keys as $key):
+    $resources[] = $items[$key];
+  endforeach;
+//this means that only the current or no item was found
+elseif(sizeof($items) <= 1):
+  $resources = array();
+endif;
+?>
+<?php if($resources):?>
+  <div class="section section--default">
+
+    <div class="container">
+      <?php if($type == "Collectie"):?>
+        <h2>Collecties in de buurt</h2>
+      <?php elseif($type == "Beeld"): ?>
+        <h2>Andere interessante beelden</h2>
+      <?php endif;?>
+
+      <div class="grid grid--3-col@med spacer--xsm">
+
+        <?php
+        foreach($resources as $resource):
+        ?>
+
+        <div class="grid__item">
+          <div class="card card--gray card--clickable card--link">
+             <?php $media = $resource->primaryMedia(); ?>
+             <?php if ($media): ?>
+               <div class="card__img card__img_3"
+                 style="background:url(<?php echo $media->thumbnailUrl('large');?>) no-repeat center 20%;background-size: cover;"
+               ></div>
+             <?php endif; ?>
+
+             <div class="card__body panel panel--light">
+                 <h2 class="heading--3 card__title"><?php echo $resource->link($resource->displayTitle()); ?></h2>
+                 <?php if ($description = $resource->displayDescription()): ?>
+                     <p class="description">
+                         <?php echo strlen($description) > 200 ? substr($description,0,200).'..' : $description; ?>
+                     </p>
+                 <?php endif; ?>
+                 <div class="link link--ext card__link"><a href="<?php echo $resource->url();?>">Meer info</a></div>
+             </div>
+          </div>
+        </div>
+        <?php endforeach; ?>
+      </div>
+      <div class="text--center u-mt-med">
+        <?php if($type == "Collectie"):?>
+          <a href="<?php echo $site->url();?>/collecties?q=" class="btn btn--ext">
+            Bekijk alle collecties
+          </a>
+        <?php elseif($type == "Beeld"): ?>
+          <a href="<?php echo $site->url();?>/beeldbank?q=" class="btn btn--ext">
+            Bekijk alle beelden
+          </a>
+        <?php endif;?>
+      </div>
+    </div>
+  </div>
+<?php
+  $query = [];
+  $query['property'][0] = array(
+    'property' => 10,
+    'text' => "00000931",
+    'type' => 'eq',
+    'joiner' => 'and'
+  );
+  $response = $this->api()->search('items',$query);
+
+  $results = $response->getContent();
+  if($results):
+    //$this->logger->info($results);
+    foreach($results as $r):
+
+      //echo $r->id();
+    endforeach;
+    //return true;
+  endif;
+
+?>
+<?php endif; ?>

@@ -1,0 +1,67 @@
+<!-- overview blocks -->
+<?php if(sizeof($attachments) > 2):?>
+<div class="section section--default column-block">
+
+    <div class="container">
+        <h2><?php echo $block->dataValue('title');?></h2>
+        <div class="gallery">
+          <?php foreach($attachments as $attachment){ ?>
+            <div>
+                <?php if($attachment->caption()):?>
+                <a href="<?php echo strip_tags($attachment->caption());?>">
+                <?php endif;?>
+                <?php
+                  $url='';
+                  $media = $attachment->media();
+                  if($media):
+                    $url = $media->thumbnailUrl('large');
+                  endif;
+                ?>
+                <img src="<?php echo  $url;?>">
+                <?php if($attachment->caption()):?>
+                </a>
+                <?php endif;?>
+            </div>
+          <?php } ?>
+        </div>
+    </div>
+</div>
+<?php else:?>
+  <p>
+    Om dit blok te gebruiken moet je minstens 2 afbeeldingen (attachments) selecteren.
+  </p>
+<?php endif;?>
+<script>
+$('.gallery').slick({
+  dots: false,
+  infinite: true,
+  speed: 300,
+  slidesToShow: 4,
+  slidesToScroll: 4,
+  centerMode: true,
+  variableWidth: true,
+  responsive: [
+    {
+      breakpoint: 1024,
+      settings: {
+        slidesToShow: 3,
+        slidesToScroll: 3,
+      }
+    },
+    {
+      breakpoint: 600,
+      settings: {
+        slidesToShow: 2,
+        slidesToScroll: 2
+      }
+    },
+    {
+      breakpoint: 480,
+      settings: {
+        slidesToShow: 1,
+        slidesToScroll: 1
+      }
+    }
+  ]
+});
+</script>

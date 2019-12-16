@@ -1,0 +1,35 @@
+<div class="section section--default overlap">
+    <div class="container">
+        <?php if($block->dataValue('reverse')):?>
+        <div class="grid grid--reverse grid--text-image grid--no-gutter">
+        <?php else:?>
+        <div class="grid grid--text-image grid--no-gutter">
+        <?php endif;?>
+            <div class="grid__12 grid__6@med">
+                <?php if($attachments):
+                  $media = $attachments[0]->media();
+                  $url = '';
+                  if($media):
+                    $url = $media->thumbnailUrl('large');
+                  endif;
+                endif; ?>
+                <div class="grid__img" style="background:url(<?php echo $url;?>) no-repeat center center;background-size: cover;">
+
+                </div>
+            </div>
+            <div class="grid__12 grid__6@med">
+                <div class="grid__content panel panel--lrg panel--light">
+                    <?php if($block->dataValue('sec_title')):?>
+                    <div class="text--uppercase text--secondary spacer">
+                        <?php echo $block->dataValue('sec_title');?>
+                    </div>
+                    <?php endif;?>
+                    <h2 class="spacer spacer--xsm"><?php echo $block->dataValue('title');?></h2>
+                    <?php echo $block->dataValue('text');?>
+
+                    <div class="link"><a class="btn btn--ext" href="<?php echo $block->dataValue('link');?>"><?php echo $block->dataValue('link_text');?></a></div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
