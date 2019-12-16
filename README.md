@@ -1,10 +1,8 @@
-Omeka-S in docker
+<h1>Omeka-S in docker</h1>
 
-There is also example of docker-compose.yml file which can be used for development.
-It creates 3 containers:
+Configuration:  
+- Rename database.ini.dist to database.ini and enter mysql credentials  
+- For a fresh install with a new database rename files.dist to files  
+- If you are using an existing database you also have to download the existing files directory from the server  
 
-- mysql db
-- phpmyadmin
-- omeka-s behind apache (modules or themes can be inserted via docker volumes
-
-`docker-compose up`
+Use `docker-compose up -d` to start the container
