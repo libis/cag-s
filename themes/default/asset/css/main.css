@@ -2351,6 +2351,7 @@ img {
   left: 0;
   content: " ";
   background: rgba(232, 174, 17, 0.5);
+  pointer-events: none;
 }
 .image--bg {
   width: 100%;

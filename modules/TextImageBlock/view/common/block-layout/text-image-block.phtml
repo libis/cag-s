@@ -9,13 +9,21 @@
             <span> <!-- content text must be in a wrapper if it's directly in a grid__item -->
                 <h2><?php echo $block->dataValue('title');?></h2>
                 <?php echo $block->dataValue('text');?>
+                <?php if($block->dataValue('link')):?>
+                    <a class="link link--ext spacer" href="<?php echo $block->dataValue('link');?>"><?php echo $block->dataValue('label');?></a>
+                <?php endif;?>
             </span>
         </div>
         <div class="grid__item">
             <?php if($attachments):
               $media = $attachments[0]->media();
-              echo $this->thumbnail($media, 'large');
-            ?>
+              if($block->dataValue('itemurl')):
+                $itemUrl = $media->item()->url();?>
+                <a href="<?php echo $itemUrl;?>"><?php echo $this->thumbnail($media, 'large',array('class' => 'u-display-block'));?></a>
+              <?php else:
+                echo $this->thumbnail($media, 'large');
+              endif;  
+              ?>
             <figcaption><?php echo $attachments[0]->caption();?></figcaption>
           <?php endif;?>
         </div>

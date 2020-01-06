@@ -24,9 +24,6 @@
                     <div class="text--lead spacer">
                         <?php echo $block->dataValue('text');?>
                     </div>
-                    <?php if($block->dataValue('link')):?>
-                        <div class="link link--ext spacer"><a href="<?php echo $block->dataValue('link');?>"><?php echo $block->dataValue('link_text');?></a></div>
-                    <?php endif;?>
                 </div>
             </div>
 
@@ -36,8 +33,13 @@
                     <?php
                       $media = $attachments[0]->media();
                       if($media):
-                        echo $this->thumbnail($media, 'large',array('class' => 'u-display-block'));
-                      endif;
+                        if($block->dataValue('itemurl')):
+                          $itemUrl = $media->item()->url();?>
+                          <a href="<?php echo $itemUrl;?>"><?php echo $this->thumbnail($media, 'large',array('class' => 'u-display-block'));?></a>
+                        <?php else:?>
+                          <?php echo $this->thumbnail($media, 'large',array('class' => 'u-display-block'));?>
+                        <?php endif;?>                        
+                      <?php endif;
                     ?>
                   </div>
                   <figcaption><?php echo $attachments[0]->caption();?></figcaption>

@@ -1,10 +1,12 @@
 <!-- overview blocks -->
-<?php if(sizeof($attachments) > 2):?>
+<?php if(sizeof($attachments) > 2):
+  $number = rand(0,999999);
+  ?>
 <div class="section section--default column-block">
 
     <div class="container">
         <h2><?php echo $block->dataValue('title');?></h2>
-        <div class="gallery">
+        <div class="gallery-<?php echo $number;?>">
           <?php foreach($attachments as $attachment){ ?>
             <div>
                 <?php if($attachment->caption()):?>
@@ -32,7 +34,7 @@
   </p>
 <?php endif;?>
 <script>
-$('.gallery').slick({
+$('.gallery-<?php echo $number;?>').slick({
   dots: false,
   infinite: true,
   speed: 300,
