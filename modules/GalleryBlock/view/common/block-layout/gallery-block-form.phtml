@@ -5,9 +5,18 @@ use Zend\Form\Element\Textarea;
 <p>
   All atachments will be shown in a horizontal gallery. Use the caption field of an attachment to add a link.
 </p>
-<h4>Title (optional title above the gallery)</h4>
+<h4>Title (optional)</h4>
 <div class="field">
   <div class="inputs">
       <input type="text" class="" value="<?php echo (!isset($block) ? '' : $block->dataValue('title')); ?>" name="o:block[__blockIndex__][o:data][title]">
   </div>
 </div>
+<h4>Text (optional)</h4>
+<?php
+  $textarea = new Textarea("o:block[__blockIndex__][o:data][text]");
+  $textarea->setAttribute('class', 'block-html full wysiwyg');
+  if ($block) {
+      $textarea->setAttribute('value', $block->dataValue('text'));
+  }
+  echo $this->formRow($textarea);
+?>

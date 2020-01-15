@@ -6,6 +6,7 @@
 
     <div class="container">
         <h2><?php echo $block->dataValue('title');?></h2>
+        <?php echo $block->dataValue('text');?>
         <div class="gallery-<?php echo $number;?>">
           <?php foreach($attachments as $attachment){ ?>
             <div>

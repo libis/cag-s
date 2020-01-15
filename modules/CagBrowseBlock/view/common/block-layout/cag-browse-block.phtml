@@ -27,7 +27,10 @@ $translate = $this->plugin('translate');
         'Project' => 'projecten',
         'Film' => 'films',
         'Filmkopie' => 'filmkopies',
-        'Collecite' => 'collecties'
+        'Collecite' => 'collecties',
+        'Agendapunt BKV' => 'agenda-bkv',
+        'Nieuws BKV' => 'nieuws-bkv',
+        'Object BKV' => 'objecten'
       );
       foreach ($this->resources as $resource):
           $heading = $resource->value($headingTerm, ['default' => $translate('[Untitled]')]);
@@ -50,7 +53,7 @@ $translate = $this->plugin('translate');
               endif;
 
 
-              if($type == 'Verhaal' || $type == 'Project'):
+              if($type == 'Verhaal' || $type == 'Project' || $type == 'Agendapunt BKV' || $type == 'Nieuws BKV' || $type == 'Object BKV'):
                 $url = $block->page()->site()->url()."/page/".$resource->value('dcterms:relation');
               else:
                 $url = $resource->url();
@@ -80,7 +83,19 @@ $translate = $this->plugin('translate');
                   </p>
                 <?php endif; ?>
                 <div class="link link--ext card__link">
-                  <a href="<?php echo $url;?>"><?php echo $type.' bekijken';?></a>
+                  <?php
+                    $typel = $type;
+                    if($type == 'Agendapunt BKV'):
+                      $typel = 'Activiteit';
+                    endif;
+                    if($type == 'Nieuws BKV'):
+                      $typel = 'Nieuwsbericht';
+                    endif;
+                    if($type == 'Object BKV'):
+                      $typel = 'Object';
+                    endif;
+                  ?>
+                  <a href="<?php echo $url;?>"><?php echo $typel.' bekijken';?></a>
                 </div>
               </div>
             </a>
