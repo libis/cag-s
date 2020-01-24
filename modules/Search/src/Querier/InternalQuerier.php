@@ -49,9 +49,10 @@ class InternalQuerier extends AbstractQuerier
             return new Response();
         }
 
-        //libis: add filter on resource template ID
+        //LIBIS add filter on resource template ID
         $indexerResourceTemplate = $this->getSetting('template', []);
         $data['resource_template_id'] = $indexerResourceTemplate;
+        //LIBIS - END
 
         $siteId = $query->getSiteId();
         if ($siteId) {

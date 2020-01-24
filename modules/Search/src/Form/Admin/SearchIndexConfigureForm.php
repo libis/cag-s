@@ -56,6 +56,7 @@ class SearchIndexConfigureForm extends Form implements TranslatorAwareInterface
             ],
         ]);
 
+        //LIBIS
         $this->add([
             'name' => 'template',
             'type' => Text::class,
@@ -67,6 +68,7 @@ class SearchIndexConfigureForm extends Form implements TranslatorAwareInterface
                 'required' => false,
             ],
         ]);
+        //LIBIS - END
     }
 
     public function setApiManager($apiManager)

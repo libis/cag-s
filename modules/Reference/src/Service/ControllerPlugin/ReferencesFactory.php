@@ -50,7 +50,9 @@ class ReferencesFactory implements FactoryInterface
         $sql = 'SELECT ANY_VALUE(id) FROM user LIMIT 1;';
         try {
             $connection->query($sql)->fetchColumn();
+            //LIBIS
             return false;
+            //LIBIS-END
             return true;
         } catch (\Exception $e) {
             return false;
