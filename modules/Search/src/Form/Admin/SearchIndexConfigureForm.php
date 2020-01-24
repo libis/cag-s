@@ -72,6 +72,7 @@ class SearchIndexConfigureForm extends Form implements TranslatorAwareInterface
     public function setApiManager($apiManager)
     {
         $this->apiManager = $apiManager;
+        return $this;
     }
 
     public function getApiManager()

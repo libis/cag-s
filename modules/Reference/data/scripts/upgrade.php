@@ -19,11 +19,13 @@ $connection = $services->get('Omeka\Connection');
 $config = require dirname(dirname(__DIR__)) . '/config/module.config.php';
 
 // The reference plugin is not available during upgrade.
+include_once dirname(dirname(__DIR__)) . '/src/Mvc/Controller/Plugin/References.php';
 include_once dirname(dirname(__DIR__)) . '/src/Mvc/Controller/Plugin/Reference.php';
 $entityManager = $services->get('Omeka\EntityManager');
 $controllerPluginManager = $services->get('ControllerPluginManager');
 $api = $controllerPluginManager->get('api');
-$referencePlugin = new Mvc\Controller\Plugin\Reference($entityManager, $services->get('Omeka\ApiAdapterManager'), $api);
+$referencesPlugin = new Mvc\Controller\Plugin\References($entityManager, $services->get('Omeka\ApiAdapterManager'), $api, $controllerPluginManager->get('translate'), [], [], [], false);
+$referencePlugin = new Mvc\Controller\Plugin\Reference($api, $referencesPlugin);
 
 if (version_compare($oldVersion, '3.4.5', '<')) {
     $referenceSlugs = $settings->get('reference_slugs');
@@ -118,4 +120,27 @@ if (version_compare($oldVersion, '3.4.10', '<')) {
         $entityManager->persist($block);
     }
     $entityManager->flush();
+}
+
+if (version_compare($oldVersion, '3.4.16', '<')) {
+    $properties = [];
+    foreach ($api->search('properties')->getContent() as $property) {
+        $properties[$property->id()] = $property->term();
+    }
+
+    $resourceClasses = [];
+    foreach ($api->search('resource_classes')->getContent() as $resourceClass) {
+        $resourceClasses[$resourceClass->id()] = $resourceClass->term();
+    }
+
+    $referenceSlugs = $settings->get('reference_slugs') ?: [];
+    foreach ($referenceSlugs as $slug => &$slugData) {
+        $slugData['term'] = $slugData['type'] === 'resource_classes'
+            ? @$resourceClasses[$slugData['term']]
+            : @$properties[$slugData['term']];
+        if (empty($slugData['term'])) {
+            unset($referenceSlugs[$slug]);
+        }
+    }
+    $settings->set('reference_slugs', $referenceSlugs);
 }

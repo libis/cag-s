@@ -2,7 +2,7 @@
 
 /*
  * Copyright BibLibre, 2016
- * Copyright Daniel Berthereau, 2017-2018
+ * Copyright Daniel Berthereau, 2017-2019
  *
  * This software is governed by the CeCILL license under French law and abiding
  * by the rules of distribution of free software.  You can use, modify and/ or
@@ -63,9 +63,13 @@ class SearchPageAdapter extends AbstractEntityAdapter
 
     public function buildQuery(QueryBuilder $qb, array $query)
     {
+        $isOldOmeka = \Omeka\Module::VERSION < 2;
+        $alias = $isOldOmeka ? $this->getEntityClass() : 'omeka_root';
+        $expr = $qb->expr();
+
         if (isset($query['id'])) {
-            $qb->andWhere($qb->expr()->eq(
-                $this->getEntityClass() . '.id',
+            $qb->andWhere($expr->eq(
+                $alias . '.id',
                 $this->createNamedParameter($qb, $query['id']))
             );
         }
@@ -75,10 +79,10 @@ class SearchPageAdapter extends AbstractEntityAdapter
             $qb->innerJoin(
                 SearchIndex::class,
                 $searchIndexAlias,
-                'WITH',
-                $qb->expr()->andX(
-                    $qb->expr()->eq($searchIndexAlias . '.id', $this->getEntityClass(). '.index'),
-                    $qb->expr()->in(
+                \Doctrine\ORM\Query\Expr\Join::WITH,
+                $expr->andX(
+                    $expr->eq($searchIndexAlias . '.id', $alias . '.index'),
+                    $expr->in(
                         $searchIndexAlias . '.id',
                         $this->createNamedParameter($qb, $query['index_id'])
                     )
@@ -86,20 +90,20 @@ class SearchPageAdapter extends AbstractEntityAdapter
             );
         }
         if (isset($query['name'])) {
-            $qb->andWhere($qb->expr()->eq(
-                $this->getEntityClass() . ".name",
+            $qb->andWhere($expr->eq(
+                $alias . '.name',
                 $this->createNamedParameter($qb, $query['name']))
             );
         }
         if (isset($query['path'])) {
-            $qb->andWhere($qb->expr()->eq(
-                $this->getEntityClass() . ".path",
+            $qb->andWhere($expr->eq(
+                $alias . '.path',
                 $this->createNamedParameter($qb, $query['path']))
             );
         }
         if (isset($query['form'])) {
-            $qb->andWhere($qb->expr()->eq(
-                $this->getEntityClass() . ".formAdapter",
+            $qb->andWhere($expr->eq(
+                $alias . '.formAdapter',
                 $this->createNamedParameter($qb, $query['form']))
             );
         }
@@ -129,12 +133,12 @@ class SearchPageAdapter extends AbstractEntityAdapter
     public function validateEntity(EntityInterface $entity, ErrorStore $errorStore)
     {
         if (false == $entity->getName()) {
-            $errorStore->addError('o:name', 'The name cannot be empty.');
+            $errorStore->addError('o:name', 'The name cannot be empty.'); // @translate
         }
 
         $path = $entity->getPath();
         if (!$this->isUnique($entity, ['path' => $path])) {
-            $errorStore->addError('o:path', sprintf('The path "%s" is already taken.', $path));
+            $errorStore->addError('o:path', sprintf('The path "%s" is already taken.', $path)); // @translate
         }
     }
 }

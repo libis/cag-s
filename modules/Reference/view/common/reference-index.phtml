@@ -1,43 +1,44 @@
 <?php
 /**
  * @var \Zend\View\Renderer\PhpRenderer $this
- * @var array $terms
- * @var bool $totals
- * @var string $resourceName
- * @var array $args
- * @var string $type
+ * @var \Omeka\Api\Representation\SiteRepresentation $site
+ * @var array $metadata
+ * @var array $query
+ * @var array $options
  */
 
 $translate = $this->plugin('translate');
 $hyperlink = $this->plugin('hyperlink');
 $url = $this->plugin('url');
-$api = $this->api();
-$siteSlug = $this->params()->fromRoute('site-slug');
+$api = $this->plugin('api');
+$siteSlug = $site->slug();
+
+$totals = $this->references()->count($metadata, $query, $options);
 
 $this->htmlElement('body')->appendAttribute('class', 'reference browse list');
 ?>
+
 <ul class="references">
-    <?php foreach ($terms as $term): ?>
+    <?php foreach ($metadata as $term): ?>
     <li><?php
-    // TODO Currently, the totals are determined one by one.
-    if ($totals):
-        // TODO Get the properties labels one time.
-        $label = $api->searchOne($type, ['term' => $term])->getContent()->label();
-        $total = $this->reference()->count($term, $type, $resourceName, $args['query']);
+    if (@$options['total']):
+        // TODO Get the properties and classes labels one time.
+        $element = $api->searchOne('properties', ['term' => $term])->getContent() ?: $api->searchOne('resource_classes', ['term' => $term])->getContent();
+        $total = $totals[$term];
         echo $hyperlink(
-            sprintf($translate('%s (%d)'), $label, $total),
+            sprintf($translate('%s (%d)'), $element->label(), $total),
             // TODO Define the link to the reference page.
             $url('site/page', ['site-slug' => $siteSlug, 'page-slug' => str_replace(':', '-', $term)]),
-            ['title' => sprintf($translate('Browse %s'), $label)]
+            ['title' => sprintf($translate('Browse %s'), $element->label())]
         );
     else:
-        $label = $api->searchOne($type, ['term' => $term])->getContent()->label();
-        $total = $this->reference()->count($term, $type, $resourceName, $args['query']);
+        $element = $api->searchOne('properties', ['term' => $term])->getContent() ?: $api->searchOne('resource_classes', ['term' => $term])->getContent();
+        $total = $totals[$term];
         echo $hyperlink(
-            $label,
+            $element->label(),
             // TODO Define the link to the reference page.
             $url('site/page', ['site-slug' => $siteSlug, 'page-slug' => str_replace(':', '-', $term)]),
-            ['title' => sprintf($translate('Browse %s'), $label)]
+            ['title' => sprintf($translate('Browse %s'), $element->label())]
         );
     endif;
     ?>

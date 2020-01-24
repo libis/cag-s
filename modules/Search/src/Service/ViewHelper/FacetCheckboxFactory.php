@@ -1,7 +1,8 @@
 <?php
+
 /*
- * Copyright BibLibre, 2016
- * Copyright Daniel Berthereau, 2017-2018
+ * Copyright BibLibre, 2017
+ * Copyright Daniel Berthereau, 2019
  *
  * This software is governed by the CeCILL license under French law and abiding
  * by the rules of distribution of free software.  You can use, modify and/ or
@@ -27,23 +28,18 @@
  * knowledge of the CeCILL license and that you accept its terms.
  */
 
-/**
- * @var \Zend\View\Renderer\PhpRenderer $this
- * @var \Search\Form\Admin\SearchPageForm $form
- */
+namespace Search\Service\ViewHelper;
 
-$translate = $this->plugin('translate');
-$form->prepare();
-?>
+use Interop\Container\ContainerInterface;
+use Search\View\Helper\FacetCheckbox;
+use Zend\ServiceManager\Factory\FactoryInterface;
 
-<?php echo $this->pageTitle($translate('Add search page')); ?>
-
-<?php echo $this->form()->openTag($form); ?>
-<div id="page-actions">
-    <button><?php echo $translate('Add and configure'); ?></button>
-</div>
-<?php echo $this->formCollection($form, false); ?>
-<?php $this->trigger('view.add.form.after'); ?>
-<?php echo $this->form()->closeTag(); ?>
-
-<?php $this->trigger('view.add.after'); ?>
+class FacetCheckboxFactory implements FactoryInterface
+{
+    public function __invoke(ContainerInterface $container, $requestedName, array $options = null)
+    {
+        return new FacetCheckbox(
+            $container->get('Application')
+        );
+    }
+}

@@ -93,7 +93,7 @@ class SearchPageController extends AbstractActionController
         ));
         $this->manageSearchPageOnSites(
             $searchPage,
-            $formData['manage_page_default'],
+            $formData['manage_page_default'] ?: [],
             $formData['manage_page_availability']
         );
         if (!in_array($formData['manage_page_availability'], ['disable', 'enable'])
@@ -142,7 +142,7 @@ class SearchPageController extends AbstractActionController
 
         $this->manageSearchPageOnSites(
             $searchPage,
-            $formData['manage_page_default'],
+            $formData['manage_page_default'] ?: [],
             $formData['manage_page_availability']
         );
 
@@ -165,7 +165,7 @@ class SearchPageController extends AbstractActionController
         $adapter = $index ? $index->adapter() : null;
         if (empty($adapter)) {
             $message = new Message(
-                'The index adapter "%s" is unavailable', // @translate
+                'The index adapter "%s" is unavailable.', // @translate
                 $index->adapterLabel()
             );
             $this->messenger()->addError($message); // @translate
@@ -173,13 +173,29 @@ class SearchPageController extends AbstractActionController
         }
 
         $form = $this->getConfigureForm($searchPage);
+        if (empty($form)) {
+            $message = new Message(
+                'This index adapter "%s" has no config form.', // @translate
+                $index->adapterLabel()
+            );
+            $this->messenger()->addWarning($message); // @translate
+            return $view;
+        }
+
         $isSimple = $form instanceof SearchPageConfigureSimpleForm;
 
-        $settings = $searchPage->settings();
+        $settings = $searchPage->settings() ?: [];
 
         if ($isSimple) {
             $settings = $this->prepareSettingsForSimpleForm($searchPage, $settings);
         }
+
+        if (empty($settings['facet_languages'])) {
+            $settings['facet_languages'] = '';
+        } elseif (is_array($settings['facet_languages'])) {
+            $settings['facet_languages'] = implode('|', $settings['facet_languages']);
+        }
+
         $form->setData($settings);
         $view->setVariable('form', $form);
 
@@ -191,8 +207,9 @@ class SearchPageController extends AbstractActionController
             ? $this->extractSimpleFields()
             : $this->extractFullFields();
 
+        // TODO Check simple fields.
         $form->setData($params);
-        if (!$form->isValid()) {
+        if (!$isSimple && !$form->isValid()) {
             $messages = $form->getMessages();
             if (isset($messages['csrf'])) {
                 $this->messenger()->addError('Invalid or missing CSRF token'); // @translate
@@ -202,11 +219,33 @@ class SearchPageController extends AbstractActionController
             return $view;
         }
 
-        // TODO Why the fieldset "form" is removed from the params? Add an intermediate fieldset?
+        // TODO Why the fieldset "form" is removed from the params? Add an intermediate fieldset? Check if it is still the case.
         $formParams = isset($params['form']) ? $params['form'] : [];
-        $params = $form->getData();
+        // TODO Check simple fields.
+        if (!$isSimple) {
+            $params = $form->getData();
+        }
         $params['form'] = $formParams;
         unset($params['csrf']);
+
+        // Should be checked in form.
+
+
+
+        /*$params['facet_languages'] = strlen(trim($params['facet_languages']))
+            ? array_unique(array_map('trim', explode('|', $params['facet_languages'])))
+            : [];
+
+        if(!empty($params['facet_languages'])):
+          $params['facet_languages'] = array_unique(array_map('trim', explode('|', $params['facet_languages'])));
+        endif;*/
+
+        // Add a warning because it may be a hard to understand issue.
+        if (!empty($params['facet_languages']) && !in_array('', $params['facet_languages'])) {
+            $this->messenger()->addWarning(
+                'Note that you didn‘t set "||", so all values without language will be removed.' // @translate
+            );
+        }
 
         // Sort facets and sort fields to simplify next load.
         foreach (['facets', 'sort_fields'] as $type) {
@@ -214,31 +253,7 @@ class SearchPageController extends AbstractActionController
                 continue;
             }
             // Sort enabled first, then available, else sort by weigth.
-            uasort($params[$type], function ($a, $b) {
-                // Sort by availability.
-                if (isset($a['enabled']) && isset($b['enabled'])) {
-                    if ($a['enabled'] > $b['enabled']) {
-                        return -1;
-                    } elseif ($a['enabled'] < $b['enabled']) {
-                        return 1;
-                    }
-                } elseif (isset($a['enabled'])) {
-                    return -1;
-                } elseif (isset($b['enabled'])) {
-                    return 1;
-                }
-                // In other cases, sort by weight.
-                if (isset($a['weight']) && isset($b['weight'])) {
-                    return $a['weight'] == $b['weight']
-                        ? 0
-                        : ($a['weight'] < $b['weight'] ? -1 : 1);
-                } elseif (isset($a['weight'])) {
-                    return -1;
-                } elseif (isset($b['weight'])) {
-                    return 1;
-                }
-                return 0;
-            });
+            uasort($params[$type], [$this, 'sortByEnabledFirst']);
         }
 
         $page = $searchPage->getEntity();
@@ -295,7 +310,29 @@ class SearchPageController extends AbstractActionController
             return false;
         }
 
-        $form->setData($this->params()->fromPost());
+        // Check if the name of the path is single in the database.
+        $params = $this->params()->fromPost();
+        $id = $this->params('id');
+        $path = $params['o:path'];
+
+        $paths = $this->api()
+            ->search('search_pages', [], ['returnScalar' => 'path'])
+            ->getContent();
+        if (in_array($path, $paths)) {
+            if (!$id) {
+                $this->messenger()->addError('The path should be unique.'); // @translate
+                return false;
+            }
+            $searchPageId = $this->api()
+                ->searchOne('search_pages', ['path' => $path], ['returnScalar' => 'id'])
+                ->getContent();
+            if ($id !== $searchPageId) {
+                $this->messenger()->addError('The path should be unique.'); // @translate
+                return false;
+            }
+        }
+
+        $form->setData($params);
         if ($form->isValid()) {
             return true;
         }
@@ -323,12 +360,15 @@ class SearchPageController extends AbstractActionController
      * full form or the simple form is set to 200.
      *
      * @param SearchPageRepresentation $searchPage
-     * @return \Search\Form\Admin\SearchPageConfigureForm|\Search\Form\Admin\SearchPageConfigureSimpleForm
+     * @return \Search\Form\Admin\SearchPageConfigureForm|\Search\Form\Admin\SearchPageConfigureSimpleForm|null
      */
     protected function getConfigureForm(SearchPageRepresentation $searchPage)
     {
         $index = $searchPage->index();
-        $adapter = $index ? $index->adapter() : null;
+        if (!$index) {
+            return null;
+        }
+        $adapter = $index->adapter();
         $availableFields = $adapter->getAvailableFields($index);
 
         $isPostSimple = $this->getRequest()->isPost()
@@ -348,7 +388,7 @@ class SearchPageController extends AbstractActionController
     }
 
     /**
-     * Convert settings into strings in ordeer to manage many fields.
+     * Convert settings into strings in ordeer to manage many fields inside form.
      *
      * @param SearchPageRepresentation $searchPage
      * @param array $settings
@@ -398,9 +438,13 @@ class SearchPageController extends AbstractActionController
     {
         $params = $this->getRequest()->getPost()->toArray();
 
+        unset($params['fieldsets']);
+        unset($params['form_class']);
+        unset($params['available_facets']);
+        unset($params['available_sort_fields']);
+
         $data = $params['facets'] ?: '';
         unset($params['facets']);
-        unset($params['available_facets']);
         $data = $this->stringToList($data);
         foreach ($data as $key => $value) {
             list($term, $label) = array_map('trim', explode('|', $value));
@@ -415,7 +459,6 @@ class SearchPageController extends AbstractActionController
 
         $data = $params['sort_fields'] ?: '';
         unset($params['sort_fields']);
-        unset($params['available_sort_fields']);
         $data = $this->stringToList($data);
         foreach ($data as $key => $value) {
             list($term, $label) = array_map('trim', explode('|', $value));
@@ -427,8 +470,6 @@ class SearchPageController extends AbstractActionController
                 ],
             ];
         }
-
-        unset($params['form_class']);
 
         return $params;
     }
@@ -460,10 +501,9 @@ class SearchPageController extends AbstractActionController
         if (empty($jsonEncodedFields)) {
             return [];
         }
+        
         $fields = json_decode($jsonEncodedFields, true);
-        if (empty($jsonEncodedFields)) {
-            return [];
-        }
+
 
         // Recreate the array that was json encoded via js.
         $fieldsData = [];
@@ -572,29 +612,28 @@ class SearchPageController extends AbstractActionController
                 break;
             default:
                 $available = null;
+                $message = 'The availability of pages of sites was let unmodified.'; // @translate
         }
 
         // Manage site settings.
-        $settings = $this->siteSettings();
+        $siteSettings = $this->siteSettings();
         $sites = $this->api()->search('sites')->getContent();
         foreach ($sites as $site) {
             $siteId = $site->id();
-            $settings->setTargetId($siteId);
-            $searchPages = $settings->get('search_pages', []);
+            $siteSettings->setTargetId($siteId);
+            $searchPages = $siteSettings->get('search_pages', []);
             $current = in_array($siteId, $currentMainSearchPageForSites);
             $new = $allSites || in_array($siteId, $newMainSearchPageForSites);
             if ($current !== $new) {
                 if ($new) {
-                    $settings->set('search_main_page', $siteId);
-
+                    $siteSettings->set('search_main_page', $searchPageId);
                     $searchPages[] = $searchPageId;
-                    array_unique(array_filter($searchPages));
+                    $searchPages = array_unique(array_filter($searchPages));
                     sort($searchPages);
-                    $settings->set('search_pages', $searchPages);
+                    $siteSettings->set('search_pages', $searchPages);
                 } else {
-                    $settings->set('search_main_page', null);
+                    $siteSettings->set('search_main_page', null);
                 }
-                $this->messenger()->addSuccess($message);
             }
 
             if ($new || $available) {
@@ -608,10 +647,45 @@ class SearchPageController extends AbstractActionController
                 }
                 unset($searchPages[$key]);
             }
-            $settings->set('search_pages', $searchPages);
+            $siteSettings->set('search_pages', $searchPages);
         }
 
         $this->messenger()->addSuccess($message);
+    }
+
+    /**
+     * Compare fields to be sorted, with enabled fields first, and by weight.
+     *
+     * @param array $a First value
+     * @param array $b Second value
+     * @return int -1, 0, 1.
+     */
+    protected function sortByEnabledFirst($a, $b)
+    {
+        // Sort by availability.
+        if (isset($a['enabled']) && isset($b['enabled'])) {
+            if ($a['enabled'] > $b['enabled']) {
+                return -1;
+            } elseif ($a['enabled'] < $b['enabled']) {
+                return 1;
+            }
+        } elseif (isset($a['enabled'])) {
+            return -1;
+        } elseif (isset($b['enabled'])) {
+            return 1;
+        }
+
+        // In other cases, sort by weight.
+        if (isset($a['weight']) && isset($b['weight'])) {
+            return $a['weight'] == $b['weight']
+                ? 0
+                : ($a['weight'] < $b['weight'] ? -1 : 1);
+        } elseif (isset($a['weight'])) {
+            return -1;
+        } elseif (isset($b['weight'])) {
+            return 1;
+        }
+        return 0;
     }
 
     /**

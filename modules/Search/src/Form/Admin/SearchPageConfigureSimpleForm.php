@@ -35,7 +35,9 @@ class SearchPageConfigureSimpleForm extends SearchPageConfigureForm
 {
     protected function addFacets()
     {
-        $this->addFacetLimit();
+        $this
+            ->addFacetLimit()
+            ->addFacetLanguages();
 
         // field (term) | label (order means weight).
         $this->add([
@@ -47,7 +49,8 @@ class SearchPageConfigureSimpleForm extends SearchPageConfigureForm
             ],
             'attributes' => [
                 'id' => 'facets',
-                'placeholder' => 'dcterms:subject | Subject (asc)',
+                'placeholder' => 'dcterms:subject | Subjects',
+                'rows' => 12,
             ],
         ]);
 
@@ -60,9 +63,12 @@ class SearchPageConfigureSimpleForm extends SearchPageConfigureForm
             ],
             'attributes' => [
                 'id' => 'available_facets',
-                'placeholder' => 'dcterms:subject | Subject (asc)',
+                'placeholder' => 'dcterms:subject | Subjects',
+                'rows' => 12,
             ],
         ]);
+
+        return $this;
     }
 
     protected function addSortFields()
@@ -78,6 +84,7 @@ class SearchPageConfigureSimpleForm extends SearchPageConfigureForm
             'attributes' => [
                 'id' => 'sort_fields',
                 'placeholder' => 'dcterms:subject asc | Subject (asc)',
+                'rows' => 12,
             ],
         ]);
 
@@ -91,8 +98,11 @@ class SearchPageConfigureSimpleForm extends SearchPageConfigureForm
             'attributes' => [
                 'id' => 'available_sort_fields',
                 'placeholder' => 'dcterms:subject asc | Subject (asc)',
+                'rows' => 12,
             ],
         ]);
+
+        return $this;
     }
 
     // TODO setData() or populateValues() in order to manage formatting in form.

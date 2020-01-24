@@ -1,14 +1,19 @@
 <?php
 namespace Reference;
 
-use Omeka\Module\AbstractModule;
+if (!class_exists(\Generic\AbstractModule::class)) {
+    require file_exists(dirname(__DIR__) . '/Generic/AbstractModule.php')
+        ? dirname(__DIR__) . '/Generic/AbstractModule.php'
+        : __DIR__ . '/src/Generic/AbstractModule.php';
+}
+
+use Generic\AbstractModule;
 use Omeka\Stdlib\Message;
 use Reference\Form\ConfigForm;
 use Zend\EventManager\Event;
 use Zend\EventManager\SharedEventManagerInterface;
 use Zend\Mvc\Controller\AbstractController;
 use Zend\Mvc\MvcEvent;
-use Zend\ServiceManager\ServiceLocatorInterface;
 use Zend\View\Renderer\PhpRenderer;
 
 /**
@@ -17,52 +22,17 @@ use Zend\View\Renderer\PhpRenderer;
  * Allows to serve an alphabetized and a hierarchical page of links to searches
  * for all resources classes and properties of all resources of Omeka S.
  *
- * @copyright Daniel Berthereau, 2017-2019
+ * @copyright Daniel Berthereau, 2017-2020
  * @license http://www.cecill.info/licences/Licence_CeCILL_V2.1-en.txt
  */
 class Module extends AbstractModule
 {
-    public function getConfig()
-    {
-        return include __DIR__ . '/config/module.config.php';
-    }
+    const NAMESPACE = __NAMESPACE__;
 
     public function onBootstrap(MvcEvent $event)
     {
         parent::onBootstrap($event);
         $this->addAclRules();
-    }
-
-    public function install(ServiceLocatorInterface $serviceLocator)
-    {
-        $this->manageSettings($serviceLocator->get('Omeka\Settings'), 'install');
-    }
-
-    public function uninstall(ServiceLocatorInterface $serviceLocator)
-    {
-        $this->manageSettings($serviceLocator->get('Omeka\Settings'), 'uninstall');
-    }
-
-    public function upgrade($oldVersion, $newVersion,
-        ServiceLocatorInterface $serviceLocator
-    ) {
-        require_once 'data/scripts/upgrade.php';
-    }
-
-    protected function manageSettings($settings, $process, $key = 'config')
-    {
-        $config = require __DIR__ . '/config/module.config.php';
-        $defaultSettings = $config[strtolower(__NAMESPACE__)][$key];
-        foreach ($defaultSettings as $name => $value) {
-            switch ($process) {
-                case 'install':
-                    $settings->set($name, $value);
-                    break;
-                case 'uninstall':
-                    $settings->delete($name);
-                    break;
-            }
-        }
     }
 
     /**
@@ -72,9 +42,12 @@ class Module extends AbstractModule
     {
         $services = $this->getServiceLocator();
         $acl = $services->get('Omeka\Acl');
-
-        $controllerRights = ['browse', 'list', 'tree'];
-        $acl->allow(null, Controller\Site\ReferenceController::class, $controllerRights);
+        $acl
+            ->allow(
+                null,
+                [\Reference\Controller\Site\ReferenceController::class],
+                ['browse', 'list', 'tree']
+            );
     }
 
     public function attachListeners(SharedEventManagerInterface $sharedEventManager)
@@ -99,10 +72,11 @@ class Module extends AbstractModule
         // Because there may be more than 1000 input values, that is the default
         // "max_input_vars" limit in php.ini, a js merges all resource classes
         // and properties before submit.
-        $renderer->headScript()->appendFile($renderer->assetUrl('js/reference-config.js', __NAMESPACE__));
+        // TODO Simplify process (see simple form in module Search).
+        $renderer->headScript()->appendFile($renderer->assetUrl('js/reference-config.js', 'Reference'));
 
         $data = [];
-        $defaultSettings = $config[strtolower(__NAMESPACE__)]['config'];
+        $defaultSettings = $config['reference']['config'];
         foreach ($defaultSettings as $name => $value) {
             //  TODO Manage the values of the config form via the config form.
             $currentValue = $settings->get($name, $value);
@@ -111,12 +85,17 @@ class Module extends AbstractModule
                     $referenceSlugs = $currentValue;
 
                     $fields = [];
+                    $termsToIds = [];
+                    /** @var \Omeka\Api\Representation\ResourceClassRepresentation[] $resourceClasses */
                     $resourceClasses = $api->search('resource_classes')->getContent();
                     foreach ($resourceClasses as $resourceClass) {
+                        $termsToIds['resource_classes'][$resourceClass->term()] = $resourceClass->id();
                         $fields['resource_classes'][$resourceClass->id()] = $resourceClass;
                     }
+                    /** @var \Omeka\Api\Representation\PropertyRepresentation[] $properties */
                     $properties = $api->search('properties')->getContent();
                     foreach ($properties as $property) {
+                        $termsToIds['properties'][$property->term()] = $property->id();
                         $fields['properties'][$property->id()] = $property;
                     }
 
@@ -137,7 +116,12 @@ class Module extends AbstractModule
                     // Set true values.
                     foreach ($referenceSlugs as $slug => $slugData) {
                         $type = $slugData['type'];
-                        $id = $slugData['term'];
+                        $term = $slugData['term'];
+                        // Manage new vocabularies.
+                        if (empty($termsToIds[$type][$term])) {
+                            continue;
+                        }
+                        $id = $termsToIds[$type][$term];
                         // Manage removed vocabularies.
                         if (empty($fields[$type][$id])) {
                             continue;
@@ -157,7 +141,7 @@ class Module extends AbstractModule
                 case 'reference_tree_hierarchy':
                     $currentValue = $referencePlugin
                         ->convertLevelsToTree($currentValue);
-                    // No break.
+                    // no break.
                 case strpos($name, 'reference_tree_') === 0:
                     $data['fieldset_reference_tree'][$name] = $currentValue;
                     break;
@@ -204,6 +188,23 @@ class Module extends AbstractModule
         // $params = $form->getData();
         $params = $params->toArray();
 
+        // Prepare the list of the properties and classes, because the values
+        // are saved by terms but the form is still using ids.
+
+        $api = $services->get('Omeka\ApiManager');
+
+        $idsToTerms = [];
+        /** @var \Omeka\Api\Representation\ResourceClassRepresentation[] $resourceClasses */
+        $resourceClasses = $api->search('resource_classes')->getContent();
+        foreach ($resourceClasses as $resourceClass) {
+            $idsToTerms['resource_classes'][$resourceClass->id()] = $resourceClass->term();
+        }
+        /** @var \Omeka\Api\Representation\PropertyRepresentation[] $properties */
+        $properties = $api->search('properties')->getContent();
+        foreach ($properties as $property) {
+            $idsToTerms['properties'][$property->id()] = $property->term();
+        }
+
         // Fix the "max_input_vars" limit in php.ini via js.
         // Recreate the array that was json encoded via js.
         $fieldsData = [];
@@ -228,7 +229,7 @@ class Module extends AbstractModule
                 }
                 $referenceSlug = [];
                 $referenceSlug['type'] = $type;
-                $referenceSlug['term'] = $id;
+                $referenceSlug['term'] = $idsToTerms[$type][$id];
                 $referenceSlug['label'] = $field['label'];
                 $referenceSlug['active'] = $field['active'];
                 $referenceSlugs[$field['slug']] = $referenceSlug;
@@ -249,7 +250,7 @@ class Module extends AbstractModule
         $params['reference_tree_hierarchy'] = $referencePlugin
             ->convertTreeToLevels($params['reference_tree_hierarchy']);
 
-        $defaultSettings = $config[strtolower(__NAMESPACE__)]['config'];
+        $defaultSettings = $config['reference']['config'];
         $params = array_intersect_key($params, $defaultSettings);
         foreach ($params as $name => $value) {
             $settings->set($name, $value);
@@ -265,11 +266,14 @@ class Module extends AbstractModule
         }
 
         $view = $event->getTarget();
-        $view->headLink()->appendStylesheet($view->assetUrl('vendor/chosen-js/chosen.css', 'Omeka'));
-        $view->headLink()->appendStylesheet($view->assetUrl('css/reference.css', 'Reference'));
-        $view->headScript()->appendFile($view->assetUrl('vendor/chosen-js/chosen.jquery.js', 'Omeka'));
-        $view->headScript()->appendFile($view->assetUrl('js/reference-advanced-search.js', 'Reference'));
-        $view->headScript()->appendScript('var basePath = ' . json_encode($view->basePath()) . ';' . PHP_EOL
-            . 'var siteSlug = ' . json_encode($view->params()->fromRoute('site-slug')));
+        $assetUrl = $view->plugin('assetUrl');
+        $view->headLink()
+            ->appendStylesheet($assetUrl('vendor/chosen-js/chosen.css', 'Omeka'))
+            ->appendStylesheet($assetUrl('css/reference.css', 'Reference'));
+        $view->headScript()
+            ->appendFile($assetUrl('vendor/chosen-js/chosen.jquery.js', 'Omeka'), 'text/javascript', ['defer' => 'defer'])
+            ->appendFile($assetUrl('js/reference-advanced-search.js', 'Reference'), 'text/javascript', ['defer' => 'defer'])
+            ->appendScript('var basePath = ' . json_encode($view->basePath()) . ';' . PHP_EOL
+                . 'var siteSlug = ' . json_encode($view->params()->fromRoute('site-slug')));
     }
 }

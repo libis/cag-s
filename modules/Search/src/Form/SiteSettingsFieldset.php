@@ -12,7 +12,11 @@ class SiteSettingsFieldset extends Fieldset
      */
     protected $api;
 
-    protected $label = 'Search'; // @translate
+    /**
+     * Warning: there is a core fieldset "Search".
+     * @var string
+     */
+    protected $label = 'Search module'; // @translate
 
     public function init()
     {
@@ -58,6 +62,7 @@ class SiteSettingsFieldset extends Fieldset
     public function setApi(Api $api)
     {
         $this->api = $api;
+        return $this;
     }
 
     /**

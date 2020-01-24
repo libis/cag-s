@@ -30,6 +30,7 @@ return [
             'apiSearch' => Service\ViewHelper\ApiSearchFactory::class,
             'apiSearchOne' => Service\ViewHelper\ApiSearchOneFactory::class,
             'facetLabel' => Service\ViewHelper\FacetLabelFactory::class,
+            'facetCheckbox' => Service\ViewHelper\FacetCheckboxFactory::class,
             'facetLink' => Service\ViewHelper\FacetLinkFactory::class,
             'searchIndexConfirm' => Service\ViewHelper\SearchIndexConfirmFactory::class,
         ],
@@ -41,7 +42,6 @@ return [
     ],
     'form_elements' => [
         'invokables' => [
-            Form\ConfigForm::class => Form\ConfigForm::class,
             Form\Element\OptionalSelect::class => Form\Element\OptionalSelect::class,
         ],
         'factories' => [
@@ -211,13 +211,11 @@ return [
         ],
     ],
     'search' => [
-        'config' => [
-            'search_batch_size' => 100,
-        ],
         'settings' => [
             'search_main_page' => '',
             'search_pages' => [],
             'search_api_page' => '',
+            'search_batch_size' => 100,
         ],
         'site_settings' => [
             'search_main_page' => null,

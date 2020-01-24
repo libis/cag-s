@@ -2,7 +2,7 @@
 
 /*
  * Copyright BibLibre, 2016
- * Copyright Daniel Berthereau, 2017-2018
+ * Copyright Daniel Berthereau, 2017-2019
  *
  * This software is governed by the CeCILL license under French law and abiding
  * by the rules of distribution of free software.  You can use, modify and/ or
@@ -62,21 +62,25 @@ class SearchIndexAdapter extends AbstractEntityAdapter
 
     public function buildQuery(QueryBuilder $qb, array $query)
     {
+        $isOldOmeka = \Omeka\Module::VERSION < 2;
+        $alias = $isOldOmeka ? $this->getEntityClass() : 'omeka_root';
+        $expr = $qb->expr();
+
         if (isset($query['id'])) {
-            $qb->andWhere($qb->expr()->eq(
-                $this->getEntityClass() . '.id',
+            $qb->andWhere($expr->eq(
+                $alias . '.id',
                 $this->createNamedParameter($qb, $query['id']))
             );
         }
         if (isset($query['name'])) {
-            $qb->andWhere($qb->expr()->eq(
-                $this->getEntityClass() . '.name',
+            $qb->andWhere($expr->eq(
+                $alias . '.name',
                 $this->createNamedParameter($qb, $query['name']))
             );
         }
         if (isset($query['adapter'])) {
-            $qb->andWhere($qb->expr()->eq(
-                $this->getEntityClass() . '.adapter',
+            $qb->andWhere($expr->eq(
+                $alias . '.adapter',
                 $this->createNamedParameter($qb, $query['adapter']))
             );
         }

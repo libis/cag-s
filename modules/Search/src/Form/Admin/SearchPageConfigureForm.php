@@ -46,9 +46,11 @@ class SearchPageConfigureForm extends Form
         if (empty($index)) {
             return;
         }
-        $this->addFacets();
-        $this->addSortFields();
-        $this->addFormFieldset();
+
+        $this
+            ->addFacets()
+            ->addSortFields()
+            ->addFormFieldset();
 
         // Allow to manage the simple and visual form differently.
         $this->add([
@@ -62,7 +64,9 @@ class SearchPageConfigureForm extends Form
 
     protected function addFacets()
     {
-        $this->addFacetLimit();
+        $this
+            ->addFacetLimit()
+            ->addFacetLanguages();
 
         /** @var \Search\Api\Representation\SearchPageRepresentation $searchPage */
         $searchPage = $this->getOption('search_page');
@@ -120,6 +124,7 @@ class SearchPageConfigureForm extends Form
         }
 
         $this->add($facets);
+        return $this;
     }
 
     protected function addFacetLimit()
@@ -137,6 +142,44 @@ class SearchPageConfigureForm extends Form
                 'required' => true,
             ],
         ]);
+        return $this;
+    }
+
+    protected function addFacetLanguages()
+    {
+        $this
+            ->add([
+                'name' => 'facet_languages',
+                'type' => Element\Text::class,
+                'options' => [
+                    'label' => 'Get facets from specific languages', // @translate
+                    'info' => 'Generally, facets are translated in the view, but in some cases, facet values may be translated directly in a multivalued property. Use "|" to separate multiple languages. Use "||" for values without language. When fields with languages (like subjects) and fields without language (like date) are facets, the empty language must be set to get results.', // @translate
+                ],
+                'attributes' => [
+                    'id' => 'facet_languages',
+                    'placeholder' => 'fra|way|apy||',
+                ],
+            ]);
+        // FIXME This filter is not processed and manually applied in controller.
+        $this
+            ->getInputFilter()
+            ->add([
+                'name' => 'facet_languages',
+                'required' => false,
+                'filters' => [
+                    [
+                        'name' => \Zend\Filter\Callback::class,
+                        'options' => [
+                            'callback' => function ($string) {
+                                return strlen(trim($string))
+                                    ? array_unique(array_map('trim', explode('|', $string)))
+                                    : [];
+                            },
+                        ],
+                    ],
+                ],
+            ]);
+        return $this;
     }
 
     protected function addSortFields()
@@ -196,6 +239,7 @@ class SearchPageConfigureForm extends Form
         }
 
         $this->add($sortFieldsFieldset);
+        return $this;
     }
 
     protected function addFormFieldset()
@@ -205,12 +249,12 @@ class SearchPageConfigureForm extends Form
 
         $formAdapter = $searchPage->formAdapter();
         if (!isset($formAdapter)) {
-            return;
+            return $this;
         }
 
         $configFormClass = $formAdapter->getConfigFormClass();
         if (!isset($configFormClass)) {
-            return;
+            return $this;
         }
 
         $fieldset = $formElementManager->get($formAdapter->getConfigFormClass(), [
@@ -220,6 +264,7 @@ class SearchPageConfigureForm extends Form
         $fieldset->setLabel('Form settings'); // @translate
 
         $this->add($fieldset);
+        return $this;
     }
 
     /**
@@ -237,8 +282,7 @@ class SearchPageConfigureForm extends Form
         // Remove the keys that exists in settings, but not in fields to sort.
         $order = array_intersect_key($settings[$type], $fields);
         // Order the fields.
-        $result = array_replace($order, $fields);
-        return $result;
+        return array_replace($order, $fields);
     }
 
     /**
@@ -259,8 +303,7 @@ class SearchPageConfigureForm extends Form
                 $label = $fieldSettings['display']['label'];
             }
         }
-        $label = $label ? sprintf('%s (%s)', $label, $field['name']) : $field['name'];
-        return $label;
+        return $label ? sprintf('%s (%s)', $label, $field['name']) : $field['name'];
     }
 
     /**

@@ -2,7 +2,7 @@
 
 /*
  * Copyright BibLibre, 2016
- * Copyright Daniel Berthereau, 2018
+ * Copyright Daniel Berthereau, 2018-2019
  *
  * This software is governed by the CeCILL license under French law and abiding
  * by the rules of distribution of free software. You can use, modify and/ or
@@ -31,7 +31,7 @@ namespace Search;
 
 use Omeka\Api\Representation\SiteRepresentation;
 
-class Query
+class Query implements \JsonSerializable
 {
     /**
      * @var string
@@ -89,6 +89,11 @@ class Query
     protected $facetLimit = 0;
 
     /**
+     * @var array
+     */
+    protected $facetLanguages = [];
+
+    /**
      * @var int
      */
     protected $siteId;
@@ -104,6 +109,7 @@ class Query
     public function setQuery($query)
     {
         $this->query = $query;
+        return $this;
     }
 
     /**
@@ -120,6 +126,7 @@ class Query
     public function setResources($resources)
     {
         $this->resources = $resources;
+        return $this;
     }
 
     /**
@@ -136,6 +143,7 @@ class Query
     public function setIsPublic($isPublic)
     {
         $this->isPublic = $isPublic;
+        return $this;
     }
 
     /**
@@ -153,6 +161,7 @@ class Query
     public function addFilter($name, $value)
     {
         $this->filters[$name][] = $value;
+        return $this;
     }
 
     /**
@@ -174,6 +183,7 @@ class Query
             'start' => $start,
             'end' => $end,
         ];
+        return $this;
     }
 
     /**
@@ -197,6 +207,7 @@ class Query
     public function addFilterQuery($name, $value, $type = 'in', $joiner = 'and')
     {
         $this->filterQueries[$name][] = ['value' => $value, 'type' => $type, 'joiner' => $joiner];
+        return $this;
     }
 
     /**
@@ -214,6 +225,7 @@ class Query
     public function setSort($sort)
     {
         $this->sort = $sort;
+        return $this;
     }
 
     /**
@@ -251,6 +263,7 @@ class Query
         $rowCount = ($rowCount > 0) ? $rowCount : 1;
         $this->limit = (int) $rowCount;
         $this->offset = (int) $rowCount * ($page - 1);
+        return $this;
     }
 
     /**
@@ -259,6 +272,7 @@ class Query
     public function addFacetField($field)
     {
         $this->facetFields[] = $field;
+        return $this;
     }
 
     /**
@@ -277,6 +291,7 @@ class Query
     public function setFacetLimit($facetLimit)
     {
         $this->facetLimit = (int) $facetLimit;
+        return $this;
     }
 
     /**
@@ -288,11 +303,30 @@ class Query
     }
 
     /**
+     * @param array $facetLanguages
+     * @return \Search\Query
+     */
+    public function setFacetLanguages(array $facetLanguages)
+    {
+        $this->facetLanguages = $facetLanguages;
+        return $this;
+    }
+
+    /**
+     * @return array
+     */
+    public function getFacetLanguages()
+    {
+        return $this->facetLanguages;
+    }
+
+    /**
      * @param int $siteId
      */
     public function setSiteId($siteId)
     {
         $this->siteId = $siteId;
+        return $this;
     }
 
     /**
@@ -303,6 +337,24 @@ class Query
         return $this->siteId;
     }
 
+    public function jsonSerialize()
+    {
+        return [
+            'query' => $this->getQuery(),
+            'is_public' => $this->getIsPublic(),
+            'filters' => $this->getFilters(),
+            'date_range_filters' => $this->getDateRangeFilters(),
+            'filter_queries' => $this->getFilterQueries(),
+            'sort' => $this->getSort(),
+            'offset' => $this->getOffset(),
+            'limit' => $this->getLimit(),
+            'facet_fields' => $this->getFacetFields(),
+            'facet_limit' => $this->getFacetLimit(),
+            'facet_languages' => $this->getFacetLanguages(),
+            'site_id' => $this->getSiteId(),
+        ];
+    }
+
     /**
      * @deprecated 3.5.8 Use self::setSiteId() instead. Will be removed in 3.6.
      * @param SiteRepresentation $site
@@ -310,6 +362,7 @@ class Query
     public function setSite(SiteRepresentation $site)
     {
         $this->site = $site;
+        return $this;
     }
 
     /**

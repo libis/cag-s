@@ -1,6 +1,7 @@
 <?php
 /*
  * Copyright BibLibre, 2016
+ * Copyright Daniel Berthereau, 2019
  *
  * This software is governed by the CeCILL license under French law and abiding
  * by the rules of distribution of free software.  You can use, modify and/ or
@@ -28,6 +29,7 @@
 
 /**
  * @var \Zend\View\Renderer\PhpRenderer $this
+ * @var \Omeka\Api\Representation\SiteRepresentation $site
  * @var \Search\Response $response
  * @var string $resourceName
  * @var string $title
@@ -36,16 +38,17 @@
 $partial = $this->plugin('partial');
 $api = $this->api();
 ?>
+
 <?php $results = $response->getResults($resourceName); ?>
 <?php if (count($results)): ?>
-    <h3><?php echo $title; ?></h3>
-    <div class="resource-list">
-        <?php foreach ($results as $result): ?>
-            <?php $resource = $api->read($resourceName, $result['id'])->getContent(); ?>
-            <?php echo $partial('search/resource', [
-                'resource' => $resource,
-                'tag' => 'div',
-            ]); ?>
-        <?php endforeach; ?>
-    </div>
+<h3><?= $title ?></h3>
+<div class="resource-list">
+    <?php foreach ($results as $result): ?>
+        <?php $resource = $api->read($resourceName, $result['id'])->getContent(); ?>
+        <?= $partial('search/resource', [
+            'resource' => $resource,
+            'tag' => 'div',
+        ]) ?>
+    <?php endforeach; ?>
+</div>
 <?php endif; ?>

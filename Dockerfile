@@ -22,7 +22,7 @@ RUN apt-get -qq update && apt-get -qq -y --no-install-recommends install \
 RUN docker-php-ext-install -j$(nproc) iconv pdo pdo_mysql mysqli gd
 RUN docker-php-ext-configure gd --with-freetype-dir=/usr/include/ --with-jpeg-dir=/usr/include/
 
-RUN wget --no-verbose "https://github.com/omeka/omeka-s/releases/download/v1.4.0/omeka-s-1.4.0.zip" -O /var/www/omeka-s.zip
+RUN wget --no-verbose "https://github.com/omeka/omeka-s/releases/download/v2.0.2/omeka-s-2.0.2.zip" -O /var/www/omeka-s.zip
 RUN unzip -q /var/www/omeka-s.zip -d /var/www/ \
 &&  rm /var/www/omeka-s.zip \
 &&  rm -rf /var/www/html/cag/ \

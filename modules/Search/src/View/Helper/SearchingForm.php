@@ -5,7 +5,13 @@ use Zend\View\Helper\AbstractHelper;
 
 class SearchingForm extends AbstractHelper
 {
-    public function __invoke()
+    /**
+     * Display the search form if any, else display the standard form.
+     *
+     * @param string $searchFormPartial Specific partial for the search form.
+     * @return string
+     */
+    public function __invoke($searchFormPartial = null)
     {
         $view = $this->getView();
 
@@ -14,14 +20,11 @@ class SearchingForm extends AbstractHelper
         if ($searchMainPage) {
             $searchPage = $view->api()->searchOne('search_pages', ['id' => $searchMainPage])->getContent();
             if ($searchPage) {
-                return $view->searchForm($searchPage);
+                return (string) $view->searchForm($searchPage, $searchFormPartial);
             }
         }
 
         // Standard search form.
-        $html = '<div id="search">';
-        $html .= $view->partial('common/search-form');
-        $html .= '</div>';
-        return $html;
+        return '<div id="search">' . $view->partial('common/search-form') . '</div>';
     }
 }

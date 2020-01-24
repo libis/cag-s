@@ -9,9 +9,19 @@ use Zend\View\Helper\AbstractHelper;
 class SearchForm extends AbstractHelper
 {
     /**
+     * The default partial view script.
+     */
+    const PARTIAL_NAME = 'search/search-form';
+
+    /**
      * @var SearchPageRepresentation
      */
     protected $searchPage;
+
+    /**
+     * @var string
+     */
+    protected $partial;
 
     /**
      * @var Form
@@ -20,13 +30,17 @@ class SearchForm extends AbstractHelper
 
     /**
      * @param SearchPageRepresentation $searchPage
+     * @param string $partial Specific partial for the search form.
      * @return \Search\View\Helper\SearchForm
      */
-    public function __invoke(SearchPageRepresentation $searchPage = null)
+    public function __invoke(SearchPageRepresentation $searchPage = null, $partial = null)
     {
-        if (isset($searchPage)) {
+        if ($searchPage) {
             $this->searchPage = $searchPage;
             $this->form = null;
+        }
+        if ($partial) {
+            $this->partial = $partial;
         }
         return $this;
     }
@@ -75,9 +89,12 @@ class SearchForm extends AbstractHelper
         if (empty($this->searchPage)) {
             return '';
         }
+        if ($this->partial ) {
+            return $this->partial ;
+        }
         $formAdapter = $this->searchPage->formAdapter();
         return $formAdapter && ($formPartial = $formAdapter->getFormPartial())
             ? $formPartial
-            : 'search/search-form';
+            : self::PARTIAL_NAME;
     }
 }
