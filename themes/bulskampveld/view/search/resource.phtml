@@ -40,7 +40,6 @@ if($type):
 else:
   $type= "Object";
 endif;
-
 if($type == 'Agendapunt BKV'):
   $type = 'Activiteit';
 endif;
@@ -74,11 +73,15 @@ endif;
             <?php if($type == 'Beeld'):?>
                 <p class="datering"><?php echo $resource->value('dcterms:date');?></p>
             <?php endif;?>
-            <?php if($resource->value('dcterms:date') && ($type == 'Nieuws' || $type == 'Agendapunt')):?>
+            <?php if($resource->value('dcterms:date') && ($type == 'Nieuws' || $type == 'Agendapunt' || $type == 'Activiteit' || $type == 'Nieuwsbericht')):?>
                 <?php
                   $date = $resource->value('dcterms:date');
-                  $date = DateTime::createFromFormat('Ymd', $date);
-                  $output = $date->format('d-m-Y');
+                  //echo $date;
+                  $output = DateTime::createFromFormat('Ymd', $date);
+                  if(!$output){
+                      $output = DateTime::createFromFormat('Y-m-d', $date);
+                  }
+                  $output = $output->format('d-m-Y');
                 ?>
                 <p class="datering"><?php echo $output;?></p>
             <?php endif;?>

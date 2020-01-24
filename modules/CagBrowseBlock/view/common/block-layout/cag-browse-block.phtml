@@ -57,6 +57,7 @@ $translate = $this->plugin('translate');
                 $url = $block->page()->site()->url()."/page/".$resource->value('dcterms:relation');
               else:
                 $url = $resource->url();
+                $date = '';
               endif;
             ?>
             <a href="<?php echo $url;?>">
@@ -71,6 +72,19 @@ $translate = $this->plugin('translate');
                 <h2 class="heading--3 card__title spacer--xsm">
                   <a href="<?php echo $url;?>"><?php echo $resource->value('dcterms:title');?></a>
                 </h2>
+
+                <?php if($resource->value('dcterms:date') && ($type == 'Nieuws' || $type == 'Agendapunt' || $type == 'Agendapunt BKV' || $type == 'Nieuws BKV')):?>
+                    <?php
+                      $date = $resource->value('dcterms:date');
+                      //echo $date;
+                      $output = DateTime::createFromFormat('Ymd', $date);
+                      if(!$output){
+                          $output = DateTime::createFromFormat('Y-m-d', $date);
+                      }
+                      $output = $output->format('d-m-Y');
+                    ?>
+                    <p class="datering"><?php echo $output;?></p>
+                <?php endif;?>
                 <?php if ($body): ?>
                   <?php
                     if(strlen($body) > 200):
@@ -106,9 +120,15 @@ $translate = $this->plugin('translate');
 
     <?php if ($this->linkText):?>
       <div class="text--center u-mt-med">
-        <a href="<?php echo $block->page()->site()->url().'/'.$templates[$type].'?q='?>" class="btn btn--ext">
-          <?php echo $this->linkText;?>
-        </a>
+        <?php if($type == 'Nieuws' || $type == 'Agendapunt' || $type == 'Agendapunt BKV' || $type == 'Nieuws BKV'):?>
+          <a href="<?php echo $block->page()->site()->url().'/'.$templates[$type].'?q=&sort=dcterms:date desc'?>" class="btn btn--ext">
+            <?php echo $this->linkText;?>
+          </a>
+        <?php else:?>
+          <a href="<?php echo $block->page()->site()->url().'/'.$templates[$type].'?q='?>" class="btn btn--ext">
+            <?php echo $this->linkText;?>
+          </a>
+        <?php endif;?>
       </div>
     <?php endif;?>
 
