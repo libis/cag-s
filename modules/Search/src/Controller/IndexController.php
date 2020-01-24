@@ -194,7 +194,7 @@ class IndexController extends AbstractActionController
             if (isset($searchPageSettings['facet_languages'])) {
               if(is_array($searchPageSettings['facet_languages'])):
                 $query->setFacetLanguages($searchPageSettings['facet_languages']);
-              endif;  
+              endif;
             }
             if (!empty($request['limit']) && is_array($request['limit'])) {
                 foreach ($request['limit'] as $name => $values) {
@@ -250,6 +250,7 @@ class IndexController extends AbstractActionController
 
         // Form is not set in the view.
         // $view->setVariable('form', $form);
+        //LIBIS added page
         $view
             ->setVariable('query', $query)
             ->setVariable('site', $site)
