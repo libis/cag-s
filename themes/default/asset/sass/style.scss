@@ -304,7 +304,7 @@
     .search__input{
       padding: 0.5rem ;
       box-shadow: none;
-      background: transparent;
+      background: #F9F9F9;
     }
 
     .btn{
@@ -321,7 +321,7 @@
 }
 
 .search.active{
-  justify-content: end !important;
+  justify-content: flex-end !important;
 }
 
 .search__form {
@@ -345,4 +345,14 @@
     position: static !important;
     font-size: 48px;
     width: 48px;
+}
+
+.list_page{
+  background: #F9F9F9;
+  padding:1rem;
+  margin-bottom: 0.5rem;
+}
+
+.more_results{
+  margin: 2rem 0;
 }

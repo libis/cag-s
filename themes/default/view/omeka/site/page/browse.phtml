@@ -1,0 +1,32 @@
+<?php
+$this->htmlElement('body')->appendAttribute('class', 'page browse');
+?>
+<div class="section section--lrg section--light">
+  <div class="container">
+    <!-- breadcrumbs -->
+    <div class="breadcrumb spacer">
+        <span itemscope="" itemtype="http://data-vocabulary.org/Breadcrumb" class="breadcrumb__scope">
+            <a href="/s/start/" itemprop="url" class="breadcrumb__item"><span itemprop="title">Home</span></a>
+        </span>
+        <span itemscope="" itemtype="http://data-vocabulary.org/Breadcrumb" class="breadcrumb__scope">
+            <span itemprop="title">Zoekresultaten pagina's</span>
+        </span>
+    </div>
+    <?php  $query = $this->params()->fromQuery();?>
+    <h1 class="spacer"><?php echo sprintf($this->translate('Zoekresultaten “%s”'), $query["fulltext_search"]); ?></h1>
+  </div>
+</div>
+<div class="section section--default">
+  <div class="container">
+    <?php if ($pages): ?>
+        <?php foreach ($pages as $page): ?>
+          <div class="list_page">
+            <h2 class="heading--3 card__title"><?php echo $page->link($page->title()); ?></2>
+          </div>
+        <?php endforeach; ?>
+    <?php else: ?>
+    <p><?php echo $this->translate('No pages found'); ?></p>
+    <?php endif; ?>
+    <?php echo $this->pagination(); ?>
+  </div>
+</div>
