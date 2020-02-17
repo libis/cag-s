@@ -10,8 +10,18 @@
         <div class="gallery-<?php echo $number;?>">
           <?php foreach($attachments as $attachment){ ?>
             <div>
-                <?php if($attachment->caption()):?>
-                <a href="<?php echo strip_tags($attachment->caption());?>">
+                <?php
+                  $text="";$link="";
+                  if($attachment->caption()):
+                    preg_match_all("/\[([^\]]*)\]/", $attachment->caption(), $matches);
+                    $text = $matches[1];
+                    //preg_match_all("/\[([^\]]*)\]/", $attachment->caption(), $matches);
+                    preg_match_all("~\[.+?\]|[^\[\]]+~", $attachment->caption(), $matches);
+                    $link = $matches[0][0];
+                  endif;
+                ?>
+                <?php if($link):?>
+                <a href="<?php echo strip_tags($link);?>">
                 <?php endif;?>
                 <?php
                   $url='';
@@ -21,8 +31,13 @@
                   endif;
                 ?>
                 <img src="<?php echo  $url;?>">
-                <?php if($attachment->caption()):?>
+                <?php if($link):?>
                 </a>
+                <?php endif;?>
+                <?php if($text):?>
+                  <div class="caption">
+                    <?php print_r($text[0]);?>
+                  </div>
                 <?php endif;?>
             </div>
           <?php } ?>

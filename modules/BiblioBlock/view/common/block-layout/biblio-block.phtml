@@ -1,52 +1,119 @@
 <?php
 $translate = $this->plugin('translate');
 $biblio = array();
-$niv = 'none';
-if(isset($_GET['niv'])):
-  $niv = $_GET['niv'];
-endif;
-if($niv == 'Werkinstrumenten'):
-  $limit= 1;
-elseif($niv == 'Synthesewerken'):
 
-elseif($niv == 'Thematische studies'):
-
+$category = 'All';
+if($block->dataValue('category')):
+  $category = $block->dataValue('category');
 endif;
 
+$search='';
+if(isset($_GET['search'])):
+  $search = urlencode(htmlentities($_GET['search']));
+endif;
 ?>
 <div class="section section--default">
   <div class="container">
-    <div class="grid grid--<?php echo $block->dataValue('columns');?>-col@med spacer--xsm">
     <?php
+
       foreach ($this->resources as $resource):
-          $biblio[$resource->value('dcterms:type')->value()][strip_tags($resource->value('dcterms:title')->value())] = $resource->value('dcterms:title')->value();
+        if($resource->value('dcterms:subject')):
+          $niv = $resource->value('dcterms:subject')->value();
+          $niv = explode("|",$niv);
+          $niv1 = $niv[0];
+          $niv2 = $niv[1];
+          if($search):
+            if(strpos($resource->value('dcterms:title')->value(), $search) !== false):
+              $biblio[$niv[0]][$niv[1]][$resource->value('dcterms:type')->value()][strip_tags($resource->value('dcterms:title')->value())] = $resource->value('dcterms:title')->value();
+            endif;
+          else:
+            $biblio[$niv[0]][$niv[1]][$resource->value('dcterms:type')->value()][strip_tags($resource->value('dcterms:title')->value())] = $resource->value('dcterms:title')->value();
+          endif;
+        endif;
       endforeach;
-      ksort($biblio,SORT_NATURAL);
+      //ksort($biblio,SORT_NATURAL);
+
     ?>
-    <?php foreach($biblio as $title => $bibs): ?>
-      <table class="table--striped">
-        <thead>
-            <tr>
-                <?php $id = explode(" ", $title, 2); ?>
-                <th colspan="2" id="<?php echo $id[0];?>"><?php echo $title;?></th>
-            </tr>
-        </thead>
-        <tbody>
-          <?php ksort($bibs);?>
-          <?php foreach($bibs as $bib): ?>
-            <tr>
-                <td><?php echo $bib;?></td>
-                <td class="text--right text--italic"></td>
-            </tr>
-          <?php endforeach;?>
-        </tbody>
-      </table>
-    <?php endforeach;?>
-    <?php
-      /*echo "<pre>";
-      var_dump($biblio);
-      echo "</pre>";*/
-    ?>
+
+    <div class="grid grid--text-image grid--no-gutter">
+        <div class="grid__12 grid__6@med">
+          <div id="results" class="grid__content panel panel--lrg panel--light biblio-panel">
+            <h4>Bibliografie doorzoeken</h4>
+            <form action="<?php echo $block->page()->url();?>#results">
+              <div class="form__item">
+                  <input type="text" class="form__text" name="search" style="display:inline-block;width:80%;">
+                  <button type="submit" style="display:inline-block;width:auto;min-width:0;padding:5px 12px 6px 12px;color:white;background:#006B65" class="btn form__btn"><span class="icon icon--search"></span></button>
+              </div>
+            </form>
+            <?php if($search):?>
+              <div class="biblio-search">
+                <a href="<?php echo $block->page()->url();?>"><?php echo $search;?></a>
+              </div>
+            <?php endif;?>
+          </div>
+        </div>
     </div>
   </div>
 </div>
+<div class="section section--default">
+  <div class="container">
+    <?php if(empty($biblio)):?>
+      <p>
+        Geen resultaten
+      </p>
+    <?php else:?>
+        <?php if($category != 'All'):
+          $temp = [];
+          $temp[$category] = $biblio[$category];
+          $biblio = $temp;
+        endif;
+        $i=1;$j=1;$k=1;
+        ?>
+
+        <?php foreach($biblio as $title0 => $niv1): ?>
+          <?php if($category == 'All'):?>
+            <h2 id="<?php echo $i;?>"><?php echo $title0;?></h2>
+          <?php endif;?>
+          <?php ksort($niv1,SORT_NATURAL);?>
+          <?php foreach($niv1 as $title1 => $niv2): ?>
+            <h3 id="<?php echo $i.".".$j;?>"><?php echo $title1;?></h3>
+              <?php ksort($niv2,SORT_NATURAL);?>
+                <?php foreach($niv2 as $title => $bibs): ?>
+                  <table class="table--striped">
+                    <?php if($title1 != $title):?>
+                    <thead>
+                        <tr>
+                            <?php $id = explode(" ", $title, 2); ?>
+                            <th colspan="2" id="<?php echo $i.'.'.$id[0];?>"><?php echo $title;?></th>
+                        </tr>
+                    </thead>
+                    <?php endif;?>
+                    <tbody>
+                      <?php ksort($bibs);?>
+                      <?php foreach($bibs as $bib): ?>
+                          <tr>
+                              <td><?php echo $bib;?></td>
+                              <td class="text--right text--italic"></td>
+                          </tr>
+                      <?php endforeach;?>
+                    </tbody>
+                  </table>
+                  <?php $k++;?>
+                <?php endforeach;?>
+                <?php $j++;$k=1;?>
+              <?php endforeach;?>
+            <?php $i++;$j=1;?>
+          <?php endforeach;?>
+      <?php endif;?>
+  </div>
+</div>
+<script>
+$(document).ready(function() {
+$('a').each(function() {
+   var a = new RegExp('/' + window.location.host + '/');
+   if (!a.test(this.href)) {
+      $(this).attr("target","_blank");
+   }
+});
+});
+</script>

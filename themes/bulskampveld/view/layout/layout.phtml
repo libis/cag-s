@@ -37,6 +37,11 @@ $userBar = $this->userBar();
 
         <div class="page-wrap">
 
+        <!-- search overlay -->
+        <div class="search js-search-container">
+            <?php echo $this->partial('common/search-form'); ?>
+        </div>
+        
         <!-- logo + navigation -->
         <?php
           $url = $this->serverUrl(true);
@@ -267,10 +272,6 @@ $userBar = $this->userBar();
       </div>
 
 
-      <!-- search overlay -->
-      <div class="search js-search-container">
-          <?php echo $this->partial('common/search-form'); ?>
-      </div>
 
 
       <!-- flyout overlay -->

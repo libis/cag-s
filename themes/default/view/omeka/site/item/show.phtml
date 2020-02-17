@@ -66,24 +66,6 @@ $thumb = $item->primaryMedia();
               </div>
             <?php endforeach;?>
           </div>
-          <script>
-          $(document).ready(function(){
-            $('.slider-for').slick({
-              slidesToShow: 1,
-              slidesToScroll: 1,
-              arrows: false,
-              fade: true,
-              centerMode: true,
-              asNavFor: '.slider-nav'
-            });
-            $('.slider-nav').slick({
-              slidesToShow: 10,
-              slidesToScroll: 1,
-              asNavFor: '.slider-for',
-              focusOnSelect: true
-            });
-          });
-          </script>
         <?php else: ?>
           <div class="beeld">
             <img src="<?php echo $itemMedia[0]->thumbnailUrl('large');?>">
@@ -125,12 +107,34 @@ $thumb = $item->primaryMedia();
         <span> <!-- content text must be in a wrapper if it's directly in a grid__item -->
             <table class="">
                 <tbody>
-                
                   <?php echo $item->displayValues(); ?>
                 </tbody>
             </table>
-
         </span>
+        <?php if($type == "Beeld"):?>
+          <br />
+          <p>
+            Klik <a class="hr" href="<?php echo $site->url();?>/page/contact?aanvraag=1&id=<?php echo$item->value('dcterms:identifier');?>">hier</a> om een hogeresolutieversie van bovenstaande afbeelding aan te vragen.
+          </p>
+          <script>
+            $(document).ready(function(){
+              $('.slider-for').slick({
+                slidesToShow: 1,
+                slidesToScroll: 1,
+                arrows: false,
+                fade: true,
+                centerMode: true,
+                asNavFor: '.slider-nav'
+              });
+              $('.slider-nav').slick({
+                slidesToShow: 10,
+                slidesToScroll: 1,
+                asNavFor: '.slider-for',
+                focusOnSelect: true
+              });
+            });
+          </script>
+        <?php endif?>
   </div>
 </div>
 
@@ -180,11 +184,7 @@ endif;
       <?php endif;?>
 
       <div class="grid grid--3-col@med spacer--xsm">
-
-        <?php
-        foreach($resources as $resource):
-        ?>
-
+        <?php foreach($resources as $resource):?>
         <div class="grid__item">
           <div class="card card--gray card--clickable card--link">
              <?php $media = $resource->primaryMedia(); ?>
@@ -234,7 +234,6 @@ endif;
   if($results):
     //$this->logger->info($results);
     foreach($results as $r):
-
       //echo $r->id();
     endforeach;
     //return true;

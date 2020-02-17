@@ -69,7 +69,7 @@ endif;
 
         <div class="card__body panel panel--light">
 
-            <h2 class="heading--3 card__title"><?php echo $resource->link($resource->displayTitle()); ?></h2>
+            <h2 class="heading--3 card__title"><a href="<?php echo $url;?>"><?php echo $resource->displayTitle(); ?></a></h2>
             <?php if($type == 'Beeld'):?>
                 <p class="datering"><?php echo $resource->value('dcterms:date');?></p>
             <?php endif;?>

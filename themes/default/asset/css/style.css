@@ -7,6 +7,10 @@
   display: none;
 }
 
+.nav--main li:nth-last-of-type(-n+2) {
+  display: none;
+}
+
 .nav--main .nav__menu li a {
   color: #006B65;
   display: block;
@@ -43,6 +47,10 @@
 
 .nav--doormat .nav__menu li a:hover, .nav--doormat .nav__menu li a:focus {
   color: #014D49;
+}
+
+.doormat-bold li:nth-last-of-type(-n+2) {
+  display: none;
 }
 
 .doormat-bold a {
@@ -117,8 +125,23 @@
   margin-bottom: 0.8rem;
 }
 
+.contact-us-block .field label {
+  margin-bottom: 5px;
+  display: block;
+}
+
 .contact-us-block .field input[type='text'], .contact-us-block .field input[type='email'], .contact-us-block .field textarea {
-  width: 320px;
+  width: 100%;
+  max-width: 500px;
+  padding: 3px 6px;
+}
+
+.contact-us-block .field textarea {
+  height: 170px;
+}
+
+.contact-us-block .motivation {
+  margin-right: 5px;
 }
 
 .overlap ul, .column-block ul {
@@ -340,6 +363,68 @@
 
 .more_results {
   margin: 2rem 0;
+}
+
+.biblio-search {
+  margin-top: 1rem;
+}
+
+.biblio-search a {
+  background: #006b65;
+  color: white !important;
+  padding: 0.5rem;
+  border: 1px solid rgba(0, 107, 101, 0.7);
+  text-decoration: none;
+}
+
+.biblio-search a::after {
+  content: "\F113";
+  margin-left: 5px;
+  font-family: "icons";
+  vertical-align: middle;
+  color: white;
+}
+
+.scrollToTop {
+  text-align: center;
+  font-weight: bold;
+  color: #006b65;
+  text-decoration: none;
+  position: fixed;
+  bottom: 5%;
+  right: 30px;
+  display: none;
+  background: white;
+  font-size: 1;
+  z-index: 11;
+  padding: 0.5em 1em;
+  border: 2px solid #006B65;
+  transition: background 100ms ease-in-out, border 100ms ease-in-out, color 100ms ease-in-out;
+  /*&::after{
+      margin-left: 6.5px;
+      content: "\F10D";
+      font-family: "icons";
+      font-weight: 400;
+      vertical-align: middle;
+    }*/
+}
+
+.scrollToTop:visited {
+  color: #006b65;
+}
+
+.scrollToTop:hover {
+  color: #fff;
+  background-color: #006B65;
+  border-color: #00605b;
+}
+
+.scrollToTop:hover {
+  text-decoration: none;
+}
+
+.no-caps .search-facet-item a {
+  text-transform: lowercase;
 }
 
 /*# sourceMappingURL=style.css.map */

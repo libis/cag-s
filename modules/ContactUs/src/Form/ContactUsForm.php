@@ -38,6 +38,14 @@ class ContactUsForm extends Form
             ],
         ]);
 
+        $value = '';$aanvraag = false;
+        if(isset($_GET['id']) && isset($_GET['aanvraag'])):
+          if($_GET['aanvraag']):
+            $aanvraag = true;
+            $value = "Graag, had ik een hoge resolutieversie van object ".$_GET['id']." en motiveer deze aanvraag als volgt: (publicatie, verzameling, commercieel, niet-commercieel…). Door deze aanvraag te verzenden, beloof ik de wetgeving over intellectuele eigendomsrechten te respecteren.";
+          endif;
+        endif;
+
         $this->add([
             'name' => 'message',
             'type' => Element\Textarea::class,
@@ -47,8 +55,42 @@ class ContactUsForm extends Form
             'attributes' => [
                 'id' => 'message',
                 'required' => true,
+                'value' => $value
             ],
         ]);
+
+        if($aanvraag):
+          $this->add([
+              'name' => 'motivation',
+              'type' => Element\MultiCheckbox::class,
+
+              'options' => [
+                  'label' => 'Motivatie: (verplicht)', // @translate
+                  'value_options' => array(
+                    'publicatie' => 'Publicatie',
+                    'verzameling' => 'Verzameling',
+                    'niet-commercieel' => 'Niet-commercieel',
+                    'commercieel' => 'Commercieel',
+                    'andere' => 'Andere',
+                  ),
+              ],
+              'attributes' => [
+                  'class' => 'motivation'
+              ],
+          ]);
+
+          $this->add([
+              'name' => 'andere-motivatie',
+              'type' => Element\Text::class,
+              'options' => [
+                  'label' => 'Andere:', // @translate
+              ],
+              'attributes' => [
+                  'id' => 'andere',
+                  'required' => false,
+              ],
+          ]);
+        endif;
 
         $this->add([
             'name' => 'newsletter',

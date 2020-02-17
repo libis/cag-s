@@ -59,7 +59,14 @@
             <?php if (!empty($facets)): ?>
             <?php foreach ($facets as $name => $facetValues): ?>
               <h4><?php echo $translate($facetLabel($name)); ?></h4>
-              <div class="form__group">
+              <?php
+                if($facetLabel($name) == 'Onderwerp' || $facetLabel($name) == 'Status'):
+                  $class="no-caps";
+                else:
+                  $class="";
+                endif;
+              ?>
+              <div class="form__group <?php echo $class;?>">
                 <?php
                  $more = false;
                  if(sizeof($facetValues)>8):
@@ -102,46 +109,3 @@
             <?php endif; ?>
       </div>
   </div>
-
-<!--
-                        <input type="checkbox" id="checkbox-1" name="check" class="form__checkbox" required>
-                        <label for="checkbox-1" class="form__label">Checkbox 1</label>
-
-                    <div class="form__item">
-                        <input type="checkbox" id="checkbox-2" name="check" class="form__checkbox" required>
-                        <label for="checkbox-2" class="form__label">Checkbox 2</label>
-                    </div>
-                    <div class="form__item">
-                        <input type="checkbox" id="checkbox-3" name="check" class="form__checkbox" required>
-                        <label for="checkbox-3" class="form__label">Checkbox 3</label>
-                    </div>
-                    <div class="form__item">
-                        <input type="checkbox" id="checkbox-4" name="check" class="form__checkbox" required>
-                        <label for="checkbox-4" class="form__label">Checkbox 4</label>
-                    </div>
-                    <span class="icon icon--plus"></span> <a href="">meer tonen</a>
-                </div>
-
-                <h4>Datering</h4>
-                <div class="form__group">
-                    <div class="form__item">
-                        <input type="checkbox" id="checkbox-1" name="check" class="form__checkbox" required>
-                        <label for="checkbox-1" class="form__label">Checkbox 1</label>
-                    </div>
-                    <div class="form__item">
-                        <input type="checkbox" id="checkbox-2" name="check" class="form__checkbox" required>
-                        <label for="checkbox-2" class="form__label">Checkbox 2</label>
-                    </div>
-                    <div class="form__item">
-                        <input type="checkbox" id="checkbox-3" name="check" class="form__checkbox" required>
-                        <label for="checkbox-3" class="form__label">Checkbox 3</label>
-                    </div>
-                    <div class="form__item">
-                        <input type="checkbox" id="checkbox-4" name="check" class="form__checkbox" required>
-                        <label for="checkbox-4" class="form__label">Checkbox 4</label>
-                    </div>
-                    <span class="icon icon--plus"></span> <a href="">meer tonen</a>
-                </div>
-
-            </form>
--->

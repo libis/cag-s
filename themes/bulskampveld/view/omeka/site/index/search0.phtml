@@ -44,10 +44,6 @@
                 if($type):
                   $type= $type->label();
                   if($type == 'Verhaal' || $type == 'Project'):
-                    $url = $this->url(
-                        'site/resource',
-                        ['controller' => 'page', 'action' => $item->value('dcterms:relation')],array(),true
-                    );
                     $url = '/s/start/page/'.$item->value('dcterms:relation');
                   endif;
                 else:
@@ -93,16 +89,16 @@
             <?php endforeach; ?>
         </div>
         <div class="more_results">
-          <p><strong>Meer resultaten:</strong>
+          <p><strong>Meer resultaten: </strong>
             <?php
-                $search_pages = array("agenda-bkv" => "Activiteiten","nieuws-bkv"=>"Nieuwsberichten","objecten" => "Objecten");
+                $search_pages = array("beeldbank","collecties","projecten","verhalen","nieuws","agenda");
                 $html = "";
-                foreach($search_pages as $key => $value ):
+                foreach($search_pages as $sp):
                   $query = "";
-                  $html .= $this->hyperlink($value,
+                  $html .= $this->hyperlink(ucfirst($sp),
                     $this->url(
                         'site/resource',
-                        ['controller' => $key, 'action' => ''],
+                        ['controller' => $sp, 'action' => ''],
                         ['query' => ['q' => $query]],
                         true
                     )
@@ -110,8 +106,8 @@
                 endforeach;
                 echo substr($html, 0, -3);
             ?>
-          </p>
           <?php else: ?>
+
           <p><?php echo $this->translate('No items found'); ?></p>
           <?php endif; ?>
         </div>

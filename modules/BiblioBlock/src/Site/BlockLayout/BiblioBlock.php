@@ -19,7 +19,31 @@ class BiblioBlock extends AbstractBlockLayout
     public function form(PhpRenderer $view, SiteRepresentation $site,
         SitePageRepresentation $page = null, SitePageBlockRepresentation $block = null
     ) {
-        
+
+      $form = new Form();
+
+      $data = $block->data();
+
+      $form->add([
+          'name' => 'o:block[__blockIndex__][o:data][category]',
+          'type' => Element\Select::class,
+          'options' => [
+              'label' => 'Select category', // @translate
+              'value_options' => [
+                  'All'=>'All',
+                  'Werkinstrumenten' => 'Werkinstrumenten',  // @translate
+                  'Synthesewerken' => 'Synthesewerken',
+                  'Thematische studies' => 'Thematische studies',  // @translate
+              ],
+          ],
+      ]);
+
+      $form->setData([
+          'o:block[__blockIndex__][o:data][category]' => $data['category'],
+      ]);
+
+      return $view->formCollection($form);
+
     }
 
     public function render(PhpRenderer $view, SitePageBlockRepresentation $block)

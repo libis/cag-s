@@ -1,6 +1,6 @@
 <?php
 namespace OaiPmhHarvester\Job;
-
+ini_set('memory_limit', '512M');
 use Omeka\Job\AbstractJob;
 use SimpleXMLElement;
 
@@ -45,6 +45,8 @@ class HarvestJob extends AbstractJob
     {
         $this->logger = $this->getServiceLocator()->get('Omeka\Logger');
         $this->api = $this->getServiceLocator()->get('Omeka\ApiManager');
+        $entityManager = $this->getServiceLocator()->get('Omeka\EntityManager');
+        $originalIdentityMap = $entityManager->getUnitOfWork()->getIdentityMap();
         $count = 0;
 
         // Set Dc Properties for mapping
@@ -94,37 +96,62 @@ class HarvestJob extends AbstractJob
             } else {
                 $url = $args['base_url'] . "?metadataPrefix=" . $args['metadata_prefix'] . "&verb=ListRecords&set=" . $args['set_spec'];
             }
-            $this->logger->info("start load xml");                    
+            $this->logger->info("start load xml");
             $response = \simplexml_load_file($url);
-            $this->logger->info("finish load xml");  
-
             $records = $response->ListRecords;
-            $toInsert = [];$ids= []; $update_id='';
+
+            $toInsert = [];$ids= []; $update_id='';$icount = 0;$ucount = 0;
             foreach ($records->record as $record) {
                 $pre_item = $this->{$method}($record, $args['collection_id'],$args['resource_template']);
-                if($pre_item):     
-                   $id_exists = $this->itemExists($pre_item);                
+                if($pre_item):
+                  //check if exists and update
+                  $id_exists = $this->itemExists($pre_item);
+                  //if not exists, create new item
                   if(!$id_exists && $pre_item['dcterms:isVersionOf'][0]['@value']):
-                    $this->logger->info($count.' - Created '.$pre_item['dcterms:isVersionOf'][0]['@value']);
-                    $toInsert[$pre_item['dcterms:isVersionOf'][0]['@value']] = $pre_item;
-                  else:  
-                    $this->logger->info($count.' - Updated '.$pre_item['dcterms:isVersionOf'][0]['@value'].' - '.$id_exists);
-                    $toUpdate[$pre_item['dcterms:isVersionOf'][0]['@value']] = $pre_item;
-                    $ids[] = $id_exists;
-                  endif;  
+                    //$toInsert[$pre_item['dcterms:isVersionOf'][0]['@value']] = $pre_item;
+                    try{
+                      $response = $this->api->create('items', $pre_item, [], []);
+                      $response = null;
+
+                      $icount++;
+                    }catch(\Throwable $t){
+                      $this->logger->info($pre_item['dcterms:isVersionOf'][0]['@value']." error");
+                    }
+                    //$this->logger->info($count.' - Created '.$pre_item['dcterms:isVersionOf'][0]['@value']);
+                    //$toInsert[] = $pre_item;
+                  else:
+                    //$this->logger->info($count.' - Updated '.$pre_item['dcterms:isVersionOf'][0]['@value']);
+                    //$toUpdate[$pre_item['dcterms:isVersionOf'][0]['@value']] = $pre_item;
+                    //$toUpdate[] = $pre_item;
+                    //$ids[] = $id_exists;*/
+                    $ucount++;
+                  endif;
+
+                  $pre_item = null;
+
                   $count++;
 
-                endif;  
+                endif;
             }
+            gc_collect_cycles();
+            $this->logger->info("Finish: total ".$count.", created: ".$icount.", updated: ".$ucount.", mem: ".memory_get_usage());
 
-            if($toInsert):
-                $this->logger->info("create items");   
-                $this->createItems($toInsert);
+            $identityMap = $entityManager->getUnitOfWork()->getIdentityMap();
+            foreach ($identityMap as $entityClass => $entities) {
+                foreach ($entities as $idHash => $entity) {
+                    if (!isset($originalIdentityMap[$entityClass][$idHash])) {
+                        $entityManager->detach($entity);
+                    }
+                }
+            }
+            /*if($toInsert):
+                $this->logger->info("create items");
+                //$this->createItems($toInsert);
             endif;
             if($toUpdate):
                 $this->logger->info("update items");
                 $this->updateItems($toUpdate, $ids);
-            endif;
+            endif;*/
 
             if (isset($response->ListRecords->resumptionToken) && $response->ListRecords->resumptionToken <> '') {
                 $resumptionToken = $response->ListRecords->resumptionToken;
@@ -148,7 +175,7 @@ class HarvestJob extends AbstractJob
         $response = $this->api->update('oaipmhharvester_harvestjob', $importRecordId, $harvestJson);
     }
 
-    protected function createItems($toCreate)
+    /*protected function createItems($toCreate)
     {
         $insertJson = [];
         foreach ($toCreate as $index => $item) {
@@ -165,22 +192,29 @@ class HarvestJob extends AbstractJob
         $this->createRollback($createResponse->getContent());
 
         $createImportEntitiesJson = [];
-    }
+    }*/
 
-    protected function updateItems($toUpdate, $ids)
+    /*protected function updateItems($toUpdate, $ids)
     {
         $updateJson = [];
+        $updateIds = [];
+        $id_string = '';
         foreach ($toUpdate as $index => $item) {
             $updateJson[] = $item;
+            $updateIds[] = $ids[$index];
+            $id_string .= $ids[$index].' ';
+
             if ($index % 20 == 0) {
-                $updateResponse = $this->api->batchUpdate('items', $ids ,$updateJson, [], ['continueOnError' => true]);
-                $updateJson = [];
+              $this->logger->info($id_string);
+
+                $updateResponse = $this->api->batchUpdate('items', $updateIds ,$updateJson, [], ['continueOnError' => true,'collectionAction' => 'replace','isPartial' => false]);
+                $updateJson = [];$updateIds = [];$id_string = '';
             }
         }
-        $updateResponse = $this->api->batchUpdate('items', $ids ,$updateJson, [], ['continueOnError' => true]);
-       
-    }
-   
+        $this->logger->info($id_string);
+        $updateResponse = $this->api->batchUpdate('items', $updateIds ,$updateJson, [], ['continueOnError' => true,'collectionAction' => 'replace','isPartial' => false]);
+
+    }*/
 
     protected function itemExists($item){
         //assuming dc:isVersionOf as unique accross all items
@@ -194,22 +228,26 @@ class HarvestJob extends AbstractJob
             'type' => 'eq',
             'joiner' => 'and'
           );
+
+          $results = '';
           $response = $this->api->search('items',$query);
-          
           $results = $response->getContent();
-          if($results):
-            foreach($results as $r):              
-              /*try{
-                $createResponse = $this->api->update('items', $r->id() ,$item, [], []);
-              }catch(Exception $e){
-                $this->logger->info($r->id()." failed to update");
-                continue;
+
+          foreach($results as $result):
+            if($result):
+              try{
+                //don't update files for now to avoid redownload
+                if(isset($item['o:media'])):
+                  unset($item['o:media']);
+                endif;
+                $response = $this->api->update('items', $result->id() ,$item, [], ['isPartial' => true, 'flushEntityManager' => true]);
+                $response = null;
+              }catch(\Throwable $t){
+                $this->logger->info($item['dcterms:isVersionOf'][0]['@value']." error");
               }
-              return true;*/
-              
-              return $r->id();
-            endforeach;
-          endif;
+              return true;
+            endif;
+          endforeach;
         endforeach;
 
         return false;
@@ -310,8 +348,8 @@ class HarvestJob extends AbstractJob
             if (isset($dcMetadata->$localName)) {
                 $elementTexts["dcterms:$localName"] = $this->extractValues($dcMetadata, $propertyId);
             }
-            //add media
-            if($localName == 'relation'){              
+            //add media if Beeld or Collectie
+            if($localName == 'relation' && ($resource_template == 7 || $resource_template == 6)){
               foreach ($dcMetadata->$localName as $imageUrl) {
                 $media['https://resolver.libis.be/'.$imageUrl.'/stream?quality=LOW_900px']= [
                     'o:ingester' => 'url',
@@ -335,7 +373,7 @@ class HarvestJob extends AbstractJob
         $imgs = array();
         foreach($media as $img):
             $imgs[] = $img;
-        endforeach;    
+        endforeach;
         $meta['o:media'] = $imgs;
         //resource template?
         if($resource_template):

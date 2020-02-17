@@ -3,7 +3,6 @@
         <div class="grid grid--no-gutter">
             <div class="grid__12 grid__6@med flex flex-justify-center">
                 <div class="panel panel--lrg panel--light u-pl-0">
-
                     <!-- breadcrumbs -->
                     <div class="breadcrumb spacer">
                         <span itemscope="" itemtype="http://data-vocabulary.org/Breadcrumb" class="breadcrumb__scope">
@@ -21,6 +20,7 @@
                         </span>
                     </div>
                     <h1 class="spacer"><?php echo $block->dataValue('title');?></h1>
+
                     <div class="text--lead spacer">
                         <?php echo $block->dataValue('text');?>
                     </div>
@@ -38,7 +38,7 @@
                           <a href="<?php echo $itemUrl;?>"><?php echo $this->thumbnail($media, 'large',array('class' => 'u-display-block'));?></a>
                         <?php else:?>
                           <?php echo $this->thumbnail($media, 'large',array('class' => 'u-display-block'));?>
-                        <?php endif;?>                        
+                        <?php endif;?>
                       <?php endif;
                     ?>
                   </div>

@@ -272,19 +272,52 @@ a.card:hover .card__img::before, a.card:focus .card__img::before, .card--link:ho
   }
 }
 
+.page-wrap{
+  position: relative;
+}
+
 .search {
     -webkit-transition: opacity 250ms ease-out, height 250ms ease-out, margin-top 250ms ease-out, width 250ms ease-out;
     transition: opacity 250ms ease-out, height 250ms ease-out, margin-top 250ms ease-out, width 250ms ease-out;
     position: absolute;
-    background: #E8AE11;
+    background: transparent !important;
+    background-image: linear-gradient(to right, transparent, #F9F9F9) !important;
     top: 0;
     right: 0;
     bottom: 0;
-    left: 0;
     opacity: 0;
     visibility: hidden;
     z-index: 100;
-    height: 200px;
+    padding: 0rem;
+    width:100%;
+    height:42px;
+    margin-right: auto;
+    margin-left: auto;
+    padding-left: 13px;
+    padding-right: 13px;
+    max-width: 1200px;
+
+    .search__input{
+      padding: 0.5rem ;
+      box-shadow: none;
+      background: #F9F9F9;
+    }
+
+    .btn{
+      font-size: 1.25rem !important;
+      padding-right: 2px;
+    }
+
+    .search__close{
+      padding: 9px 10px 8px 0px !important;
+      line-height: 1.5 !important;
+      font-size: 1.25rem !important;
+      width:30px !important;
+    }
+}
+
+.search.active{
+  justify-content: flex-end !important;
 }
 
 .search__form {
@@ -294,7 +327,7 @@ a.card:hover .card__img::before, a.card:focus .card__img::before, .card--link:ho
     text-align: right;
     display: flex;
     justify-content: flex-end;
-    width: 100%;
+    width: 450px !important;
 }
 
 .search__form .form__item {
@@ -308,4 +341,28 @@ a.card:hover .card__img::before, a.card:focus .card__img::before, .card--link:ho
     position: static !important;
     font-size: 48px;
     width: 48px;
+}
+
+.slick-slide div{
+  position: relative;
+  .caption{
+    visibility: hidden;
+  }
+
+  &:hover{
+    .caption{
+      visibility: visible;
+
+    }
+  }
+}
+.caption{
+  -webkit-transition: all 100ms ease-in-out;
+  transition: all 100ms ease-in-out;
+  position: absolute;
+  bottom:4.5rem;
+  background: #f9f9f9;
+  padding: 1rem;
+  margin: 0 20px;
+  font-size: 0.9rem;
 }

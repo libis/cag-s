@@ -169,6 +169,7 @@ name: {name}
 newsletter: {newsletter}
 privacy: {privacy}
 ip: {ip}
+motivation: {motivation}
 message:
 
 {message}
@@ -180,7 +181,7 @@ TXT;
                     if (!$result) {
                         $status = 'error';
                         $message = new Message(
-                            $translate('Sorry, we are not enable to send your email. Come back later.')
+                            $translate('Sorry, we are not able to send your email.')
                         );
                     }
                     // Send the confirmation message to the visitor.
@@ -205,7 +206,7 @@ TXT;
                         if (!$result) {
                             $status = 'error';
                             $message = new Message(
-                                $translate('Sorry, we are not enable to send the confirmation email.')
+                                $translate('Sorry, we are not able to send the confirmation email.')
                             );
                         }
                     }
@@ -315,6 +316,12 @@ TXT;
             '{main_url}' => $this->mailer->getSiteUrl(),
         ];
         $holders += $defaultPlaceholders;
+        /*echo '<pre>';
+          var_dump($holders);
+        echo '</pre>';*/
+        if(isset($holders["{motivation}"])):
+          $holders["{motivation}"]=implode(', ',$holders["{motivation}"]);
+        endif;
 
         $result = str_replace(array_keys($holders), array_values($holders), $message);
         return $result;
