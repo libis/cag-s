@@ -72,7 +72,7 @@ class CagSearchBlock extends AbstractBlockLayout
               'value_options' => [
                   'beeldbank' => 'Beeldbank',  // @translate
                   'bibliografie' => 'Bibliografie',  // @translate
-                  'fysieke-collectie' => 'Fysieke collectie',  // @translate
+                  'collecties' => 'Collecties',  // @translate
                   'verhalen' => 'Verhalen',  // @translate
               ],
           ],

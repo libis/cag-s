@@ -83,7 +83,11 @@ class DomainMapper
     private function isIgnoredRoute()
     {
         $matches = [];
+        if (strpos($this->redirectUrl, "page/") !== false) {
+            $this->ignoredRoutes[10] = "fojergijeroifjer";
+        }
         preg_match('#(' . implode('|', $this->ignoredRoutes) . ')#', $this->redirectUrl, $matches);
+        //var_dump($this->redirectUrl);
         return (bool) count($matches);
     }
 
@@ -118,12 +122,11 @@ class DomainMapper
     /**
      * @var \Zend\Router\PriorityList $routes
      * @var \Zend\Router\RouteInterface $route
-     * 
+     *
      */
     private function routeTemplate($routes)
     {
         $routeKey = "{$this->siteSlug}-routes";
-
         /**
          * default route options
          */
@@ -266,7 +269,7 @@ class DomainMapper
         /*
          * Map all statically and dynamically created routes to the domain.
          */
-       
+
         /**
          * static routes (defined by the config files)
          */
@@ -276,7 +279,7 @@ class DomainMapper
                     if (isset($mappedRoutes[$routeKey]["child_routes"][$childRouteKey])) {
                         continue;
                     }
-                    
+
                     $childRouteArray["options"]["route"] = substr($childRouteArray["options"]["route"], 1);
 
                     /**
@@ -285,7 +288,7 @@ class DomainMapper
                     if (!isset($childRouteArray["options"]["defaults"]["controller"])) {
                         $childRouteArray["options"]["defaults"]["controller"] = "Index";
                     }
-                    
+
                     $childRouteArray["options"]["defaults"]["site-slug"]  = $this->siteSlug;
 
                     if (isset($childRouteArray["options"]["constraints"]) && stripos($childRouteArray["options"]["route"], ":controller") !== false) {
@@ -297,12 +300,14 @@ class DomainMapper
             }
         }
 
+        //var_dump($mappedRoutes);
+
         $ignoredRoutes = array_merge(['top', 'site'], $this->ignoredRoutes);
 
         /**
          * @var \Zend\Router\PriorityList $routes
          * @var \Zend\Router\RouteInterface $route
-         * 
+         *
          */
         foreach ($routes as $routeName => $route) {
             if (in_array($routeName, $ignoredRoutes)) {
@@ -324,12 +329,12 @@ class DomainMapper
             $routePath = '';
             if (isset($routeArray['parts'])) {
                 /**
-                 * The method assemble() is not available, because the site slug 
+                 * The method assemble() is not available, because the site slug
                  * is missing.
                  */
                 foreach ($routeArray['parts'] as $part) {
                     list($type, $path) = $part;
-                    /** 
+                    /**
                      * The module Scripto use another route format, at top
                      * level, but with optional site slug.
                      */
@@ -412,11 +417,11 @@ class DomainMapper
             ->setParameter(1, $this->siteId)
             ->getQuery()
             ->getArrayResult();
-        
+
         if (count($defaultPage) > 0) {
             return $defaultPage[0]['slug'];
         }
-        
+
         return null;
     }
 
@@ -437,11 +442,11 @@ class DomainMapper
         if ($this->isIgnoredRoute()) {
             return;
         }
-        
+
         if($this->router->hasRoute($this->siteSlug)) {
             $this->router->removeRoute($this->siteSlug);
         }
-        
+
         $routes = is_null($routes) ? $this->router->getRoutes() : $routes;
         $this->routes[$this->siteSlug] = $this->routeTemplate($routes);
         $this->router->addRoutes($this->routes[$this->siteSlug]);
@@ -548,6 +553,7 @@ class DomainMapper
         $this->initRoutingVariables();
 
         if (!$this->isIgnoredRoute()) {
+
             if (!$this->isPluginConfigured()) {
                 $renderer = $this->event->getApplication()->getServiceManager()->get('ViewPhpRenderer');
                 $view = new ViewModel();
@@ -592,7 +598,7 @@ class DomainMapper
             $mapping_id = $row['mapping_id'];
             $site_id = $row['site_id'];
             $domain = $row['domain'];
-            
+
             if (strlen($domain) > 0) {
                 $validate = preg_match('#^(?!\-)(?:[a-zA-Z\d\-]{0,62}[a-zA-Z\d]\.){1,126}(?!\d+)[a-zA-Z\d]{1,63}$#', $domain);
 

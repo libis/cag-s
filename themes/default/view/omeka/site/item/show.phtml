@@ -113,9 +113,10 @@ $thumb = $item->primaryMedia();
         </span>
         <?php if($type == "Beeld"):?>
           <br />
-          <p>
-            Klik <a class="hr" href="<?php echo $site->url();?>/page/contact?aanvraag=1&id=<?php echo$item->value('dcterms:identifier');?>">hier</a> om een hogeresolutieversie van bovenstaande afbeelding aan te vragen.
-          </p>
+          <ul class="list--arrow">
+            <li>Klik <a class="hr" href="<?php echo $site->url();?>/page/contact?aanvraag=1&id=<?php echo$item->value('dcterms:identifier');?>">hier</a> om een hogeresolutieversie van bovenstaande afbeelding aan te vragen.</li>
+            <li>Klik <a href="">hier</a> voor de voorwaarden voor beeldaanvragen.</li>
+          </ul>
           <script>
             $(document).ready(function(){
               $('.slider-for').slick({
@@ -137,8 +138,6 @@ $thumb = $item->primaryMedia();
         <?php endif?>
   </div>
 </div>
-
-
 
 <?php
 $translate = $this->plugin('translate');

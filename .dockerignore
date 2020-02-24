@@ -1,0 +1,9 @@
+*/files*
+*/config*
+*/themes*
+*/modules*
+*/.git*
+/files
+files
+themes
+modules

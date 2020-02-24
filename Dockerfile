@@ -25,10 +25,10 @@ RUN docker-php-ext-configure gd --with-freetype-dir=/usr/include/ --with-jpeg-di
 RUN wget --no-verbose "https://github.com/omeka/omeka-s/releases/download/v2.0.2/omeka-s-2.0.2.zip" -O /var/www/omeka-s.zip
 RUN unzip -q /var/www/omeka-s.zip -d /var/www/ \
 &&  rm /var/www/omeka-s.zip \
-&&  rm -rf /var/www/html/cag/ \
-&&  mv /var/www/omeka-s /var/www/html/cag/ \
+&&  rm -rf /var/www/html/ \
+&&  mv /var/www/omeka-s /var/www/html/ \
 &&  chown -R www-data:www-data /var/www/html/
 
-VOLUME /var/www/html/cag/
+VOLUME /var/www/html/
 
 CMD ["apache2-foreground"]

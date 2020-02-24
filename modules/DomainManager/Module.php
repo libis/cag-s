@@ -19,7 +19,7 @@ class Module extends AbstractModule
     /**
      * modules are loaded alphabetical in ascending order, which means
      * modules that are lexicographically greater than this module will not be mapped.
-     * 
+     *
      * in order for us to map dynamically created routes, we must then listen to
      * the route event and then generate the route based on that context
      */
@@ -94,7 +94,7 @@ class Module extends AbstractModule
     public function upgrade($oldVersion, $newVersion, ServiceLocatorInterface $serviceLocator)
     {
         $connection = $serviceLocator->get('Omeka\Connection');
-       
+
         if (version_compare($oldVersion, "1.2", "<")) {
             if (count($connection->query("SHOW COLUMNS FROM domain_site_mapping LIKE 'site_page_id'")->fetchAll())) {
                 try {

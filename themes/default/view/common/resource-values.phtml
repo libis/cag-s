@@ -3,10 +3,21 @@ $translate = $this->plugin('translate');
 $escape = $this->plugin('escapeHtml');
 $labelInfo = $this->setting('property_label_information');
 ?>
-<?php foreach ($values as $term => $propertyData): ?>
+<?php foreach ($templateProperties as $term => $property): ?>
   <?php
     $dontshow = ['Titel','Description', 'Is Version Of', 'Relation', 'Language'];
-    if(in_array($propertyData['property']->label(),$dontshow)):
+    /*if(in_array($propertyData['property']->label(),$dontshow)):
+      continue;
+    endif;*/
+
+    //echo $propertyData['property']->label();
+    if($property->isPrivate()):
+      continue;
+    endif;
+    $propertyData = '';
+    if(isset($values[$property->property()->term()])):
+      $propertyData = $values[$property->property()->term()];
+    else:
       continue;
     endif;
   ?>
@@ -14,22 +25,21 @@ $labelInfo = $this->setting('property_label_information');
   <tr>
       <td>
         <strong>
-          <?php if ($propertyData['alternate_label']): ?>
-          <?php echo $escape($propertyData['alternate_label']); ?>
+          <?php if ($property->alternateLabel()): ?>
+          <?php echo $escape($property->alternateLabel()); ?>
           <?php else: ?>
-          <?php echo $escape($translate($propertyData['property']->label())); ?>
+          <?php echo $escape($translate($property->property()->label())); ?>
           <?php endif; ?>
           <?php if ('term' === $labelInfo): ?>
-          <span class="field-term">(<?php echo $escape($propertyData['property']->term()); ?>)</span>
+          <span class="field-term">(<?php echo $escape($property->term()); ?>)</span>
           <?php elseif ('vocab' === $labelInfo): ?>
-          <span class="field-term">(<?php echo $escape($propertyData['property']->vocabulary()->label()); ?>)</span>
+          <span class="field-term">(<?php echo $escape($property->vocabulary()->label()); ?>)</span>
           <?php endif; ?>
         </strong>
       </td>
 
       <td>
-
-        <?php foreach ($propertyData['values'] as $value): ?>
+        <?php foreach ($propertyData['values'] as $key=>$value): ?>
             <?php
             $valueType = $value->type();
             $class = ['value'];
@@ -47,7 +57,32 @@ $labelInfo = $this->setting('property_label_information');
                 <?php if ($language = $value->lang()): ?>
                 <span class="language"><?php echo $language; ?></span>
                 <?php endif; ?>
-                <?php echo $value->asHtml(); ?>
+                <?php
+                  $text = $value->asHtml();
+                  //$url = '@(http(s)?)?(://)?(([a-zA-Z])([-\w]+\.)+([^\s\.]+[^\s]*)+[^,.\s])@';
+                  $string = preg_replace('@(https?://([-\w\.]+)+(:\d+)?(/([\w/_\.%-=#]*(\?\S+)?)?)?)@', '<a target="_blank" href="$1">$1</a>', $text);
+
+                  $rights = array(
+                    'ccby' => array('link' => 'https://creativecommons.org/licenses/by/4.0/deed.nl','img' => 'https://licensebuttons.net/l/by/4.0/88x31.png'),
+                    'ccbync' => array('link' => 'https://creativecommons.org/licenses/by-nc/4.0/deed.nl','img' => 'https://licensebuttons.net/l/by-nc/4.0/88x31.png'),
+                    'ccbyncnd' => array('link' => 'https://creativecommons.org/licenses/by-nc-nd/4.0/deed.nl','img' => 'https://licensebuttons.net/l/by-nc-nd/4.0/88x31.png'),
+                    'ccbyncsa' => array('link' => 'https://creativecommons.org/licenses/by-nc-sa/4.0/deed.nl','img' => 'https://licensebuttons.net/l/by-nc-sa/4.0/88x31.png'),
+                    'ccbynd' => array('link' => 'https://creativecommons.org/licenses/by-nd/4.0/deed.nl','img' => 'https://licensebuttons.net/l/by-nd/4.0/88x31.png'),
+                    'ccbysa' => array('link' => 'https://creativecommons.org/licenses/by-sa/4.0/deed.nl','img' => 'https://licensebuttons.net/l/by-sa/4.0/88x31.png'),
+                    'publicdomainmark' => array('link' => 'http://creativecommons.org/publicdomain/mark/1.0/deed.nl','img' => 'https://licensebuttons.net/p/mark/1.0/88x31.png'),
+                  );
+
+                  if(isset($rights[$text])):
+                    if(isset($values['dcterms:rights'])):
+                      $rightslink = $values['dcterms:rights']['values'][0]->asHtml();
+                      $string = '<a href="'.$rightslink.'"><img src="'.$rights[$text]['img'].'" /></a>';
+                    else:
+                      $string = '<a href="'.$rights[$text]['link'].'"><img src="'.$rights[$text]['img'].'" /></a>';
+                    endif;
+                  endif;
+
+                  echo $string;
+                ?>
             </div>
         <?php endforeach; ?>
       </td>
