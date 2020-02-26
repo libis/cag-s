@@ -6,14 +6,77 @@
                     <!-- breadcrumbs -->
                     <div class="breadcrumb spacer">
                         <span itemscope="" itemtype="http://data-vocabulary.org/Breadcrumb" class="breadcrumb__scope">
-                            <a href="<?php echo $block->page()->site()->url();?>" itemprop="url" class="breadcrumb__item"><span itemprop="title">Home</span></a>
+                            <a href="<?php echo "/";?>" itemprop="url" class="breadcrumb__item"><span itemprop="title">Home</span></a>
                         </span>
+                        <?php $id = $block->page()->id();?>
                         <?php $nav = $block->page()->site()->publicNav();?>
-                        <span itemscope="" itemtype="http://data-vocabulary.org/Breadcrumb" class="breadcrumb__scope">
+                        <?php $nav->findOneBy('label','Diensten')->setActive(true);//$nav->findOneById($id)->setActive(true);?>
+                        <?php
+                        $parents = array();
+                        $result = array();
+                        $r = $nav->toArray();
+                        foreach($r as $page1):
+                          $parents = array();
+                          if($page1['label'] == $block->page()->title()):
+                            $result = $parents;
+                          endif;
+                          if(isset($page1['params'])):
+                            $parents[0] = array('label' => $page1['label'], 'slug' => "/page/".$page1['params']['page-slug']);
+                          else:
+                            $parents[0] = array('label' => $page1['label'], 'slug' => $page1['uri']);
+                          endif;
+                          foreach($page1['pages'] as $page2):
+                            if($page2['label'] == $block->page()->title()):
+                              $result = $parents;
+                            endif;
+                            if(isset($page2['params'])):
+                              $parents[1] = ['label' => $page2['label'], 'slug' => "/page/".$page2['params']['page-slug']];
+                            else:
+                              $parents[1] = ['label' => $page2['label'], 'slug' => $page2['uri']];
+                            endif;
+                            foreach($page2['pages'] as $page3):
+                              if($page3['label'] == $block->page()->title()):
+                                $result = $parents;
+                              endif;
+                              if(isset($page3['params'])):
+                                $parents[2] = ['label' => $page3['label'], 'slug' => "/page/".$page3['params']['page-slug']];
+                              else:
+                                $parents[2] = ['label' => $page3['label'], 'slug' => $page3['uri']];
+                              endif;
+                              foreach($page3['pages'] as $page4):
+                                if($page4['label'] == $block->page()->title()):
+                                  $result = $parents;
+                                endif;
+                                if(isset($page4['params'])):
+                                  $parents[3] = ['label' => $page4['label'], 'slug' => "/page/".$page4['params']['page-slug']];
+                                else:
+                                  $parents[3] = ['label' => $page4['label'], 'slug' => $page4['uri']];
+                                endif;
+                                foreach($page4['pages'] as $page5):
+                                  if($page5['label'] == $block->page()->title()):
+                                    $result = $parents;
+                                  endif;
+                                  if(isset($page5['params'])):
+                                    $parents[4] = ['label' => $page5['label'], 'slug' => "/page/".$page5['params']['page-slug']];
+                                  elseif(isset($page2['uri'])):
+                                    $parents[4] = ['label' => $page5['label'], 'slug' => $page5['uri']];
+                                  endif;
+                                endforeach;
+                              endforeach;
+                            endforeach;
+                          endforeach;
+                        endforeach;  //echo $nav;
+
+                        foreach($result as $bc):
+                          echo '<span itemscope="" itemtype="http://data-vocabulary.org/Breadcrumb" class="breadcrumb__scope">
+                            <a href="'.$bc['slug'].'">'.$bc['label'].'</a></span>';
+                        endforeach;
+                        ?>
+                      <span itemscope="" itemtype="http://data-vocabulary.org/Breadcrumb" class="breadcrumb__scope">
                         <?php if($nav->breadcrumbs() != ''): ?>
                           <?php echo $nav->breadcrumbs()->setSeparator('</span>
                           <span itemscope="" itemtype="http://data-vocabulary.org/Breadcrumb" class="breadcrumb__scope">'
-                          ); ; ?>
+                          ); ?>
                         <?php else: ?>
                             <a href="" itemprop="url" class="breadcrumb__item breadcrumb__item--active"><span itemprop="title"><?php echo $block->page()->title();?></span></a>
                         <?php endif;?>

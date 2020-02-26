@@ -37,6 +37,7 @@ class DomainMapper
         'ns',
         // Module OAI-PMH Repository.
         'oai-pmh',
+        'oaipmhharvester'
     ];
 
     private $uri;
@@ -55,6 +56,8 @@ class DomainMapper
 
     private function initRoutingVariables()
     {
+
+
         $this->uri = $this->event->getRequest()->getUri();
         $this->scheme = $this->uri->getScheme();
         $this->url = $this->uri->getPath();
@@ -65,6 +68,7 @@ class DomainMapper
         $this->siteId = $this->getSiteId();
         $this->redirectUrl = preg_replace("#{$this->siteIndicator}|{$this->siteSlug}#", '', $this->url);
         $this->defaultPage = $this->getDefaultPage();
+
     }
 
     private function isPluginConfigured()
@@ -127,6 +131,7 @@ class DomainMapper
     private function routeTemplate($routes)
     {
         $routeKey = "{$this->siteSlug}-routes";
+        //$routeKey = 'site';
         /**
          * default route options
          */
@@ -273,6 +278,7 @@ class DomainMapper
         /**
          * static routes (defined by the config files)
          */
+
         foreach ($this->event->getApplication()->getServiceManager()->get("config")["router"]["routes"] as $mainRouteKey => $mainRouteArray) {
             if (in_array($mainRouteKey, ["site"])) {
                 foreach ($mainRouteArray["child_routes"] as $childRouteKey => $childRouteArray) {
@@ -309,6 +315,7 @@ class DomainMapper
          * @var \Zend\Router\RouteInterface $route
          *
          */
+
         foreach ($routes as $routeName => $route) {
             if (in_array($routeName, $ignoredRoutes)) {
                 continue;
@@ -375,6 +382,8 @@ class DomainMapper
             }
         }
 
+        //var_dump($mappedRoutes);
+
         return $mappedRoutes;
     }
 
@@ -402,7 +411,6 @@ class DomainMapper
             ->setParameter(1, $this->domain)
             ->getQuery()
             ->getArrayResult();
-
         return count($slug) > 0 ? $slug[0]['slug'] : null;
     }
 
@@ -448,7 +456,11 @@ class DomainMapper
         }
 
         $routes = is_null($routes) ? $this->router->getRoutes() : $routes;
+        //var_dump($routes);
         $this->routes[$this->siteSlug] = $this->routeTemplate($routes);
+
+        //$this->routes[$this->siteSlug]['site'] = $this->routes[$this->siteSlug][$this->siteSlug.'-routes'];
+        //var_dump($this->routes[$this->siteSlug]);
         $this->router->addRoutes($this->routes[$this->siteSlug]);
 
         if (substr($this->url, 0, 3) == $this->siteIndicator) {
@@ -457,10 +469,13 @@ class DomainMapper
 
         $doRedirect = true;
         $routeMatch = $this->router->match($this->event->getRequest());
+        //var_dump($routeMatch);
+
+        //$routeMatch->setMatchedRouteName('site/page');
+        //var_dump($this->event->getRequest());
 
         if (!is_null($routeMatch)) {
             $doRedirect = false;
-
             /**
              * route exists however it is the default omeka route and not the domain specific route
              */
@@ -487,13 +502,12 @@ class DomainMapper
                     'Zend\Mvc\Controller\AbstractActionController',
                     'dispatch',
                     function ($event) {
-                        /*
-                         * redirect is only invoked when $routeMatch is not null
-                         */
+
                         $controller = $event->getTarget();
+
                         $this->redirect($controller, $this->redirectUrl);
                     },
-                    100
+                    10
                 );
             }
         }
@@ -551,7 +565,6 @@ class DomainMapper
     public function init()
     {
         $this->initRoutingVariables();
-
         if (!$this->isIgnoredRoute()) {
 
             if (!$this->isPluginConfigured()) {

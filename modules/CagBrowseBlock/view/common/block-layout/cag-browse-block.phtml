@@ -47,14 +47,14 @@ $translate = $this->plugin('translate');
             <?php
               $media = $resource->media();
               if($media):
-                $mediaurl = $media[0]->thumbnailUrl('large');
+                $mediaurl = $media[0]->thumbnailUrl('medium');
               else:
                 $mediaurl = "";
               endif;
 
 
               if($type == 'Verhaal' || $type == 'Project' || $type == 'Agendapunt BKV' || $type == 'Nieuws BKV' || $type == 'Object BKV'):
-                $url = $block->page()->site()->url()."/page/".$resource->value('dcterms:relation');
+                $url = "/page/".$resource->value('dcterms:relation');
               else:
                 $url = $resource->url();
                 $date = '';

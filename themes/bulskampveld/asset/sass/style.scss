@@ -366,7 +366,7 @@ a.card:hover .card__img::before, a.card:focus .card__img::before, .card--link:ho
   padding-bottom:0;
   -webkit-transition: all 100ms ease-in-out;
   transition: all 100ms ease-in-out;
-  position: static !important;
+  position: absolute !important;
   bottom:0;
   background: #f9f9f9;
   padding: 1rem;
@@ -375,4 +375,49 @@ a.card:hover .card__img::before, a.card:focus .card__img::before, .card--link:ho
   width: auto;
   right: 0;
   left: 0;
+}
+
+.scrollToTop{
+    text-align:center;
+    font-weight: bold;
+    color: #006b65;
+    text-decoration: none;
+    position:fixed;
+    bottom:5%;
+    right:30px;
+    display:none;
+    background: white;
+    font-size: 1;
+    z-index: 11;
+    padding: 0.5em 1em;
+    border: 2px solid #006B65;
+    transition: background 100ms ease-in-out, border 100ms ease-in-out, color 100ms ease-in-out;
+
+    &:visited{
+      color: #006b65;
+    }
+    &:hover{
+      color:#fff;
+      background-color:#006B65;
+      border-color:#00605b;
+    }
+
+    /*&::after{
+      margin-left: 6.5px;
+      content: "\F10D";
+      font-family: "icons";
+      font-weight: 400;
+      vertical-align: middle;
+    }*/
+
+
+}
+.scrollToTop:hover{
+    text-decoration:none;
+}
+
+.no-caps{
+  .search-facet-item a{
+    text-transform: lowercase;
+  }
 }

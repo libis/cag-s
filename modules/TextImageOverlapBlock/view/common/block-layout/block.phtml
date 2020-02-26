@@ -29,7 +29,7 @@
                     <?php if(strpos($block->dataValue('link'), "http") !== false):?>
                       <div class="link"><a class="btn btn--ext" href="<?php echo $block->dataValue('link');?>"><?php echo $block->dataValue('link_text');?></a></div>
                     <?php else:?>
-                      <div class="link"><a class="btn btn--ext" href="<?php echo $block->page()->site()->url().$block->dataValue('link');?>"><?php echo $block->dataValue('link_text');?></a></div>
+                      <div class="link"><a class="btn btn--ext" href="<?php echo $block->dataValue('link');?>"><?php echo $block->dataValue('link_text');?></a></div>
                   <?php endif;?>
               </div>
             </div>

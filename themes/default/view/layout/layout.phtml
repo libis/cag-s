@@ -1,5 +1,4 @@
 <?php
-
 $escape = $this->plugin('escapeHtml');
 $this->htmlElement('html')->setAttribute('lang', 'en');
 $this->headMeta()->setCharset('utf-8');
@@ -68,9 +67,9 @@ $userBar = $this->userBar();
                     <div class="container container--relative">
                         <nav class="nav--service">
                             <ul class="nav__menu">
-                                <div class="nav__item"><a href="<?php echo $site->url();?>/page/nieuws-en-agenda" class="nav__link">Nieuws & agenda</a></div>
-                                <div class="nav__item"><a href="<?php echo $site->url();?>/page/over-ons" class="nav__link">Over ons</a></div>
-                                <div class="nav__item"><a href="<?php echo $site->url();?>/page/contact" class="nav__link">Contact</a></div>
+                                <div class="nav__item"><a href="/page/nieuws-en-agenda" class="nav__link">Nieuws & agenda</a></div>
+                                <div class="nav__item"><a href="/page/over-ons" class="nav__link">Over ons</a></div>
+                                <div class="nav__item"><a href="/page/contact" class="nav__link">Contact</a></div>
                                 <li class="nav__item">
 
                                     <!-- site search -->
@@ -91,6 +90,8 @@ $userBar = $this->userBar();
                     <div class="container">
                         <nav class="nav--main">
                             <?php
+                            //$site->publicNav()->findOneById(1)->setActive(true);
+
                             echo $site->publicNav()->menu()->renderMenu(null, [
                                 'ulClass' => 'nav__menu',
                                 'maxDepth' => $this->themeSetting('nav_depth') - 1
@@ -156,15 +157,15 @@ $userBar = $this->userBar();
 
                                              <ul class="nav__menu">
                                                  <li class="nav__item">
-                                                     <a href="<?php echo $site->url();?>/page/nieuws-en-agenda" class="nav__link">Nieuws & agenda
+                                                     <a href="/page/nieuws-en-agenda" class="nav__link">Nieuws & agenda
                                                      </a>
                                                  </li>
                                                  <li class="nav__item">
-                                                     <a href="<?php echo $site->url();?>/page/over-ons" class="nav__link">Over ons
+                                                     <a href="/page/over-ons" class="nav__link">Over ons
                                                      </a>
                                                  </li>
                                                  <li class="nav__item">
-                                                     <a href="<?php echo $site->url();?>/page/contact" class="nav__link">Contact
+                                                     <a href="/page/contact" class="nav__link">Contact
                                                      </a>
                                                  </li>
                                              </ul>
@@ -330,9 +331,9 @@ $userBar = $this->userBar();
                   <div class="flyout__content">
                     <nav class="nav--service">
                         <ul class="nav__menu">
-                            <div class="nav__item"><a href="<?php echo $site->url();?>/page/nieuws-en-agenda" class="nav__link">Nieuws & agenda</a></div>
-                            <div class="nav__item"><a href="<?php echo $site->url();?>/page/over-ons" class="nav__link">Over ons</a></div>
-                            <div class="nav__item"><a href="<?php echo $site->url();?>/page/contact" class="nav__link">Contact</a></div>
+                            <div class="nav__item"><a href="/page/nieuws-en-agenda" class="nav__link">Nieuws & agenda</a></div>
+                            <div class="nav__item"><a href="/page/over-ons" class="nav__link">Over ons</a></div>
+                            <div class="nav__item"><a href="/page/contact" class="nav__link">Contact</a></div>
                         </ul>
                     </nav>
                   </div>
@@ -360,6 +361,14 @@ $userBar = $this->userBar();
 
       <script src="<?php echo $this->assetUrl('js/main.js');?>"></script>
       <script src="<?php echo $this->assetUrl('js/docs.js');?>"></script>
+      <!-- Global site tag (gtag.js) - Google Analytics -->
+      <script async src="https://www.googletagmanager.com/gtag/js?id=UA-16899634-1"></script>
+      <script>
+      window.dataLayer = window.dataLayer || [];
+      function gtag(){dataLayer.push(arguments);}
+      gtag('js', new Date());
+      gtag('config', 'UA-16899634-1');
+      </script>
 
     </body>
 </html>
