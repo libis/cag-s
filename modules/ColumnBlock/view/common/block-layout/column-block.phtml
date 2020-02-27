@@ -14,7 +14,11 @@
                       if($attachments[$i-1]):
                         $media = $attachments[$i-1]->media();
                         if($media):
-                          $url = $media->thumbnailUrl('medium');
+                          if(sizeof($attachments) <= 2):
+                            $url = $media->thumbnailUrl('large');
+                          else:
+                            $url = $media->thumbnailUrl('medium');
+                          endif;
                         endif;
                       endif;
                     ?>

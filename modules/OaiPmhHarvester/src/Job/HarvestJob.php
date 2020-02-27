@@ -110,8 +110,8 @@ class HarvestJob extends AbstractJob
                   if(!$id_exists && $pre_item['dcterms:isVersionOf'][0]['@value']):
                     //$toInsert[$pre_item['dcterms:isVersionOf'][0]['@value']] = $pre_item;
                     try{
-                      $response = $this->api->create('items', $pre_item, [], []);
-                      $response = null;
+                      $response_c = $this->api->create('items', $pre_item, [], []);
+                      $response_c = null;
 
                       $icount++;
                     }catch(\Throwable $t){

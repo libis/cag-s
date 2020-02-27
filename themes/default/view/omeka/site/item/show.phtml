@@ -134,7 +134,7 @@ $thumb = $item->primaryMedia();
         <?php if($type == "Beeld"):?>
           <br />
           <ul class="list--arrow">
-            <li>Klik <a class="hr" href="<?php echo $site->url();?>/page/contact?aanvraag=1&id=<?php echo$item->value('dcterms:identifier');?>">hier</a> om een hogeresolutieversie van bovenstaande afbeelding aan te vragen.</li>
+            <li>Klik <a class="hr" href="<?php echo $site->url();?>/page/aanvraag?aanvraag=1&id=<?php echo$item->value('dcterms:identifier');?>">hier</a> om een hogeresolutieversie van bovenstaande afbeelding aan te vragen.</li>
             <li>Klik <a href="">hier</a> voor de voorwaarden voor beeldaanvragen.</li>
           </ul>
 
@@ -222,26 +222,6 @@ endif;
       </div>
     </div>
   </div>
-<?php
-  $query = [];
-  $query['property'][0] = array(
-    'property' => 10,
-    'text' => "00000931",
-    'type' => 'eq',
-    'joiner' => 'and'
-  );
-  $response = $this->api()->search('items',$query);
-
-  $results = $response->getContent();
-  if($results):
-    //$this->logger->info($results);
-    foreach($results as $r):
-      //echo $r->id();
-    endforeach;
-    //return true;
-  endif;
-
-?>
 <?php endif; ?>
 <script>
   $(document).ready(function(){
@@ -258,6 +238,10 @@ endif;
       slidesToScroll: 1,
       asNavFor: '.slider-for',
       focusOnSelect: true
+    });
+
+    $('.beeld').on('contextmenu', 'img', function(e){
+      return false;
     });
   });
 </script>

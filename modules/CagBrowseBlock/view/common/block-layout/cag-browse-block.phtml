@@ -47,7 +47,11 @@ $translate = $this->plugin('translate');
             <?php
               $media = $resource->media();
               if($media):
-                $mediaurl = $media[0]->thumbnailUrl('medium');
+                if(sizeof($attachments) <= 2):
+                  $mediaurl = $media[0]->thumbnailUrl('large');
+                else:
+                  $mediaurl = $media[0]->thumbnailUrl('medium');
+                endif;
               else:
                 $mediaurl = "";
               endif;
