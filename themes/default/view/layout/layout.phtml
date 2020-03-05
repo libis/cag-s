@@ -3,7 +3,7 @@ $escape = $this->plugin('escapeHtml');
 $this->htmlElement('html')->setAttribute('lang', 'en');
 $this->headMeta()->setCharset('utf-8');
 $this->headMeta()->appendName('viewport', 'width=device-width, initial-scale=1');
-$this->headTitle($this->setting('installation_title', 'Omeka S'))->setSeparator(' · ');
+$this->headTitle()->setSeparator(' · ');
 
 $this->headLink()->prependStylesheet($this->assetUrl('css/main.css'));
 $this->headLink()->prependStylesheet($this->assetUrl('css/style.css'));
@@ -90,19 +90,13 @@ $userBar = $this->userBar();
                     <div class="container">
                         <nav class="nav--main">
                             <?php
-                            //$site->publicNav()->findOneById(1)->setActive(true);
-
-                            echo $site->publicNav()->menu()->renderMenu(null, [
+                            $publicNav = $site->publicNav();
+                            $nav =  $publicNav->menu()->renderMenu(null, [
                                 'ulClass' => 'nav__menu',
                                 'maxDepth' => $this->themeSetting('nav_depth') - 1
                             ]);
+                            echo $nav;
                             ?>
-                            <!--<ul class="nav__menu">
-                                <div class="nav__item"><a href="" class="nav__link">Diensten</a></div>
-                                <div class="nav__item"><a href="kennisbank.html" class="nav__link">Kennisbank</a></div>
-                                <div class="nav__item"><a href="beeldbank.html" class="nav__link">Beeldbank</a></div>
-                                <div class="nav__item"><a href="" class="nav__link">Collecties</a></div>
-                            </ul>-->
                         </nav>
                         <a href="" class="flyout__link pull--right js-flyout-toggle" role="button"><span class="lines" aria-label="menu"></span><span class="visuallyhidden">Menu</span></a>
                     </div>
@@ -124,7 +118,6 @@ $userBar = $this->userBar();
                                  <div class="page-footer__logo">
                                      <div class="flex flex-align-items-end">
                                          <img src="<?php echo $this->assetUrl('img/logo.png');?>" alt="logo CAG">
-
                                      </div>
                                  </div>
 
@@ -143,12 +136,7 @@ $userBar = $this->userBar();
 
                                      <div class="grid__item">
                                          <nav class="nav nav--doormat doormat-bold" aria-label="Footer navigatie">
-                                             <?php
-                                             echo $site->publicNav()->menu()->renderMenu(null, [
-                                                 'ulClass' => 'nav__menu',
-                                                 'maxDepth' => $this->themeSetting('nav_depth') - 1
-                                             ]);
-                                             ?>
+                                             <?php echo $nav;?>
                                          </nav>
                                      </div>
 
@@ -198,7 +186,7 @@ $userBar = $this->userBar();
                                         	<input class="form__text" type="text" value="" name="MMERGE1" class="required" id="mce-MMERGE1">
                                         </div>
                                         <div class="mc-field-group input-group form__item">
-                                          <input type="checkbox" value="1" name="group[67923][1]" id="mce-group[67923]-67923-0"> <small class="text--italic"><label for="mce-group[67923]-67923-0">Ik ga akkoord met de <a href="">privacy policy</a></label></small>
+                                          <input type="checkbox" value="1" name="group[67923][1]" id="mce-group[67923]-67923-0"> <small class="text--italic"><label for="mce-group[67923]-67923-0">Ik ga akkoord met de <a href="https://cagnet.be/page/privacyverklaring">privacyverklaring</a></label></small>
                                         </div>
                                       <div id="mce-responses" class="clear">
                                         <div class="response" id="mce-error-response" style="display:none"></div>
@@ -270,9 +258,9 @@ $userBar = $this->userBar();
                              <div class="grid__12 grid__6@lrg">
                                  <nav class="nav nav--footer">
                                      <div class="nav__menu">
-                                         <li class="nav__item"><a href="" class="nav__link">Cookie policy</a></li>
-                                         <li class="nav__item"><a href="" class="nav__link">Terms and conditions</a></li>
-                                         <li class="nav__item"><a href="" class="nav__link">Privacy policy</a></li>
+                                       <li class="nav__item"><a href="https://cagnet.be/page/privacyverklaring" class="nav__link">Privacyverklaring</a></li>
+                                       <li class="nav__item"><a href="https://cagnet.be/page/copyright-gebruiksvoorwaarden" class="nav__link">Copyright & gebruiksvoorwaarden</a></li>
+                                       <li class="nav__item"><a href="https://cagnet.be/page/cookies" class="nav__link">Cookies</a></li>
                                      </div>
                                  </nav>
                              </div>
@@ -312,18 +300,7 @@ $userBar = $this->userBar();
                   <!-- main navigation -->
                   <div class="flyout__content">
                     <nav class="nav--main">
-                        <?php
-                        echo $site->publicNav()->menu()->renderMenu(null, [
-                            'ulClass' => 'nav__menu',
-                            'maxDepth' => $this->themeSetting('nav_depth') - 1
-                        ]);
-                        ?>
-                        <!--<ul class="nav__menu">
-                            <div class="nav__item"><a href="" class="nav__link">Diensten</a></div>
-                            <div class="nav__item"><a href="kennisbank.html" class="nav__link">Kennisbank</a></div>
-                            <div class="nav__item"><a href="" class="nav__link">collecties</a></div>
-                            <div class="nav__item"><a href="beeldbank.html" class="nav__link">Beeldbank</a></div>
-                        </ul>-->
+                        <?php echo $nav;?>
                     </nav>
                   </div>
 

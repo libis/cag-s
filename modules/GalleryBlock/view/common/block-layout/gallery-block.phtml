@@ -27,7 +27,8 @@
                   $url='';
                   $media = $attachment->media();
                   if($media):
-                    $url = $media->thumbnailUrl('large');
+                    $url = $media->thumbnailUrl('medium');
+                    $url = str_replace('http:', '', $url);
                   endif;
                 ?>
                 <img src="<?php echo  $url;?>">

@@ -16,8 +16,10 @@
                         if($media):
                           if(sizeof($attachments) <= 2):
                             $url = $media->thumbnailUrl('large');
+                            $url = str_replace('http:', '', $url);
                           else:
                             $url = $media->thumbnailUrl('medium');
+                            $url = str_replace('http:', '', $url);
                           endif;
                         endif;
                       endif;

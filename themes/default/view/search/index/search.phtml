@@ -61,7 +61,7 @@ $this->headScript()->appendFile($this->assetUrl('js/search.js', 'Search'));
        $activePage = $nav->findActive($container);
        ?>
        <h1 class="spacer">
-         <?php echo $page->name();?>
+         <?php echo $page->name()." (".$response->getTotalResults().")";?>
        </h1>
    </div>
 </div>

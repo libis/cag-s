@@ -3,7 +3,7 @@ $escape = $this->plugin('escapeHtml');
 $this->htmlElement('html')->setAttribute('lang', 'en');
 $this->headMeta()->setCharset('utf-8');
 $this->headMeta()->appendName('viewport', 'width=device-width, initial-scale=1');
-$this->headTitle($this->setting('installation_title', 'Omeka S'))->setSeparator(' · ');
+$this->headTitle()->setSeparator(' · ');
 
 $this->headLink()->prependStylesheet($this->assetUrl('css/main.css'));
 $this->headLink()->prependStylesheet($this->assetUrl('css/style.css'));
@@ -68,9 +68,9 @@ $userBar = $this->userBar();
                     <div class="container container--relative">
                         <nav class="nav--service">
                             <ul class="nav__menu">
-                                <div class="nav__item"><a href="<?php echo $site->url();?>/page/nieuws-en-activiteiten" class="nav__link">Nieuws & activiteiten</a></div>
-                                <div class="nav__item"><a href="<?php echo $site->url();?>/page/over-ons" class="nav__link">Over ons</a></div>
-                                <div class="nav__item"><a href="<?php echo $site->url();?>/page/contact" class="nav__link">Contact</a></div>
+                                <div class="nav__item"><a href="/page/nieuws-en-activiteiten" class="nav__link">Nieuws & activiteiten</a></div>
+                                <div class="nav__item"><a href="/page/over-ons" class="nav__link">Over ons</a></div>
+                                <div class="nav__item"><a href="/page/contact" class="nav__link">Contact</a></div>
                                 <li class="nav__item">
 
                                     <!-- site search -->
@@ -156,15 +156,15 @@ $userBar = $this->userBar();
 
                                              <ul class="nav__menu">
                                                  <li class="nav__item">
-                                                     <a href="<?php echo $site->url();?>/page/nieuws-en-activiteiten" class="nav__link">Nieuws & activiteiten
+                                                     <a href="/page/nieuws-en-activiteiten" class="nav__link">Nieuws & activiteiten
                                                      </a>
                                                  </li>
                                                  <li class="nav__item">
-                                                     <a href="<?php echo $site->url();?>/page/over-ons" class="nav__link">Over ons
+                                                     <a href="/page/over-ons" class="nav__link">Over ons
                                                      </a>
                                                  </li>
                                                  <li class="nav__item">
-                                                     <a href="<?php echo $site->url();?>/page/contact" class="nav__link">Contact
+                                                     <a href="/page/contact" class="nav__link">Contact
                                                      </a>
                                                  </li>
                                              </ul>
@@ -197,7 +197,7 @@ $userBar = $this->userBar();
                                         	<input class="form__text" type="text" value="" name="MMERGE1" class="required" id="mce-MMERGE1">
                                         </div>
                                         <div class="mc-field-group input-group form__item">
-                                          <input type="checkbox" value="1" name="group[67923][1]" id="mce-group[67923]-67923-0"> <small class="text--italic"><label for="mce-group[67923]-67923-0">Ik ga akkoord met de <a href="">privacy policy</a></label></small>
+                                          <input type="checkbox" value="1" name="group[67923][1]" id="mce-group[67923]-67923-0"> <small class="text--italic"><label for="mce-group[67923]-67923-0">Ik ga akkoord met de <a href="https://cagnet.be/page/privacyverklaring">privacyverklaring</a></label></small>
                                         </div>
                                       <div id="mce-responses" class="clear">
                                         <div class="response" id="mce-error-response" style="display:none"></div>
@@ -258,9 +258,9 @@ $userBar = $this->userBar();
                              <div class="grid__12 grid__6@lrg">
                                  <nav class="nav nav--footer">
                                      <div class="nav__menu">
-                                         <li class="nav__item"><a href="" class="nav__link">Cookie policy</a></li>
-                                         <li class="nav__item"><a href="" class="nav__link">Terms and conditions</a></li>
-                                         <li class="nav__item"><a href="" class="nav__link">Privacy policy</a></li>
+                                         <li class="nav__item"><a href="https://cagnet.be/page/privacyverklaring" class="nav__link">Privacyverklaring</a></li>
+                                         <li class="nav__item"><a href="https://cagnet.be/page/copyright-gebruiksvoorwaarden" class="nav__link">Copyright & gebruiksvoorwaarden</a></li>
+                                         <li class="nav__item"><a href="https://cagnet.be/page/cookies" class="nav__link">Cookies</a></li>
                                      </div>
                                  </nav>
                              </div>

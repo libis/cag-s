@@ -11,8 +11,12 @@
                                 <div class="">
                                   <?php
                                       $media = $attachment->media();
+
+
                                       if($media):
-                                        echo $this->thumbnail($media, 'square');
+                                        $url = $media->thumbnailUrl('square');
+                                        $url = str_replace('http:', '', $url);
+                                        echo '<img src="'.$url.'" />';
                                       endif;
                                   ?>
                                 </div>

@@ -53,8 +53,11 @@ endif;
         <?php echo sprintf('<%s class="%s resource">', $tag, $resource->resourceName()); ?>
         <?php $media = $resource->primaryMedia(); ?>
         <?php if ($media): ?>
+          <?php
+            $file_url = str_replace('http:', '', $media->thumbnailUrl('medium'));
+          ?>
           <div class="card__img card__img_3"
-            style="background:url(<?php echo $media->thumbnailUrl('medium');?>) no-repeat center 20%;background-size: cover;"
+            style="background:url(<?php echo $file_url;?>) no-repeat center 20%;background-size: cover;"
           ></div>
         <?php endif; ?>
 

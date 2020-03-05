@@ -24,17 +24,17 @@ $thumb = $item->primaryMedia();
         </span>
         <span itemscope="" itemtype="http://data-vocabulary.org/Breadcrumb" class="breadcrumb__scope">
           <?php if($type == "Beeld"): ?>
-            <a href="<?php echo $site->url();?>/beeldbank?q=" itemprop="url" class="breadcrumb__item"><span itemprop="title">Beeldbank</span></a>
+            <a href="/beeldbank?q=" itemprop="url" class="breadcrumb__item"><span itemprop="title">Beeldbank</span></a>
           <?php elseif($type == "Collectie"):?>
-            <a href="<?php echo $site->url();?>/collecties?q=" itemprop="url" class="breadcrumb__item"><span itemprop="title">Collectie</span></a>
+            <a href="/collecties?q=" itemprop="url" class="breadcrumb__item"><span itemprop="title">Collectie</span></a>
           <?php elseif($type == "Nieuws"):?>
-            <a href="<?php echo $site->url();?>/nieuws?q=" itemprop="url" class="breadcrumb__item"><span itemprop="title">Nieuws</span></a>
+            <a href="/nieuws?q=" itemprop="url" class="breadcrumb__item"><span itemprop="title">Nieuws</span></a>
           <?php elseif($type == "Agendapunt"):?>
-            <a href="<?php echo $site->url();?>/agenda?q=" itemprop="url" class="breadcrumb__item"><span itemprop="title">Agenda</span></a>
+            <a href="/agenda?q=" itemprop="url" class="breadcrumb__item"><span itemprop="title">Agenda</span></a>
           <?php elseif($type == "Film"):?>
-            <a href="<?php echo $site->url();?>/films?q=" itemprop="url" class="breadcrumb__item"><span itemprop="title">Films</span></a>
+            <a href="/films?q=" itemprop="url" class="breadcrumb__item"><span itemprop="title">Films</span></a>
           <?php elseif($type == "Filmkopie"):?>
-            <a href="<?php echo $site->url();?>/filmkopies?q=" itemprop="url" class="breadcrumb__item"><span itemprop="title">Filmkopies</span></a>
+            <a href="/filmkopies?q=" itemprop="url" class="breadcrumb__item"><span itemprop="title">Filmkopies</span></a>
           <?php endif;?>
         </span>
         <span itemscope="" itemtype="http://data-vocabulary.org/Breadcrumb" class="breadcrumb__scope">
@@ -55,20 +55,29 @@ $thumb = $item->primaryMedia();
           <div class="slider-for">
             <?php foreach($itemMedia as $media):?>
               <div class="beeld">
-                <img src="<?php echo $media->thumbnailUrl('large');?>">
+                <?php
+                  $url = str_replace('http:', '', $media->thumbnailUrl('large'));
+                ?>
+                <img src="<?php echo $url;?>">
               </div>
             <?php endforeach;?>
           </div>
           <div class="slider-nav" role="toolbar">
             <?php foreach($itemMedia as $media):?>
               <div class="beeld-nav">
-                <img src="<?php echo $media->thumbnailUrl('square');?>">
+                <?php
+                  $url = str_replace('http:', '', $media->thumbnailUrl('square'));
+                ?>
+                <img src="<?php echo $url;?>">
               </div>
             <?php endforeach;?>
           </div>
         <?php else: ?>
           <div class="beeld">
-            <img src="<?php echo $itemMedia[0]->thumbnailUrl('large');?>">
+            <?php
+              $url = str_replace('http:', '', $itemMedia[0]->thumbnailUrl('large'));
+            ?>
+            <img src="<?php echo $url;?>">
           </div>
         <?php endif;?>
       </div>
@@ -83,8 +92,54 @@ $thumb = $item->primaryMedia();
   </div>
 <?php endif?>
 
+<?php if($type == "Film"): ?>
+  <?php if ($embedMedia && $itemMedia): ?>
+    <div class="section section--default">
+      <div class="container">
+        <!-- beeld -->
+        <?php if(sizeof($itemMedia) > 1):?>
+          <div class="slider-for">
+            <?php foreach($itemMedia as $media):?>
+              <div class="beeld">
+                <?php
+                  echo $media->render();
+                ?>
+              </div>
+            <?php endforeach;?>
+          </div>
+          <div class="slider-nav" role="toolbar">
+            <?php foreach($itemMedia as $media):?>
+              <div class="beeld-nav">
+                <?php
+                  $url = str_replace('http:', '', $itemMedia[0]->thumbnailUrl('square'));
+                ?>
+                <img src="<?php echo $url;?>">
+              </div>
+            <?php endforeach;?>
+          </div>
+        <?php else: ?>
+          <div class="beeld">
+            <?php
+              echo $itemMedia[0]->render();
+            ?>
+          </div>
+        <?php endif;?>
+      </div>
+    </div>
+  <?php endif; ?>
+  <?php if($item->displayDescription()):?>
+    <div class="section section--default">
+      <div class="container">
+        <div class="panel panel--light">
+          <p><?php echo $item->displayDescription(); ?></p>
+        </div>
+      </div>
+    </div>
+  <?php endif; ?>
+<?php endif?>
+
 <!-- 2 columns if not Beeld and has thumbnail -->
-<?php if($type != "Beeld"  && $thumb): ?>
+<?php if($type != "Beeld" && $type != "Film" && $thumb): ?>
   <div class="section section--default">
     <div class="container">
       <div class="grid grid--2-col@med">
@@ -96,20 +151,29 @@ $thumb = $item->primaryMedia();
             <div class="slider-for">
               <?php foreach($itemMedia as $media):?>
                 <div class="beeld">
-                  <img src="<?php echo $media->thumbnailUrl('large');?>">
+                  <?php
+                    $url = str_replace('http:', '', $itemMedia[0]->thumbnailUrl('large'));
+                  ?>
+                  <img src="<?php echo $url;?>">
                 </div>
               <?php endforeach;?>
             </div>
             <div class="slider-nav" role="toolbar">
               <?php foreach($itemMedia as $media):?>
                 <div class="beeld-nav">
-                  <img src="<?php echo $media->thumbnailUrl('square');?>">
+                  <?php
+                    $url = str_replace('http:', '', $itemMedia[0]->thumbnailUrl('square'));
+                  ?>
+                  <img src="<?php echo $url;?>">
                 </div>
               <?php endforeach;?>
             </div>
           <?php else: ?>
             <div class="beeld">
-              <img src="<?php echo $itemMedia[0]->thumbnailUrl('large');?>">
+              <?php
+                $url = str_replace('http:', '', $itemMedia[0]->thumbnailUrl('large'));
+              ?>
+              <img src="<?php echo $url;?>">
             </div>
           <?php endif;?>
                <?php //echo $this->thumbnail($thumb, 'large');?>
@@ -134,8 +198,8 @@ $thumb = $item->primaryMedia();
         <?php if($type == "Beeld"):?>
           <br />
           <ul class="list--arrow">
-            <li>Klik <a class="hr" href="<?php echo $site->url();?>/page/aanvraag?aanvraag=1&id=<?php echo$item->value('dcterms:identifier');?>">hier</a> om een hogeresolutieversie van bovenstaande afbeelding aan te vragen.</li>
-            <li>Klik <a href="">hier</a> voor de voorwaarden voor beeldaanvragen.</li>
+            <li>Klik <a class="hr" href="/page/aanvraag?aanvraag=1&id=<?php echo$item->value('dcterms:identifier');?>">hier</a> om een hogeresolutieversie van bovenstaande afbeelding aan te vragen.</li>
+            <li>Klik <a href="/page/copyright-gebruiksvoorwaarden">hier</a> voor de voorwaarden voor beeldaanvragen.</li>
           </ul>
 
         <?php endif?>
@@ -151,12 +215,19 @@ if($type == "Collectie"):
 elseif($type == "Beeld"):
   parse_str("property[0][joiner]=and&property[0][property]=3&property[0][type]=eq&property[0][text]=&resource_class_id[]=&resource_template_id[]=6&item_set_id[]=&site_id=&submit=Zoeken", $query);
   $query['property'][0]['text'] = $item->value('dcterms:subject');
+elseif($type == "Film"):
+    parse_str("property[0][joiner]=and&property[0][property]=3&property[0][type]=in&property[0][text]=&resource_class_id[]=&resource_template_id[]=10&item_set_id[]=&site_id=&submit=Zoeken", $query);
+    $subject = explode(';',$item->value('dcterms:subject'));
+    $query['property'][0]['text'] = $subject[0];
+elseif($type == "Filmkopie"):
+    parse_str("property[0][joiner]=and&property[0][property]=3&property[0][type]=eq&property[0][text]=&resource_class_id[]=&resource_template_id[]=13&item_set_id[]=&site_id=&submit=Zoeken", $query);
+    $query['property'][0]['text'] = $item->value('dcterms:subject');
 endif;
 
 $originalQuery = $query;
 
 $query['site_id'] = $site->id();
-$query['limit'] = 4000;
+$query['limit'] = 500;
 $query['sort_by'] = 'created';
 $query['sort_order'] = 'desc';
 
@@ -183,6 +254,10 @@ endif;
         <h2>Collecties in de buurt</h2>
       <?php elseif($type == "Beeld"): ?>
         <h2>Andere interessante beelden</h2>
+      <?php elseif($type == "Film"): ?>
+        <h2>Andere interessante films</h2>
+      <?php elseif($type == "Filmkopie"): ?>
+        <h2>Andere interessante filmkopies</h2>
       <?php endif;?>
 
       <div class="grid grid--3-col@med spacer--xsm">
@@ -191,8 +266,11 @@ endif;
           <div class="card card--gray card--clickable card--link">
              <?php $media = $resource->primaryMedia(); ?>
              <?php if ($media): ?>
+               <?php
+                 $url = str_replace('http:', '', $media->thumbnailUrl('medium'));
+               ?>
                <div class="card__img card__img_3"
-                 style="background:url(<?php echo $media->thumbnailUrl('medium');?>) no-repeat center 20%;background-size: cover;"
+                 style="background:url(<?php echo $url;?>) no-repeat center 20%;background-size: cover;"
                ></div>
              <?php endif; ?>
 

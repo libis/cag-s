@@ -17,13 +17,18 @@
         <div class="grid__item">
             <?php if($attachments):
               $media = $attachments[0]->media();
-              if($block->dataValue('itemurl')):
-                $itemUrl = $media->item()->url();?>
-                <a href="<?php echo $itemUrl;?>"><?php echo $this->thumbnail($media, 'large',array('class' => 'u-display-block'));?></a>
-              <?php else:
-                echo $this->thumbnail($media, 'large');
-              endif;  
-              ?>
+              $url = $media->thumbnailUrl('large');
+              $url = str_replace('http:', '', $url);
+              if($media):
+                if($block->dataValue('itemurl')):
+                  $itemUrl = $media->item()->url();
+                  $itemUrl = str_replace('http:', '', $itemUrl);
+                  ?>
+                  <a href="<?php echo $itemUrl;?>"><img src="<?php echo $url;?>"></a>
+                <?php else:?>
+                  <img src="<?php echo $url;?>">
+                <?php endif;?>
+              <?php endif;?>
             <figcaption><?php echo $attachments[0]->caption();?></figcaption>
           <?php endif;?>
         </div>

@@ -18,10 +18,19 @@ RUN apt-get -qq update && apt-get -qq -y --no-install-recommends install \
     wget \
     ghostscript
 
+RUN apt-get update && \
+    apt-get install -y net-tools && \
+    apt-get install -y rsyslog
+RUN apt-get install -y mailutils
+
+RUN docker-php-ext-install opcache \
+  && docker-php-ext-enable opcache
+
 # Install the PHP extensions we need
 RUN docker-php-ext-install -j$(nproc) iconv pdo pdo_mysql mysqli gd
 RUN docker-php-ext-configure gd --with-freetype-dir=/usr/include/ --with-jpeg-dir=/usr/include/
 
+RUN usermod -u 10000 www-data
 RUN wget --no-verbose "https://github.com/omeka/omeka-s/releases/download/v2.0.2/omeka-s-2.0.2.zip" -O /var/www/omeka-s.zip
 RUN unzip -q /var/www/omeka-s.zip -d /var/www/ \
 &&  rm /var/www/omeka-s.zip \
@@ -30,5 +39,12 @@ RUN unzip -q /var/www/omeka-s.zip -d /var/www/ \
 &&  chown -R www-data:www-data /var/www/html/
 
 VOLUME /var/www/html/
+
+COPY extra.ini /usr/local/etc/php/conf.d/
+COPY opcache.ini /usr/local/etc/php/conf.d/opcache.ini
+
+COPY update-exim4.conf.conf /etc/exim4/update-exim4.conf.conf
+RUN chmod -R 775 /etc/exim4/
+RUN update-exim4.conf
 
 CMD ["apache2-foreground"]

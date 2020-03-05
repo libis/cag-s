@@ -11,6 +11,7 @@
                   $url = '';
                   if($media):
                     $url = $media->thumbnailUrl('large');
+                    $url = str_replace('http:', '', $url);
                   endif;
                 endif; ?>
                 <div class="grid__img" style="background:url(<?php echo $url;?>) no-repeat center center;background-size: cover;">

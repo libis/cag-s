@@ -5,28 +5,19 @@
           <!-- breadcrumbs -->
           <?php //var_dump($block->page()->site()->getAdapter());?>
           <div class="breadcrumb spacer">
-              <span itemscope="" itemtype="http://data-vocabulary.org/Breadcrumb" class="breadcrumb__scope">
+              <span itemscope="" itemtype="https://data-vocabulary.org/Breadcrumb" class="breadcrumb__scope">
                   <a href="<?php echo "/";?>" itemprop="url" class="breadcrumb__item"><span itemprop="title">Home</span></a>
               </span>
-              <?php $id = $block->page()->id();?>
-              <?php //var_dump($block->page()->site()->linkedPages());?>
-              <?php $nav = $block->page()->site()->publicNav();?>
               <?php
-              /*$r = $nav->toArray();
-              $result = breadcrumb_temp($r, $block->page()->title());
-
-              foreach($result as $bc):
-                echo '<span itemscope="" itemtype="http://data-vocabulary.org/Breadcrumb" class="breadcrumb__scope">
-                  <a href="'.$bc['slug'].'">'.$bc['label'].'</a></span>';
-              endforeach;*/
+                $bc = $block->page()->site()->publicNav()->breadcrumbs()->setSeparator('</span>
+                  <span itemscope="" itemtype="https://data-vocabulary.org/Breadcrumb" class="breadcrumb__scope">')->setMinDepth(1);
               ?>
-              <span itemscope="" itemtype="http://data-vocabulary.org/Breadcrumb" class="breadcrumb__scope">
-              <?php if($nav->breadcrumbs() != ''): ?>
-                <?php echo $nav->breadcrumbs()->setSeparator('</span>
-                <span itemscope="" itemtype="http://data-vocabulary.org/Breadcrumb" class="breadcrumb__scope">'
-                ); ; ?>
+              <?php $bctest = strip_tags($bc).'test';?>
+              <span itemscope="" itemtype="https://data-vocabulary.org/Breadcrumb" class="breadcrumb__scope">
+              <?php if(strip_tags($bctest) != 'test'):?>
+                <?php echo $bc;?>
               <?php else: ?>
-                  <a href="" itemprop="url" class="breadcrumb__item breadcrumb__item--active"><span itemprop="title"><?php echo $block->page()->title();?></span></a>
+                <span itemprop="title"><?php echo $block->page()->title();?></span>
               <?php endif;?>
               </span>
           </div>

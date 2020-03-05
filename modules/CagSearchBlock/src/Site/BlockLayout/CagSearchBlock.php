@@ -74,6 +74,8 @@ class CagSearchBlock extends AbstractBlockLayout
                   'bibliografie' => 'Bibliografie',  // @translate
                   'collecties' => 'Collecties',  // @translate
                   'verhalen' => 'Verhalen',  // @translate
+                  'films' => 'Films',
+                  'filmkopies' => 'Filmkopies'
               ],
           ],
       ]);

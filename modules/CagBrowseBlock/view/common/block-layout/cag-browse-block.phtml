@@ -47,15 +47,16 @@ $translate = $this->plugin('translate');
             <?php
               $media = $resource->media();
               if($media):
-                if(sizeof($attachments) <= 2):
+                if(sizeof($this->resources) <= 2):
                   $mediaurl = $media[0]->thumbnailUrl('large');
+                  $mediaurl = str_replace('http:', '', $mediaurl);
                 else:
                   $mediaurl = $media[0]->thumbnailUrl('medium');
+                  $mediaurl = str_replace('http:', '', $mediaurl);
                 endif;
               else:
                 $mediaurl = "";
               endif;
-
 
               if($type == 'Verhaal' || $type == 'Project' || $type == 'Agendapunt BKV' || $type == 'Nieuws BKV' || $type == 'Object BKV'):
                 $url = "/page/".$resource->value('dcterms:relation');

@@ -81,7 +81,59 @@ $labelInfo = $this->setting('property_label_information');
                     endif;
                   endif;
 
-                  echo $string;
+                  if($property->alternateLabel() == 'Filmkopies'):
+                    $query = 'property[0][joiner]=and&property[0][property]=27&property[0][type]=eq&property[0][text]='.$text.'&resource_class_id[]=&resource_template_id[]=13&item_set_id[]=&site_id=';
+                    parse_str($query,$query);
+
+                    $filmkopie = $items = $this->api()->searchOne('items',$query);
+                    $filmkopie = $filmkopie->getContent();
+                    if($filmkopie):
+                      $string = $filmkopie->link($filmkopie->displayTitle());
+                    else:
+                      $string = "";
+                    endif;
+                  endif;
+
+                  if($property->alternateLabel() == 'Medewerker' || $property->alternateLabel() == 'Onderwerp' ):
+                    $text = str_replace(';','<br />',$text);
+                    $string = $text;
+                  endif;
+
+                  if($property->alternateLabel() == 'Film'):
+                    $text = str_replace('Filmcopy.','',$text);
+                    $query = 'property[0][joiner]=and&property[0][property]=35&property[0][type]=in&property[0][text]='.$text.'&resource_class_id[]=&resource_template_id[]=10&item_set_id[]=&site_id=';
+                    parse_str($query,$query);
+
+                    $filmkopie = $items = $this->api()->searchOne('items',$query);
+                    $filmkopie = $filmkopie->getContent();
+                    if($filmkopie):
+                      $string = $filmkopie->link($filmkopie->displayTitle());
+                    else:
+                      $string = "";
+                    endif;
+                  endif;
+
+                  if($property->alternateLabel() == 'Plaats van vervaardiging'):
+                    $codes = array(
+                      'GB' => 'Verenigd Koninkrijk',
+                      'NL' => 'Nederlands',
+                      'IT' => 'Italië',
+                      'SZ' => 'Zwitserland',
+                      'FR' => 'Frankrijk',
+                      'CN' => 'Canada',
+                      'BE' => 'België',
+                      'US' => 'Verenigde Staten',
+                      'AU' => 'Oostenrijk',
+                      'LU' => 'Luxemburg',
+                      'DE' => 'Duitsland'
+                    );
+                    if(isset($codes[$text])):
+                      $string = $codes[$text];
+                    else:
+                      $string = $text;
+                    endif;
+                  endif;  
+                    echo $string;
                 ?>
             </div>
         <?php endforeach; ?>

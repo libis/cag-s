@@ -62,13 +62,15 @@ endif;
         <?php echo sprintf('<%s class="%s resource">', $tag, $resource->resourceName()); ?>
         <?php $media = $resource->primaryMedia(); ?>
         <?php if ($media): ?>
+          <?php
+            $file_url = str_replace('http:', '', $media->thumbnailUrl('medium'));
+          ?>
           <div class="card__img card__img_3"
-            style="background:url(<?php echo $media->thumbnailUrl('large');?>) no-repeat center center;background-size: cover;"
+            style="background:url(<?php echo $file_url;?>) no-repeat center center;background-size: cover;"
           ></div>
         <?php endif; ?>
 
         <div class="card__body panel panel--light">
-
             <h2 class="heading--3 card__title"><a href="<?php echo $url;?>"><?php echo $resource->displayTitle(); ?></a></h2>
             <?php if($type == 'Beeld'):?>
                 <p class="datering"><?php echo $resource->value('dcterms:date');?></p>

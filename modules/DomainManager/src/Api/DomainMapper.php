@@ -33,8 +33,7 @@ class DomainMapper
         'create-password',
         'forgot-password',
         // Compatibility with modules that have a route on root.
-        // Module Custom Ontology.
-        'ns',
+
         // Module OAI-PMH Repository.
         'oai-pmh',
     ];
@@ -124,12 +123,12 @@ class DomainMapper
     /**
      * @var \Zend\Router\PriorityList $routes
      * @var \Zend\Router\RouteInterface $route
-     * 
+     *
      */
     private function routeTemplate($routes)
     {
         $routeKey = "site";
-        
+
         /**
          * default route options
          */
@@ -169,7 +168,7 @@ class DomainMapper
                 'action' => 'show',
                 'site-slug' => $this->siteSlug,
                 'page-slug' => $this->defaultPage,
-            ];        
+            ];
         }
 
         $controller = strtolower($rootRouteDefaults["controller"]);
@@ -276,7 +275,7 @@ class DomainMapper
         /*
          * Map all statically and dynamically created routes to the domain.
          */
-       
+
         /**
          * static routes (defined by the config files)
          */
@@ -286,7 +285,7 @@ class DomainMapper
                     if (isset($mappedRoutes[$routeKey]["child_routes"][$childRouteKey])) {
                         continue;
                     }
-                    
+
                     $childRouteArray["options"]["route"] = substr($childRouteArray["options"]["route"], 1);
 
                     /**
@@ -295,7 +294,7 @@ class DomainMapper
                     if (!isset($childRouteArray["options"]["defaults"]["controller"])) {
                         $childRouteArray["options"]["defaults"]["controller"] = "Index";
                     }
-                    
+
                     $childRouteArray["options"]["defaults"]["site-slug"]  = $this->siteSlug;
 
                     if (isset($childRouteArray["options"]["constraints"]) && stripos($childRouteArray["options"]["route"], ":controller") !== false) {
@@ -312,7 +311,7 @@ class DomainMapper
         /**
          * @var \Zend\Router\PriorityList $routes
          * @var \Zend\Router\RouteInterface $route
-         * 
+         *
          */
         foreach ($routes as $routeName => $route) {
             if (in_array($routeName, $ignoredRoutes)) {
@@ -334,12 +333,12 @@ class DomainMapper
             $routePath = '';
             if (isset($routeArray['parts'])) {
                 /**
-                 * The method assemble() is not available, because the site slug 
+                 * The method assemble() is not available, because the site slug
                  * is missing.
                  */
                 foreach ($routeArray['parts'] as $part) {
                     list($type, $path) = $part;
-                    /** 
+                    /**
                      * The module Scripto use another route format, at top
                      * level, but with optional site slug.
                      */
@@ -422,11 +421,11 @@ class DomainMapper
             ->setParameter(1, $this->siteId)
             ->getQuery()
             ->getArrayResult();
-        
+
         if (count($defaultPage) > 0) {
             return $defaultPage[0]['slug'];
         }
-        
+
         return null;
     }
 
@@ -447,11 +446,11 @@ class DomainMapper
         if ($this->isIgnoredRoute()) {
             return;
         }
-        
+
         if($this->router->hasRoute($this->siteSlug)) {
             $this->router->removeRoute($this->siteSlug);
         }
-        
+
         $routes = is_null($routes) ? $this->router->getRoutes() : $routes;
         $this->routes[$this->siteSlug] = $this->routeTemplate($routes);
         $this->router->addRoutes($this->routes[$this->siteSlug]);
@@ -463,17 +462,19 @@ class DomainMapper
         $doRedirect = true;
         $routeMatch = $this->router->match($this->event->getRequest());
 
+        /**
+         * route exists however it is the default omeka route and not the domain specific route
+         */
+        $isOmekaDefaultRoute = stripos($this->url, $this->siteIndicator) !== false;
+        if ($isOmekaDefaultRoute) {          
+          $url = str_replace("/s/","",$this->redirectUrl);
+          $url = str_replace($this->siteSlug,"",$url);
+          $r = $this->event->getRequest()->setUri("/".$url);
+          $routeMatch = $this->router->match($r);
+        }
+
         if (!is_null($routeMatch)) {
             $doRedirect = false;
-
-            /**
-             * route exists however it is the default omeka route and not the domain specific route
-             */
-            $isOmekaDefaultRoute = stripos($this->url, $this->siteIndicator) !== false;
-
-            if ($isOmekaDefaultRoute) {
-                $doRedirect = true;
-            }
 
             if($this->isIndexPage() || $this->isDefaultPageRoute()) {
                 $doRedirect = true;
@@ -602,7 +603,7 @@ class DomainMapper
             $mapping_id = $row['mapping_id'];
             $site_id = $row['site_id'];
             $domain = $row['domain'];
-            
+
             if (strlen($domain) > 0) {
                 $validate = preg_match('#^(?!\-)(?:[a-zA-Z\d\-]{0,62}[a-zA-Z\d]\.){1,126}(?!\d+)[a-zA-Z\d]{1,63}$#', $domain);
 

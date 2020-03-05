@@ -427,4 +427,9 @@
   text-transform: lowercase;
 }
 
+.beeld iframe {
+  width: 100%;
+  max-width: 500px;
+}
+
 /*# sourceMappingURL=style.css.map */

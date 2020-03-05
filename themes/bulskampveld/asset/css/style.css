@@ -362,7 +362,7 @@ a.card:hover .card__img::before, a.card:focus .card__img::before, .card--link:ho
 .scrollToTop {
   text-align: center;
   font-weight: bold;
-  color: #006b65;
+  color: #58330f;
   text-decoration: none;
   position: fixed;
   bottom: 5%;
@@ -372,7 +372,7 @@ a.card:hover .card__img::before, a.card:focus .card__img::before, .card--link:ho
   font-size: 1;
   z-index: 11;
   padding: 0.5em 1em;
-  border: 2px solid #006B65;
+  border: 2px solid #58330f;
   transition: background 100ms ease-in-out, border 100ms ease-in-out, color 100ms ease-in-out;
   /*&::after{
       margin-left: 6.5px;
@@ -384,13 +384,13 @@ a.card:hover .card__img::before, a.card:focus .card__img::before, .card--link:ho
 }
 
 .scrollToTop:visited {
-  color: #006b65;
+  color: #58330f;
 }
 
 .scrollToTop:hover {
   color: #fff;
-  background-color: #006B65;
-  border-color: #00605b;
+  background-color: #58330f;
+  border-color: #58330f;
 }
 
 .scrollToTop:hover {

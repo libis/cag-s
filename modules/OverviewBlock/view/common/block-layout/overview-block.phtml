@@ -15,8 +15,10 @@
                           if($media):
                             if($media->mediaType() == 'text/html'):
                               $url = $media->originalUrl();
+                              $url = str_replace('http:', '', $url);
                             else:
                               $url = $media->thumbnailUrl('medium');
+                              $url = str_replace('http:', '', $url);
                             endif;
                           endif;
                           ?>

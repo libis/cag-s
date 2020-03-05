@@ -22,10 +22,12 @@
                                 <div class="">
                                   <?php
                                     if($attachments):
-                                      $media = $attachments[0]->media();
-                                      if($media):
-                                        echo $this->thumbnail($media, 'square');
-                                      endif;
+                                      $media = $attachments[0]->media();           
+                                          if($media):
+                                            $url = $media->thumbnailUrl('square');
+                                            $url = str_replace('http:', '', $url);
+                                            echo '<img src="'.$url.'" />';
+                                          endif;
                                     endif;
                                   ?>
                                 </div>

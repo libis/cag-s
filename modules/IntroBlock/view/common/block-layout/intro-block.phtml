@@ -5,26 +5,20 @@
                 <div class="panel panel--lrg panel--light u-pl-0">
                     <!-- breadcrumbs -->
                     <div class="breadcrumb spacer">
-                        <span itemscope="" itemtype="http://data-vocabulary.org/Breadcrumb" class="breadcrumb__scope">
+                        <span itemscope="" itemtype="https://data-vocabulary.org/Breadcrumb" class="breadcrumb__scope">
                             <a href="<?php echo "/";?>" itemprop="url" class="breadcrumb__item"><span itemprop="title">Home</span></a>
                         </span>
                         <?php
-                          $nav = $block->page()->site()->publicNav();
-                          /*$r = $nav->toArray();
-                          $result = breadcrumb_temp($r, $block->page()->title());
-
-                          foreach($result as $bc):
-                            echo '<span itemscope="" itemtype="http://data-vocabulary.org/Breadcrumb" class="breadcrumb__scope">
-                              <a href="'.$bc['slug'].'">'.$bc['label'].'</a></span>';
-                          endforeach;*/
+                          $bc = $block->page()->site()->publicNav()->breadcrumbs()->setSeparator('</span>
+                            <span itemscope="" itemtype="https://data-vocabulary.org/Breadcrumb" class="breadcrumb__scope">'
+                            )->setMinDepth(1);
                         ?>
-                      <span itemscope="" itemtype="http://data-vocabulary.org/Breadcrumb" class="breadcrumb__scope">
-                        <?php if($nav->breadcrumbs() != ''): ?>
-                          <?php echo $nav->breadcrumbs()->setSeparator('</span>
-                          <span itemscope="" itemtype="http://data-vocabulary.org/Breadcrumb" class="breadcrumb__scope">'
-                          ); ?>
+                        <?php $bctest = strip_tags($bc).'test';?>
+                        <span itemscope="" itemtype="https://data-vocabulary.org/Breadcrumb" class="breadcrumb__scope">
+                        <?php if(strip_tags($bctest) != 'test'):?>
+                          <?php echo $bc;?>
                         <?php else: ?>
-                            <a href="" itemprop="url" class="breadcrumb__item breadcrumb__item--active"><span itemprop="title"><?php echo $block->page()->title();?></span></a>
+                          <span itemprop="title"><?php echo $block->page()->title();?></span>
                         <?php endif;?>
                         </span>
                     </div>
@@ -42,11 +36,15 @@
                     <?php
                       $media = $attachments[0]->media();
                       if($media):
+                        $url = $media->thumbnailUrl('large');
+                        $url = str_replace('http:', '', $url);
                         if($block->dataValue('itemurl')):
-                          $itemUrl = $media->item()->url();?>
-                          <a href="<?php echo $itemUrl;?>"><?php echo $this->thumbnail($media, 'large',array('class' => 'u-display-block'));?></a>
+                          $itemUrl = $media->item()->url();
+                          $itemUrl = str_replace('http:', '', $itemUrl);
+                          ?>
+                          <a href="<?php echo $itemUrl;?>"><img src="<?php echo $url;?>" class='u-display-block'></a>
                         <?php else:?>
-                          <?php echo $this->thumbnail($media, 'large',array('class' => 'u-display-block'));?>
+                          <img src="<?php echo $url;?>" class='u-display-block'>
                         <?php endif;?>
                       <?php endif;
                     ?>
