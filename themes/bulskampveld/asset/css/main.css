@@ -585,7 +585,7 @@ textarea {
 a {
   -webkit-transition: color 100ms ease-in-out, background 100ms ease-in-out, border 100ms ease-in-out;
   transition: color 100ms ease-in-out, background 100ms ease-in-out, border 100ms ease-in-out;
-  color: #222;
+  color: #58330f;
 }
 a:visited {
   color: #58330f;

@@ -81,7 +81,8 @@ class IntroBlock extends AbstractBlockLayout
 
       return $view->partial('common/block-layout/intro-block', [
         'block' => $block,
-        'attachments' => $block->attachments()
+        'attachments' => $block->attachments(),
+        'pageid' => $block->page()->id()
       ]);
 
       /*return $view->partial('common/block-layout/tiles', [

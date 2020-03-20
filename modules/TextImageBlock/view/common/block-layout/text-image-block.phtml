@@ -1,4 +1,4 @@
-<div class="section section--default">
+<div class="section section--default text-only">
     <div class="container">
         <?php if($block->dataValue('reverse')):?>
         <div class="grid grid--reverse grid--2-col@med">
@@ -16,10 +16,10 @@
         </div>
         <div class="grid__item">
             <?php if($attachments):
-              $media = $attachments[0]->media();
-              $url = $media->thumbnailUrl('large');
-              $url = str_replace('http:', '', $url);
+              $media = $attachments[0]->media();              
               if($media):
+                $url = $media->thumbnailUrl('large');
+                $url = str_replace('http:', '', $url);
                 if($block->dataValue('itemurl')):
                   $itemUrl = $media->item()->url();
                   $itemUrl = str_replace('http:', '', $itemUrl);

@@ -1,6 +1,7 @@
 <?php
 $translate = $this->plugin('translate');
 ?>
+
 <div class="section section--default">
   <div class="container">
 
@@ -16,7 +17,7 @@ $translate = $this->plugin('translate');
     </div>
     <?php endif; ?>
 
-
+    <?php if($this->resources):?>
     <div class="grid grid--<?php echo $block->dataValue('columns');?>-col@med spacer--xsm">
       <?php
       $headingTerm = $this->siteSetting('browse_heading_property_term', 'dcterms:title');
@@ -43,7 +44,7 @@ $translate = $this->plugin('translate');
           endif;
       ?>
       <div class="grid__item">
-        <div class="card card--gray card--clickable card--link">
+        <div class="card card--gray card--clickable card--link card--variant2">
             <?php
               $media = $resource->media();
               if($media):
@@ -114,7 +115,11 @@ $translate = $this->plugin('translate');
                       $typel = 'Object';
                     endif;
                   ?>
-                  <a href="<?php echo $url;?>"><?php echo $typel.' bekijken';?></a>
+                  <?php if($type == 'Film' || $type == 'Filmkopie'):?>
+                    <a href="<?php echo $url;?>">Lees meer</a>
+                  <?php else:?>
+                    <a href="<?php echo $url;?>"><?php echo $typel.' bekijken';?></a>
+                  <?php endif; ?>
                 </div>
               </div>
             </a>
@@ -122,20 +127,20 @@ $translate = $this->plugin('translate');
       </div>
       <?php endforeach; ?>
     </div>
-
     <?php if ($this->linkText):?>
       <div class="text--center u-mt-med">
         <?php if($type == 'Nieuws' || $type == 'Agendapunt' || $type == 'Agendapunt BKV' || $type == 'Nieuws BKV'):?>
-          <a href="<?php echo $block->page()->site()->url().'/'.$templates[$type].'?q=&sort=dcterms:date desc'?>" class="btn btn--ext">
+          <a href="<?php echo '/'.$templates[$type].'?q=&sort=dcterms:date desc'?>" class="btn btn--ext">
             <?php echo $this->linkText;?>
           </a>
         <?php else:?>
-          <a href="<?php echo $block->page()->site()->url().'/'.$templates[$type].'?q='?>" class="btn btn--ext">
+          <a href="<?php echo '/'.$templates[$type].'?q='?>" class="btn btn--ext">
             <?php echo $this->linkText;?>
           </a>
         <?php endif;?>
       </div>
     <?php endif;?>
-
+    <?php endif;?>
   </div>
+
 </div>

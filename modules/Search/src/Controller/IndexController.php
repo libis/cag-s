@@ -165,6 +165,10 @@ class IndexController extends AbstractActionController
             } else {
                 reset($sortOptions);
                 $sort = key($sortOptions);
+                //LIBIS sort on created by default
+                $sort = "created desc";
+                //var_dump($sort);
+
             }
             $query->setSort($sort);
         }

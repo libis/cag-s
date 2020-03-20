@@ -183,6 +183,9 @@ class InternalQuerier extends AbstractQuerier
             list($sortField, $sortOrder) = explode(' ', $sort);
             $data['sort_by'] = $sortField;
             $data['sort_order'] = $sortOrder == 'desc' ? 'desc' : 'asc';
+        }else{
+            $data['sort_by'] = 'created';
+            $data['sort_order'] = 'desc';
         }
 
         $limit = $query->getLimit();

@@ -366,6 +366,7 @@ class ApiSearch extends AbstractPlugin
         if (empty($metadata[$query['sort_by']])) {
             return;
         }
+
         $sortBy = $metadata[$query['sort_by']];
 
         if (isset($query['sort_order'])) {

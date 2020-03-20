@@ -99,7 +99,6 @@
                   $search_pages = array("beeldbank","collecties","projecten","verhalen","nieuws","agenda");
                   $html = "";
                   foreach($search_pages as $sp):
-                    $query = "";
                     $html .= $this->hyperlink(ucfirst($sp),
                       $this->url(
                           'site/resource',

@@ -437,7 +437,7 @@ class DomainMapper
             $separator = '/';
         }
 
-        $url = "{$this->scheme}://{$this->domain}{$separator}{$url}";
+        $url = "https://{$this->domain}{$separator}{$url}";
         $controller->plugin('redirect')->toUrl($url);
     }
 
@@ -466,7 +466,7 @@ class DomainMapper
          * route exists however it is the default omeka route and not the domain specific route
          */
         $isOmekaDefaultRoute = stripos($this->url, $this->siteIndicator) !== false;
-        if ($isOmekaDefaultRoute) {          
+        if ($isOmekaDefaultRoute) {
           $url = str_replace("/s/","",$this->redirectUrl);
           $url = str_replace($this->siteSlug,"",$url);
           $r = $this->event->getRequest()->setUri("/".$url);

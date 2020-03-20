@@ -585,7 +585,7 @@ textarea {
 a {
   -webkit-transition: color 100ms ease-in-out, background 100ms ease-in-out, border 100ms ease-in-out;
   transition: color 100ms ease-in-out, background 100ms ease-in-out, border 100ms ease-in-out;
-  color: #222;
+  color: #014D49;
 }
 a:visited {
   color: #014D49;
@@ -1543,7 +1543,7 @@ h1 + h1, h1 + h2, h1 + h3, h1 + h4, h1 + h5, h1 + h6, h2 + h1, h2 + h2, h2 + h3,
 
 .text--lead {
   font-size: 17px;
-  font-size: 1.031rem;
+  font-size: 1.125rem;;
 }
 @media (min-width: 660px) {
   .text--lead {

@@ -11,6 +11,8 @@ $labelInfo = $this->setting('property_label_information');
     endif;*/
 
     //echo $propertyData['property']->label();
+    $template = $property->template()->label();
+
     if($property->isPrivate()):
       continue;
     endif;
@@ -63,21 +65,23 @@ $labelInfo = $this->setting('property_label_information');
                   $string = preg_replace('@(https?://([-\w\.]+)+(:\d+)?(/([\w/_\.%-=#]*(\?\S+)?)?)?)@', '<a target="_blank" href="$1">$1</a>', $text);
 
                   $rights = array(
-                    'ccby' => array('link' => 'https://creativecommons.org/licenses/by/4.0/deed.nl','img' => 'https://licensebuttons.net/l/by/4.0/88x31.png'),
-                    'ccbync' => array('link' => 'https://creativecommons.org/licenses/by-nc/4.0/deed.nl','img' => 'https://licensebuttons.net/l/by-nc/4.0/88x31.png'),
-                    'ccbyncnd' => array('link' => 'https://creativecommons.org/licenses/by-nc-nd/4.0/deed.nl','img' => 'https://licensebuttons.net/l/by-nc-nd/4.0/88x31.png'),
-                    'ccbyncsa' => array('link' => 'https://creativecommons.org/licenses/by-nc-sa/4.0/deed.nl','img' => 'https://licensebuttons.net/l/by-nc-sa/4.0/88x31.png'),
-                    'ccbynd' => array('link' => 'https://creativecommons.org/licenses/by-nd/4.0/deed.nl','img' => 'https://licensebuttons.net/l/by-nd/4.0/88x31.png'),
-                    'ccbysa' => array('link' => 'https://creativecommons.org/licenses/by-sa/4.0/deed.nl','img' => 'https://licensebuttons.net/l/by-sa/4.0/88x31.png'),
-                    'publicdomainmark' => array('link' => 'http://creativecommons.org/publicdomain/mark/1.0/deed.nl','img' => 'https://licensebuttons.net/p/mark/1.0/88x31.png'),
+                    'http://rightsstatements.org/vocab/InC-NC/1.0/' => array('link' => 'https://creativecommons.org/licenses/by/4.0/deed.nl','img' => 'https://rightsstatements.org/files/buttons/InC-NC.white.svg'),
+                    'http://rightsstatements.org/vocab/InC-RUU/1.0/' => array('link' => 'https://creativecommons.org/licenses/by-nc/4.0/deed.nl','img' => 'https://rightsstatements.org/files/buttons/InC-RUU.white.svg'),
+                    'http://rightsstatements.org/vocab/InC/1.0/' => array('link' => 'https://creativecommons.org/licenses/by-nc-nd/4.0/deed.nl','img' => 'https://rightsstatements.org/files/buttons/InC.white.svg'),
+                    'http://rightsstatements.org/vocab/NKC/1.0/' => array('link' => 'https://creativecommons.org/licenses/by-nc-sa/4.0/deed.nl','img' => 'https://rightsstatements.org/files/buttons/NKC.white.svg'),
+                    'https://creativecommons.org/publicdomain/mark/1.0/' => array('link' => 'http://creativecommons.org/publicdomain/mark/1.0/deed.nl','img' => 'https://licensebuttons.net/p/mark/1.0/88x31.png'),
+
                   );
 
                   if(isset($rights[$text])):
                     if(isset($values['dcterms:rights'])):
                       $rightslink = $values['dcterms:rights']['values'][0]->asHtml();
-                      $string = '<a href="'.$rightslink.'"><img src="'.$rights[$text]['img'].'" /></a>';
+                      $string = '<a href="'.$rightslink.'"><img class="right-img" src="'.$rights[$text]['img'].'" /></a>';
                     else:
                       $string = '<a href="'.$rights[$text]['link'].'"><img src="'.$rights[$text]['img'].'" /></a>';
+                    endif;
+                    if($template = 'Film'):
+                      $string .= "<br />Neem contact op met de betreffende bewaarinstelling voor meer informatie over de rechtenstatus";
                     endif;
                   endif;
 
@@ -113,10 +117,25 @@ $labelInfo = $this->setting('property_label_information');
                     endif;
                   endif;
 
+                  if($property->alternateLabel() == 'Genre'):
+                    $string = '<a href="/films?q=&limit%5Bdcterms:type%5D%5B0%5D='.$text.'">'.$text.'</a>';
+                  endif;
+                  if($property->alternateLabel() == 'Onderwerp'):
+                    $searchpages = array(
+                      'Film' => 'films',
+                      'Beeld' => 'beeldbank',
+                      'Collectie' => 'collecties',
+                      'Filmkopie' => 'filmkopies'
+                    );
+                    $template;
+                    $string = '<a href="/'.$searchpages[$template].'?q=&limit%5Bdcterms:subject%5D%5B0%5D='.$text.'">'.$text.'</a>';
+                  endif;
+
                   if($property->alternateLabel() == 'Plaats van vervaardiging'):
                     $codes = array(
                       'GB' => 'Verenigd Koninkrijk',
-                      'NL' => 'Nederlands',
+                      'UK' => 'Verenigd Koninkrijk',
+                      'NL' => 'Nederland',
                       'IT' => 'Italië',
                       'SZ' => 'Zwitserland',
                       'FR' => 'Frankrijk',
@@ -125,15 +144,16 @@ $labelInfo = $this->setting('property_label_information');
                       'US' => 'Verenigde Staten',
                       'AU' => 'Oostenrijk',
                       'LU' => 'Luxemburg',
-                      'DE' => 'Duitsland'
+                      'DE' => 'Duitsland',
+                      'GW' => 'Duitsland'
                     );
                     if(isset($codes[$text])):
                       $string = $codes[$text];
                     else:
                       $string = $text;
                     endif;
-                  endif;  
-                    echo $string;
+                  endif;
+                  echo str_replace("&amp;","&",$string);
                 ?>
             </div>
         <?php endforeach; ?>

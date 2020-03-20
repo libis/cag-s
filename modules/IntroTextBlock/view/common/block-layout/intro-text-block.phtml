@@ -9,16 +9,35 @@
                   <a href="<?php echo "/";?>" itemprop="url" class="breadcrumb__item"><span itemprop="title">Home</span></a>
               </span>
               <?php
-                $bc = $block->page()->site()->publicNav()->breadcrumbs()->setSeparator('</span>
-                  <span itemscope="" itemtype="https://data-vocabulary.org/Breadcrumb" class="breadcrumb__scope">')->setMinDepth(1);
+                $flat = filter_bc(flattenArray($block->page()->site()->navigation()));
+                //var_dump($flat);
+                $key = array_search($block->page()->id(), $flat);
+
+                $crumbs = "";
+
+                while(strlen($key) >= 4){
+                  $key = explode('|',$key);
+
+                  array_pop($key);
+                  array_pop($key);
+                  $key = implode('|',$key)."|";
+
+
+                  if(isset($flat[$key])):
+                    $id = $flat[$key];
+                    $page = $this->api()->read('site_pages', $id)->getContent();
+                    $link = '<a href="'.$page->url().'">'.$page->title().'</a>';
+                    $crumbs = $link.'</span>
+                      <span itemscope="" itemtype="https://data-vocabulary.org/Breadcrumb" class="breadcrumb__scope">'.$crumbs;
+                  endif;
+                }
+                //return $crumbs;
+                //$crumbs = get_crumb($flat,$pageid,$this);
               ?>
-              <?php $bctest = strip_tags($bc).'test';?>
               <span itemscope="" itemtype="https://data-vocabulary.org/Breadcrumb" class="breadcrumb__scope">
-              <?php if(strip_tags($bctest) != 'test'):?>
-                <?php echo $bc;?>
-              <?php else: ?>
+                <?php echo $crumbs;?>
+
                 <span itemprop="title"><?php echo $block->page()->title();?></span>
-              <?php endif;?>
               </span>
           </div>
 
@@ -34,75 +53,57 @@
 </div>
 
 <?php
-function breadcrumb_temp($r, $title){
-  $result = array();
-  foreach($r as $page1):
-    $parents = array();
-    if($page1['label'] == $title):
-      $result = $parents;
-      return $result;
-    endif;
-    if(isset($page1['params'])):
-      $parents[0] = ['label' => $page1['label'], 'slug' => "/page/".$page1['params']['page-slug']];
-    else:
-      $parents[0] = ['label' => $page1['label'], 'slug' => $page1['uri']];
-    endif;
+function flattenArray($arr) {
+    $output = [];
 
-    foreach($page1['pages'] as $page2):
-      unset($parents[1]);unset($parents[2]);unset($parents[3]);unset($parents[4]);
-      if($page2['label'] == $title):
-        $result = $parents;
-        return $result;
-        $parents = array();
+    foreach ($arr as $key => $value) {
+        if (is_array($value)) {
+            foreach(flattenArray($value) as $flattenKey => $flattenValue) {
+
+                $output["${key}.${flattenKey}"] = $flattenValue;
+            }
+        } else {
+            $output[$key] = $value;
+        }
+    }
+    return $output;
+}
+function filter_bc($arr){
+  $output = [];
+  foreach($arr as $key=>$value):
+    $level = substr_count($key,'links');
+    $temp = explode(".", $key);
+    $nr = $temp[0];
+    $order = '';
+    foreach($temp as $t){
+      if(is_numeric($t)):
+        $order .= $t."|";
       endif;
-      if(isset($page2['params'])):
-        $parents[1] = ['label' => $page2['label'], 'slug' => "/page/".$page2['params']['page-slug']];
-      else:
-        $parents[1] = ['label' => $page2['label'], 'slug' => $page2['uri']];
-      endif;
+    }
+    if (strpos($key, 'id') !== false) {
+      $output[$order] = $value;
+    }
+  endforeach;
+  return $output;
+}
+function get_crumb($flat, $id, $view){
+  $key = array_search($id, $flat);
+  $crumbs = "";
+  if(strlen($key) == 2):
+    return $crumbs;
+  endif;
 
-      foreach($page2['pages'] as $page3):
-        unset($parents[2]);unset($parents[3]);unset($parents[4]);
-        if($page3['label'] == $title):
-          $result = $parents;
-          return $result;
-          $parents = array();
-        endif;
-        if(isset($page3['params'])):
-          $parents[2] = ['label' => $page3['label'], 'slug' => "/page/".$page3['params']['page-slug']];
-        else:
-          $parents[2] = ['label' => $page3['label'], 'slug' => $page3['uri']];
-        endif;
+  while(strlen($key) >= 4){
+    $key = substr($key, 0, -2);
+    $id = $flat[$key];
+    $crumbs = get_title($id,$view).'</span>
+      <span itemscope="" itemtype="https://data-vocabulary.org/Breadcrumb" class="breadcrumb__scope">'.$crumbs;
 
-        foreach($page3['pages'] as $page4):
-          unset($parents[3]);  unset($parents[4]);
-          if($page4['label'] == $title):
-            $result = $parents;
-            return $result;
-            $parents = array();
-          endif;
-          if(isset($page4['params'])):
-            $parents[3] = ['label' => $page4['label'], 'slug' => "/page/".$page4['params']['page-slug']];
-          else:
-            $parents[3] = ['label' => $page4['label'], 'slug' => $page4['uri']];
-          endif;
-
-          foreach($page4['pages'] as $page5):
-            unset($parents[4]);
-            if($page5['label'] == $title):
-              $result = $parents;
-              $parents = array();
-              return $result;
-            endif;
-            if(isset($page5['params'])):
-              $parents[4] = ['label' => $page5['label'], 'slug' => "/page/".$page5['params']['page-slug']];
-            elseif(isset($page2['uri'])):
-              $parents[4] = ['label' => $page5['label'], 'slug' => $page5['uri']];
-            endif;
-          endforeach;
-        endforeach;
-      endforeach;
-    endforeach;
-  endforeach;  //echo $nav;
+  }
+  return $crumbs;
+}
+function get_title($id,$view){
+  $page = $view->api()->read('site_pages', $id)->getContent();
+  return '<a href="'.$page->url().'">'.$page->title().'</a>';
 }
 ?>

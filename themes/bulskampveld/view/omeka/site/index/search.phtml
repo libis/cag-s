@@ -98,7 +98,6 @@
                 $search_pages = array("agenda-bkv" => "Activiteiten","nieuws-bkv"=>"Nieuwsberichten","objecten" => "Objecten");
                 $html = "";
                 foreach($search_pages as $key => $value ):
-                  $query = "";
                   $html .= $this->hyperlink($value,
                     $this->url(
                         'site/resource',

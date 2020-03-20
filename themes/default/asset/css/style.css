@@ -392,7 +392,7 @@
   text-decoration: none;
   position: fixed;
   bottom: 5%;
-  right: 30px;
+  right: 95px;
   display: none;
   background: white;
   font-size: 1;
@@ -400,13 +400,6 @@
   padding: 0.5em 1em;
   border: 2px solid #006B65;
   transition: background 100ms ease-in-out, border 100ms ease-in-out, color 100ms ease-in-out;
-  /*&::after{
-      margin-left: 6.5px;
-      content: "\F10D";
-      font-family: "icons";
-      font-weight: 400;
-      vertical-align: middle;
-    }*/
 }
 
 .scrollToTop:visited {
@@ -417,6 +410,12 @@
   color: #fff;
   background-color: #006B65;
   border-color: #00605b;
+}
+
+@media (min-width: 400px) {
+  .scrollToTop {
+    right: 30px;
+  }
 }
 
 .scrollToTop:hover {
@@ -430,6 +429,53 @@
 .beeld iframe {
   width: 100%;
   max-width: 500px;
+}
+
+.right-img {
+  background: #006b65;
+  height: 30px;
+  padding: 5px;
+}
+
+.card--variant2 {
+  display: -webkit-box;
+  display: -ms-flexbox;
+  display: flex;
+  -webkit-box-orient: vertical;
+  -webkit-box-direction: normal;
+  -ms-flex-direction: column;
+  flex-direction: column;
+  -webkit-box-pack: stretch;
+  -ms-flex-pack: stretch;
+  justify-content: stretch;
+}
+
+.card--variant2 .card__body {
+  -webkit-box-flex: 1;
+  -ms-flex: 1 0 auto;
+  flex: 1 0 auto;
+  display: -webkit-box;
+  display: -ms-flexbox;
+  display: flex;
+}
+
+.flyout__content .search__form {
+  width: auto !important;
+}
+
+.flyout__content .search__form .form__item {
+  width: auto;
+  margin: 0 !important;
+}
+
+.page-header__logo img, .page-header--simple .page-header__logo img {
+  height: 70px !important;
+}
+
+@media (min-width: 980px) {
+  .page-header__logo img {
+    height: 100px !important;
+  }
 }
 
 /*# sourceMappingURL=style.css.map */

@@ -1,6 +1,6 @@
 <?php
 $escape = $this->plugin('escapeHtml');
-$this->htmlElement('html')->setAttribute('lang', 'en');
+$this->htmlElement('html')->setAttribute('lang', 'nl');
 $this->headMeta()->setCharset('utf-8');
 $this->headMeta()->appendName('viewport', 'width=device-width, initial-scale=1');
 $this->headTitle()->setSeparator(' · ');
@@ -250,8 +250,8 @@ $userBar = $this->userBar();
                              <div class="grid__12 grid__6@lrg">
                                  <div class="nav nav--copyright">
                                      <ul class="nav__menu nav__menu--sep">
-                                         <li class="nav__item text--nowrap">&copy; 2019 Centrum Agrarische geschiedenis</li>
-                                         <!-- <li class="nav__item"><span class="text--nowrap">Crafted with <i class="icon icon--heart icon--secondary"></i> door <a href="https://www.statik.be" target="_blank">Statik</a></span></li> -->
+                                         <li class="nav__item text--nowrap">&copy; 2020 Centrum Agrarische geschiedenis</li>
+                                         <li class="nav__item"><span class="text--nowrap">Realisatie door <a href="//www.libis.be" target="_blank">Libis</a></span></li>
                                      </ul>
                                  </div>
                              </div>
@@ -284,27 +284,27 @@ $userBar = $this->userBar();
                   </div>
 
                   <!-- flyout search -->
+                  <!-- flyout search -->
                   <div class="flyout__content">
-                      <form action="" class="search js-search-form js-search-container">
-                          <input type="hidden" name="cx" value="">
-                          <input type="hidden" name="ie" value="UTF-8">
-
-                          <div class="form__item search--form js-search-input">
-                              <input type="search" id="form-search" class="search__input form__text-underline" name="q" placeholder="Wat zoek je?">
-                              <button type="submit" class="search__submit"><i class="icon icon--search"></i></button>
-                          </div>
-                      </form>
+                      <?php echo $this->partial('common/search-form'); ?>
                   </div>
 
                   <!-- main navigation -->
                   <div class="flyout__content">
                     <nav class="nav--main">
-                        <?php
-                        echo $site->publicNav()->menu()->renderMenu(null, [
-                            'ulClass' => 'nav__menu',
-                            'maxDepth' => $this->themeSetting('nav_depth') - 1
-                        ]);
-                        ?>
+                      <ul class="nav__menu">
+
+                      <li>
+                          <a href="/page/ontdek">Ontdek</a>
+
+                      <li>
+                          <a href="/page/beleef">Beleef</a>
+                      </li>
+                      <li>
+                          <a href="/page/onderzoek">Onderzoek</a>
+
+                      </li>
+                      </ul>
                         <!--<ul class="nav__menu">
                             <div class="nav__item"><a href="" class="nav__link">Diensten</a></div>
                             <div class="nav__item"><a href="kennisbank.html" class="nav__link">Kennisbank</a></div>
@@ -318,9 +318,9 @@ $userBar = $this->userBar();
                   <div class="flyout__content">
                     <nav class="nav--service">
                         <ul class="nav__menu">
-                            <div class="nav__item"><a href="<?php echo $site->url();?>/page/nieuws-en-activiteiten" class="nav__link">Nieuws & activiteiten</a></div>
-                            <div class="nav__item"><a href="<?php echo $site->url();?>/page/over-ons" class="nav__link">Over ons</a></div>
-                            <div class="nav__item"><a href="<?php echo $site->url();?>/page/contact" class="nav__link">Contact</a></div>
+                            <div class="nav__item"><a href="/page/nieuws-en-activiteiten" class="nav__link">Nieuws & activiteiten</a></div>
+                            <div class="nav__item"><a href="/page/over-ons" class="nav__link">Over ons</a></div>
+                            <div class="nav__item"><a href="/page/contact" class="nav__link">Contact</a></div>
                         </ul>
                     </nav>
                   </div>

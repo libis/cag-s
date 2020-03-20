@@ -48,7 +48,7 @@ else:
 endif;
 ?>
 <div class="grid__item">
-   <div class="card card--gray card--clickable card--link">
+   <div class="card card--gray card--clickable card--link card--variant2">
      <a href="<?php echo $url;?>" style="display:block;">
         <?php echo sprintf('<%s class="%s resource">', $tag, $resource->resourceName()); ?>
         <?php $media = $resource->primaryMedia(); ?>
@@ -66,6 +66,43 @@ endif;
             <h2 class="heading--3 card__title"><a href="<?php echo $url;?>"><?php echo $resource->displayTitle(); ?></a></h2>
             <?php if($type == 'Beeld'):?>
                 <p class="datering"><?php echo $resource->value('dcterms:date');?></p>
+            <?php endif;?>
+            <?php if($type == 'Film' && $resource->value('dcterms:source')):?>
+                <?php
+                  $codes = array(
+                    'GB' => 'Verenigd Koninkrijk',
+                    'UK' => 'Verenigd Koninkrijk',
+                    'NL' => 'Nederland',
+                    'IT' => 'Italië',
+                    'SZ' => 'Zwitserland',
+                    'FR' => 'Frankrijk',
+                    'CN' => 'Canada',
+                    'BE' => 'België',
+                    'US' => 'Verenigde Staten',
+                    'AU' => 'Oostenrijk',
+                    'LU' => 'Luxemburg',
+                    'DE' => 'Duitsland',
+                    'GW' => 'Duitsland'
+                  );
+                ?>
+                <p class="datering">
+                  <?php if($resource->value('dcterms:date')):?>
+                    <?php echo $resource->value('dcterms:date');?>
+                  <?php endif;?>
+                  <?php if($resource->value('dcterms:source')):?>
+                  <?php echo $codes[$resource->value('dcterms:source')->asHtml()];?>
+                  <?php endif;?>
+                  <?php if($resource->value('dcterms:language')):?>
+                    <?php echo "(".$resource->value('dcterms:language').")";?>
+                  <?php endif;?>
+                </p>
+            <?php endif;?>
+            <?php if($type == 'Film' && !$resource->value('dcterms:date') && !$resource->value('dcterms:source') && $resource->value('dcterms:language')):?>
+                <p class="datering">
+                  <?php if($resource->value('dcterms:language')):?>
+                    <?php echo "(".$resource->value('dcterms:language').")";?>
+                  <?php endif;?>
+                </p>
             <?php endif;?>
             <?php if($resource->value('dcterms:date') && ($type == 'Nieuws' || $type == 'Agendapunt')):?>
                 <?php
@@ -86,8 +123,11 @@ endif;
                   <?php echo $description; ?>
                 </p>
             <?php endif; ?>
-
-            <div class="link link--ext card__link"><a href="<?php echo $url;?>"><?php echo $type;?> bekijken</a></div>
+            <?php if($type == 'Film' || $type == 'Filmkopie'):?>
+              <div class="link link--ext card__link"><a href="<?php echo $url;?>">Lees meer</a></div>
+            <?php else:?>
+              <div class="link link--ext card__link"><a href="<?php echo $url;?>"><?php echo $type;?> bekijken</a></div>
+            <?php endif; ?>
         </div>
       </a>
 <?php echo sprintf('</%s>', $tag); ?>

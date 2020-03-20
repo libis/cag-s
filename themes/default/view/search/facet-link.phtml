@@ -9,6 +9,6 @@
 $escapeHtml = $this->plugin('escapeHtml');
 ?>
 <span class="<?php echo $active ? 'active' : 'inactive'; ?>">
-    <a href="<?php echo $escapeHtml($url); ?>"><?php echo $escapeHtml($value); ?> (<?php echo $count; ?>)</a>
+    <a href="<?php echo $escapeHtml($url); ?>"><?php echo $escapeHtml(str_replace("&amp;","&",$value)); ?> (<?php echo $count; ?>)</a>
 
 </span>
