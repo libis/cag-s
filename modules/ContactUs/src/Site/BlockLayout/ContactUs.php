@@ -162,7 +162,7 @@ class ContactUs extends AbstractBlockLayout
                     $mail['toName'] = $owner ? $owner->name() : null;
                     $mail['subject'] = sprintf($translate('[Contact] %s'), $this->mailer->getInstallationTitle());
                     $body = <<<TXT
-A user has contacted you.
+Een gebruiker heeft je gecontacteerd.
 
 email: {email}
 name: {name}
@@ -181,13 +181,13 @@ TXT;
                     if (!$result) {
                         $status = 'error';
                         $message = new Message(
-                            $translate('Sorry, we are not able to send your email.')
+                            $translate('Sorry, we kunnen je mail niet verzenden.')
                         );
                     }
                     // Send the confirmation message to the visitor.
                     elseif ($data['confirmation_enabled']) {
                         $message = new Message(
-                            $translate('Thank you for your message %s. Check your confirmation mail. We will answer you soon.'),
+                            $translate('Bedankt om ons te contacteren!'),
                             $args['name']
                                 ? sprintf('%s (%s)', $args['name'], $args['from'])
                                 : sprintf('(%s)', $args['from'])
@@ -206,7 +206,7 @@ TXT;
                         if (!$result) {
                             $status = 'error';
                             $message = new Message(
-                                $translate('Sorry, we are not able to send the confirmation email.')
+                                $translate('Sorry, we kunnen de bevestigingsmail niet verzenden.')
                             );
                         }
                     }
@@ -214,7 +214,7 @@ TXT;
             } else {
                 $status = 'error';
                 $message = new Message(
-                    $translate('There is an error.')
+                    $translate('Er is iets fout gelopen.')
                 );
                 $defaultForm = false;
             }
