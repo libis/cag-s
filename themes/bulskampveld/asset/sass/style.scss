@@ -444,3 +444,7 @@ a.card:hover .card__img::before, a.card:focus .card__img::before, .card--link:ho
     height: 100px !important;
   }
 }
+
+.page-header-wrapper .nav--main .nav__menu li:last-child{
+  display: none;
+}

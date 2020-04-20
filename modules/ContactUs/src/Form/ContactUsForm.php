@@ -108,7 +108,7 @@ class ContactUsForm extends Form
             'name' => 'privacy',
             'type' => Element\Checkbox::class,
             'options' => [
-                'label' => 'Ik ga akkoord met de privacy statement', // @translate
+                'label' => 'Ik ga akkoord met de privacyverklaring', // @translate
             ],
             'attributes' => [
                 'id' => 'privacy',
