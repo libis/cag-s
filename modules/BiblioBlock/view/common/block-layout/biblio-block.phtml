@@ -1,6 +1,12 @@
 <?php
 $translate = $this->plugin('translate');
-$biblio = array();
+$biblio = array(
+  'Werkinstrumenten' => array(),
+  'Synthesewerken' => array(),
+  'Thematische studies' => array()
+);
+
+$biblio =
 
 $category = 'All';
 if($block->dataValue('category')):
@@ -10,6 +16,8 @@ endif;
 $search='';
 if(isset($_GET['search'])):
   $search = urlencode(htmlentities($_GET['search']));
+  $search = str_replace('+',' ',$search);
+  echo $search;
 endif;
 ?>
 <div class="section section--default">
