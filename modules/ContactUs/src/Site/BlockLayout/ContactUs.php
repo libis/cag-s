@@ -79,6 +79,9 @@ class ContactUs extends AbstractBlockLayout
         /** @var \ContactUs\Form\ContactUsForm $form */
         $form = $this->formElementManager->get(ContactUsBlockForm::class);
 
+        
+
+
         $addedBlock = empty($block);
         $data = $addedBlock ? $this->defaultSettings : $block->data() + $this->defaultSettings;
         if (is_array($data['questions'])) {

@@ -422,7 +422,7 @@ a.card:hover .card__img::before, a.card:focus .card__img::before, .card--link:ho
   }
 }
 
-.page-header-wrapper .nav--main .nav__menu li:last-child {
+.page-header-wrapper .nav--main .nav__menu > li:nth-last-of-type(-n+2) {
   display: none;
 }
 

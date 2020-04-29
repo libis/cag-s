@@ -5,6 +5,7 @@ use Zend\Filter;
 use Zend\Form\Element;
 use Zend\Form\Form;
 use Zend\Validator;
+use Zend\Http\PhpEnvironment\RemoteAddress;
 
 class ContactUsForm extends Form
 {
@@ -115,6 +116,18 @@ class ContactUsForm extends Form
                 'required' => false,
             ],
         ]);
+
+        $mngr = $this->getFormFactory()->getFormElementManager();
+        $settings = $mngr->getServiceLocator()->get('Omeka\Settings');
+        $siteKey = $settings->get('recaptcha_site_key');
+        $secretKey = $settings->get('recaptcha_secret_key');
+
+        $element = $mngr->get('Omeka\Form\Element\Recaptcha', [
+                  'site_key' => $siteKey,
+                  'secret_key' => $secretKey,
+                  'remote_ip' => (new RemoteAddress)->getIpAddress(),
+                ]);
+        $this->add($element);
 
 
         if ($question) {
