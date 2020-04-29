@@ -17,7 +17,7 @@ $search='';
 if(isset($_GET['search'])):
   $search = urlencode(htmlentities($_GET['search']));
   $search = str_replace('+',' ',$search);
-  echo $search;
+  
 endif;
 ?>
 <div class="section section--default">
