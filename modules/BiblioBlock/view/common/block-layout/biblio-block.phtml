@@ -29,7 +29,9 @@ endif;
           $niv1 = $niv[0];
           $niv2 = $niv[1];
           if($search):
-            if(strpos($resource->value('dcterms:title')->value(), $search) !== false):
+            $stack = strtolower($resource->value('dcterms:title')->value());
+            $needle = strtolower($search);
+            if(strpos($stack, $needle) !== false):
               $biblio[$niv[0]][$niv[1]][$resource->value('dcterms:type')->value()][strip_tags($resource->value('dcterms:title')->value())] = $resource->value('dcterms:title')->value();
             endif;
           else:
