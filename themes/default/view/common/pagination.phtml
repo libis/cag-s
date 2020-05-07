@@ -7,7 +7,35 @@ else:
   $currentPage = 1;
 endif;
 ?>
+<nav class="pagination" role="navigation">
+<?php if ($totalCount): ?>
+    <form method="GET" action="">
+        <?php echo $this->queryToHiddenInputs(['page']); ?>
+        <input type="text" name="page" class="page-input-top" value="<?php echo $currentPage; ?>" size="4" <?php echo ($pageCount == 1) ? 'readonly' : ''; ?> aria-label="<?php echo $translate('Page'); ?>">
+        <span class="page-count"><?php echo sprintf($translate('of %s'), $pageCount); ?></span>
+    </form>
 
+    <?php if ($currentPage != 1): ?>
+    <?php echo $this->hyperlink('', $previousPageUrl, ['class' => 'previous o-icon-prev button', 'title' => $translate('Previous'), 'aria-label' => $translate('Previous')]); ?>
+    <?php else: ?>
+    <span class="previous o-icon-prev button inactive"></span>
+    <?php endif; ?>
+
+    <?php if ($currentPage < $pageCount): ?>
+    <?php echo $this->hyperlink('', $nextPageUrl, ['class' => 'next o-icon-next button', 'title' => $translate('Next'), 'aria-label' => $translate('Next')]); ?>
+    <?php else: ?>
+    <span class="next o-icon-next button inactive"></span>
+    <?php endif; ?>
+
+    <?php
+    $from = $offset + 1;
+    $to = ($currentPage < $pageCount) ? $offset + $perPage : $totalCount;
+    ?>
+    <span class="row-count"><?php echo sprintf($translate('%1$s–%2$s of %3$s'), $from, $to, $totalCount); ?></span>
+<?php else: ?>
+    <?php echo $translate('0 results'); ?>
+<?php endif; ?>
+</nav>
 <!-- pagination -->
 <?php if ($totalCount): ?>
 <div class="section section--default">
@@ -23,17 +51,43 @@ endif;
                 <li class="pagination__item">
                     <a href="<?php echo $previousPageUrl;?>" class="pagination__prev"><span class="visuallyhidden">Vorige</span></a>
                 </li>
-
-                <li class="pagination__item">
-                    <a href="<?php echo $previousPageUrl;?>" class="pagination__btn"><?php echo $currentPage-1; ?></a>
-                </li>
+                <?php endif;?>
+                <?php if ($currentPage > 3): ?>
+                  <?php
+                    $get['page'] = 1;
+                    $get_result = http_build_query($get);
+                    $previousPageUrl = parse_url($_SERVER["REQUEST_URI"], PHP_URL_PATH).'?'.$get_result;
+                  ?>
+                  <li class="pagination__item">
+                      <a href="<?php echo $previousPageUrl;?>" class="pagination__btn"><?php echo 1; ?></a> ...
+                  </li>
+                <?php endif;?>
+                <?php if ($currentPage > 2): ?>
+                  <?php
+                    $get['page'] = $currentPage-2;
+                    $get_result = http_build_query($get);
+                    $previousPageUrl = parse_url($_SERVER["REQUEST_URI"], PHP_URL_PATH).'?'.$get_result;
+                  ?>
+                  <li class="pagination__item">
+                      <a href="<?php echo $previousPageUrl;?>" class="pagination__btn"><?php echo $currentPage-2; ?></a>
+                  </li>
+                <?php endif;?>
+                <?php if ($currentPage > 1): ?>
+                  <?php
+                    $get['page'] = $currentPage-1;
+                    $get_result = http_build_query($get);
+                    $previousPageUrl = parse_url($_SERVER["REQUEST_URI"], PHP_URL_PATH).'?'.$get_result;
+                  ?>
+                  <li class="pagination__item">
+                      <a href="<?php echo $previousPageUrl;?>" class="pagination__btn"><?php echo $currentPage-1; ?></a>
+                  </li>
                 <?php endif; ?>
 
                 <li class="pagination__item">
                     <a href="#" class="pagination__btn active"><?php echo $currentPage; ?></a>
                 </li>
 
-                <?php if ($currentPage < $totalCount): ?>
+                <?php if ($currentPage < $pageCount): ?>
                   <?php
                     $get['page'] = $currentPage+1;
                     $get_result = http_build_query($get);
@@ -42,7 +96,29 @@ endif;
                   <li class="pagination__item">
                       <a href="<?php echo $nextPageUrl;?>" class="pagination__btn"><?php echo $currentPage+1; ?></a>
                   </li>
-
+                <?php endif;?>
+                <?php if ($currentPage < $pageCount-1): ?>
+                  <?php
+                    $get['page'] = $currentPage+2;
+                    $get_result = http_build_query($get);
+                    $nextPageUrl = parse_url($_SERVER["REQUEST_URI"], PHP_URL_PATH).'?'.$get_result;
+                  ?>
+                  <li class="pagination__item">
+                      <a href="<?php echo $nextPageUrl;?>" class="pagination__btn"><?php echo $currentPage+2; ?></a>
+                  </li>
+                <?php endif;?>
+                <?php if ($currentPage < $pageCount-3): ?>
+                  <?php
+                    $get['page'] = $pageCount;
+                    $get_result = http_build_query($get);
+                    $nextPageUrl = parse_url($_SERVER["REQUEST_URI"], PHP_URL_PATH).'?'.$get_result;
+                  ?>
+                  <li class="pagination__item">
+                      ...
+                      <a href="<?php echo $nextPageUrl;?>" class="pagination__btn"><?php echo $pageCount; ?></a>
+                  </li>
+                <?php endif;?>
+                <?php if ($currentPage < $pageCount): ?>
                   <li class="pagination__item">
                       <a href="<?php echo $nextPageUrl;?>" class="pagination__next"><span class="visuallyhidden">Volgende</span></a>
                   </li>
