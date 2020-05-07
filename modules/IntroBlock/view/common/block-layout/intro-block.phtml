@@ -44,6 +44,10 @@
                     <div class="text--lead spacer">
                         <?php echo $block->dataValue('text');?>
                     </div>
+                    <?php if($block->dataValue('link') && $block->dataValue('link_text')):?>
+                      <div class="link link--ext spacer">
+                        <a href="<?php echo $block->dataValue('link');?>"><?php echo $block->dataValue('link_text');?></a></div>
+                    <?php endif;?>
                 </div>
             </div>
 
