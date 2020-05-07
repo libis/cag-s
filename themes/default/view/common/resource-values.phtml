@@ -61,8 +61,12 @@ $labelInfo = $this->setting('property_label_information');
                 <?php endif; ?>
                 <?php
                   $text = $value->asHtml();
-                  //$url = '@(http(s)?)?(://)?(([a-zA-Z])([-\w]+\.)+([^\s\.]+[^\s]*)+[^,.\s])@';
-                  $string = preg_replace('@(https?://([-\w\.]+)+(:\d+)?(/([\w/_\.%-=#]*(\?\S+)?)?)?)@', '<a target="_blank" href="$1">$1</a>', $text);
+
+                  if($property->alternateLabel() != 'Bibliografische referentie'):
+                    $string = preg_replace('@(https?://([-\w\.]+)+(:\d+)?(/([\w/_\.%-=#]*(\?\S+)?)?)?)@', '<a target="_blank" href="$1">$1</a>', $text);
+                  else:
+                    $string = preg_replace("/<a(.*?)>/", "<a$1 target=\"_blank\">", html_entity_decode($text));
+                  endif;
 
                   $rights = array(
                     'http://rightsstatements.org/vocab/InC-NC/1.0/' => array('link' => 'https://creativecommons.org/licenses/by/4.0/deed.nl','img' => 'https://rightsstatements.org/files/buttons/InC-NC.white.svg'),
@@ -120,6 +124,7 @@ $labelInfo = $this->setting('property_label_information');
                   if($property->alternateLabel() == 'Genre'):
                     $string = '<a href="/films?q=&limit%5Bdcterms:type%5D%5B0%5D='.$text.'">'.$text.'</a>';
                   endif;
+
                   if($property->alternateLabel() == 'Onderwerp'):
                     $searchpages = array(
                       'Film' => 'films',
