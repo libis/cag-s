@@ -41,7 +41,6 @@ $this->htmlElement('body')->appendAttribute('class', 'search-page resource brows
 $this->headLink()->appendStylesheet($this->assetUrl('css/search.css', 'Search'));
 $this->headScript()->appendFile($this->assetUrl('js/search.js', 'Search'));
 ?>
-
 <!-- intro + image -->
 <div class="section section--lrg section--light">
    <div class="container">
@@ -52,7 +51,13 @@ $this->headScript()->appendFile($this->assetUrl('js/search.js', 'Search'));
                <a href="/" itemprop="url" class="breadcrumb__item"><span itemprop="title">Home</span></a>
            </span>
            <span itemscope="" itemtype="http://data-vocabulary.org/Breadcrumb" class="breadcrumb__scope">
+              <?php if($query->getQuery()):?>
+                <span itemprop="title"><a href="<?= parse_url($_SERVER["REQUEST_URI"], PHP_URL_PATH).'?q=' ?>"><?php echo $page->name();?></a></span></span>
+                <span itemscope="" itemtype="http://data-vocabulary.org/Breadcrumb" class="breadcrumb__scope">
+                <span itemprop="title"><?= $query->getQuery()?></span></span>
+              <?php else:?>
                <span itemprop="title"><?php echo $page->name();?></span>
+              <?php endif;?>
            </span>
        </div>
        <?php
@@ -98,7 +103,7 @@ $this->headScript()->appendFile($this->assetUrl('js/search.js', 'Search'));
 
      <!-- search filter -->
      <?php if($page->name() != 'Verhalen'):?>
-       <?php echo $this->partial('search/facets', ['facets' => $facets, 'page' => $page]); ?>
+       <?php echo $this->partial('search/facets', ['facets' => $facets, 'page' => $page, 'query' => $query]); ?>
      <?php endif;?>
 
 
