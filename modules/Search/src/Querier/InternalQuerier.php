@@ -32,6 +32,9 @@ class InternalQuerier extends AbstractQuerier
 
         $q = $query->getQuery();
         $q = trim($q);
+        if($q == '*'):
+          $q= '';  
+        endif;
         if (strlen($q)) {
             $data['property'][] = [
                 'joiner' => 'and',

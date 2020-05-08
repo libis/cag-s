@@ -95,6 +95,7 @@ $this->headScript()->appendFile($this->assetUrl('js/search.js', 'Search'));
                    'query' => $query,
                    'response' => $response,
                    'sortOptions' => $sortOptions,
+                   'name' => $page->name()
                ]);
            ?>
        <?php endif; ?>

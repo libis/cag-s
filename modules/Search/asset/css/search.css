@@ -69,10 +69,34 @@ justify-content: center;
   display: block;
   height: auto;
   flex: 1 0;
+  padding:20px;
 }
 
 .list .card__img_3{
   width: 150px;
   height: 150px;
   margin-right: 1rem;
+}
+
+.list .link{
+  display: none;
+}
+
+.list p.description{
+  display: none;
+}
+
+.list .card__title{
+  margin-bottom: 5px;
+}
+
+.list .datering{
+  margin-bottom: 0;
+}
+
+.list .grid__item{
+  margin-top: 6px;
+}
+.list .grid__item:first-of-type{
+  margin-top: 26px;
 }
