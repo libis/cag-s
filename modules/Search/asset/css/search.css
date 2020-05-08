@@ -43,24 +43,36 @@
   content: "\f14a";
 }
 
-.resource-list {
-  display: flex;
-}
-.resource-list.list {
-  flex-direction: column;
-}
-.resource-list.grid {
-  flex-direction: row;
-  flex-wrap: wrap;
-}
-.resource-list.grid > * {
-  flex-basis: 33%;
-}
-.resource-list.grid .description {
-  display: none;
-}
-
 .search-results .resource-thumbnail {
   min-width: 200px;
   max-width: 200px;
+}
+
+.search-results-sort{
+  display: flex;
+align-items: center;
+justify-content: center;
+}
+.layout-switch{
+  margin-left: 1rem;
+}
+.list .grid__item {
+    width: 100%;
+}
+
+.list .items{
+  flex-direction: row;
+}
+
+.list .card__body{
+  width: 100%;
+  display: block;
+  height: auto;
+  flex: 1 0;
+}
+
+.list .card__img_3{
+  width: 150px;
+  height: 150px;
+  margin-right: 1rem;
 }
