@@ -114,8 +114,8 @@ endif;
             <?php endif;?>
             <?php if ($description = $resource->displayDescription()): ?>
                 <?php
-                  if(strlen($description) > 200):
-                    $description = substr($description, 0, 200);
+                  if(strlen(strip_tags($description)) > 200):
+                    $description = substr(strip_tags($description), 0, 200);
                     $description = substr($description, 0, strrpos($description, ' ')).' ...';
                   endif;
                 ?>
@@ -128,7 +128,7 @@ endif;
             <?php else:?>
               <div class="link link--ext card__link"><a href="<?php echo $url;?>"><?php echo $type;?> bekijken</a></div>
             <?php endif; ?>
-          </div>  
+          </div>
       </a>
 <?php echo sprintf('</%s>', $tag); ?>
 
