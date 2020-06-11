@@ -16,6 +16,8 @@ use Zend\Http\PhpEnvironment\RemoteAddress;
 use Zend\Log\Logger;
 use Zend\Session\Container;
 use Zend\View\Renderer\PhpRenderer;
+use Zend\Mime\Message as MimeMessage;
+use Zend\Mime\Part as MimePart;
 
 class ContactUs extends AbstractBlockLayout
 {
@@ -79,9 +81,6 @@ class ContactUs extends AbstractBlockLayout
         /** @var \ContactUs\Form\ContactUsForm $form */
         $form = $this->formElementManager->get(ContactUsBlockForm::class);
 
-        
-
-
         $addedBlock = empty($block);
         $data = $addedBlock ? $this->defaultSettings : $block->data() + $this->defaultSettings;
         if (is_array($data['questions'])) {
@@ -123,7 +122,7 @@ class ContactUs extends AbstractBlockLayout
 
         $params = $view->params()->fromPost();
         if ($params) {
-            if ($antispam) {
+            /*if ($antispam) {
                 $isSpam = $this->checkSpam($view, $block, $params);
                 if (!$isSpam) {
                     $question = (new Container('ContactUs'))->question;
@@ -135,7 +134,7 @@ class ContactUs extends AbstractBlockLayout
                         'checkAnswer' => $checkAnswer,
                     ];
                 }
-            }
+            }*/
 
             /** @var \ContactUs\Form\ContactUsForm $form */
             $form = $this->formElementManager->get(ContactUsForm::class, $formOptions);
@@ -164,19 +163,15 @@ class ContactUs extends AbstractBlockLayout
                     $mail['to'] = $owner ? $owner->email() : $view->setting('administrator_email');
                     $mail['toName'] = $owner ? $owner->name() : null;
                     $mail['subject'] = sprintf($translate('[Contact] %s'), $this->mailer->getInstallationTitle());
-                    $body = <<<TXT
-Een gebruiker heeft je gecontacteerd.
-
-email: {email}
-name: {name}
-newsletter: {newsletter}
-privacy: {privacy}
-ip: {ip}
-motivation: {motivation}
-message:
-
-{message}
-TXT;
+                    $body = "Een gebruiker heeft je gecontacteerd.<br />
+                              email: {email}<br />
+                                name: {name}<br />
+                                newsletter: {newsletter}<br />
+                                privacy: {privacy}<br />
+                                ip: {ip}<br />
+                                motivation: {motivation}<br />
+                                message:<br />
+                                {message}";
                     $body = $translate($body);
                     $mail['body'] = $this->fillMessage($body, $args);
 
@@ -190,7 +185,7 @@ TXT;
                     // Send the confirmation message to the visitor.
                     elseif ($data['confirmation_enabled']) {
                         $message = new Message(
-                            $translate('Bedankt om ons te contacteren!'),
+                            $translate('Bedankt om ons te contacteren!<br /><br />Met Vriendelijke groeten,<br />Centrum Agrarische Geschiedenis (CAG)'),
                             $args['name']
                                 ? sprintf('%s (%s)', $args['name'], $args['from'])
                                 : sprintf('(%s)', $args['from'])
@@ -203,6 +198,19 @@ TXT;
                         $subject = $data['confirmation_subject'] ?: $this->defaultSettings['confirmation_subject'];
                         $mail['subject'] = $this->fillMessage($translate($subject), $args);
                         $body = $data['confirmation_body'] ?: $this->defaultSettings['confirmation_body'];
+                        if($data['motivation']):
+                          $body = 'Beste [Voornaam Naam],<br /><br />
+                                    <p>We hebben je aanvraag goed ontvangen! We nemen het in behandeling en nemen zo snel mogelijk contact met je op.
+                                    </p><br />
+                                    Met vriendelijke groeten,<br /><br />
+                                    Centrum Agrarische Geschiedenis (CAG)<br />
+                                    Atrechtcollege, Naamsestraat 63, bus 5308<br />
+                                    3000  Leuven<br /><br />
+                                    Tel: +32 (0)16 32 35 25<br />
+                                    <a href="mailto:contact@cagnet.be">contact@cagnet.be</a><br />
+                                    <a href="https://cagnet.be">www.cagnet.be</a> | <a href="https://collectiebulskampveld.be">www.collectiebulskampveld.be</a>
+                                    ';
+                        endif;
                         $mail['body'] = $this->fillMessage($translate($body), $args);
 
                         $result = $this->sendEmail($mail);
@@ -345,12 +353,17 @@ TXT;
         ];
         $params += $defaultParams;
 
+        $html = new MimePart($params['body']);
+        $html->type = "text/html";
+
         $mailer = $this->mailer;
         $message = $mailer->createMessage();
+        $body = new MimeMessage();
+        $body->setParts(array($html));
         $message
             ->setTo($params['to'], $params['toName'])
             ->setSubject($params['subject'])
-            ->setBody($params['body']);
+            ->setBody($body);
         if ($params['from']) {
             $message
                 ->setFrom($params['from'], $params['fromName']);

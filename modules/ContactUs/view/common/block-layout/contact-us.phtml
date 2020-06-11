@@ -14,9 +14,9 @@
         <?php if ($message): ?>
         <p class="explanation <?= $status ?>"><?= $message ?></p>
         <?php endif; ?>
-        <?php if ($form): ?>
+        <?php if ($form && !($status == 'success' && $message)): ?>
         <?php echo $this->form($form); ?>
         <?php endif; ?>
     </div>
   </div>
-</div>    
+</div>
