@@ -185,7 +185,7 @@ class ContactUs extends AbstractBlockLayout
                     // Send the confirmation message to the visitor.
                     elseif ($data['confirmation_enabled']) {
                         $message = new Message(
-                            $translate('Bedankt om ons te contacteren!<br /><br />Met Vriendelijke groeten,<br />Centrum Agrarische Geschiedenis (CAG)'),
+                            $translate('Bedankt om ons te contacteren!<br /><br />Met vriendelijke groeten,<br />Centrum Agrarische Geschiedenis (CAG)'),
                             $args['name']
                                 ? sprintf('%s (%s)', $args['name'], $args['from'])
                                 : sprintf('(%s)', $args['from'])
@@ -198,19 +198,7 @@ class ContactUs extends AbstractBlockLayout
                         $subject = $data['confirmation_subject'] ?: $this->defaultSettings['confirmation_subject'];
                         $mail['subject'] = $this->fillMessage($translate($subject), $args);
                         $body = $data['confirmation_body'] ?: $this->defaultSettings['confirmation_body'];
-                        if($data['motivation']):
-                          $body = 'Beste [Voornaam Naam],<br /><br />
-                                    <p>We hebben je aanvraag goed ontvangen! We nemen het in behandeling en nemen zo snel mogelijk contact met je op.
-                                    </p><br />
-                                    Met vriendelijke groeten,<br /><br />
-                                    Centrum Agrarische Geschiedenis (CAG)<br />
-                                    Atrechtcollege, Naamsestraat 63, bus 5308<br />
-                                    3000  Leuven<br /><br />
-                                    Tel: +32 (0)16 32 35 25<br />
-                                    <a href="mailto:contact@cagnet.be">contact@cagnet.be</a><br />
-                                    <a href="https://cagnet.be">www.cagnet.be</a> | <a href="https://collectiebulskampveld.be">www.collectiebulskampveld.be</a>
-                                    ';
-                        endif;
+                      
                         $mail['body'] = $this->fillMessage($translate($body), $args);
 
                         $result = $this->sendEmail($mail);
