@@ -478,4 +478,35 @@
   }
 }
 
+.slick-slide div {
+  position: relative;
+}
+
+.slick-slide div img {
+  margin-bottom: 0;
+}
+
+.slick-slide div .caption {
+  visibility: hidden;
+}
+
+.slick-slide div:hover .caption {
+  visibility: visible;
+}
+
+.caption {
+  padding-bottom: 0;
+  -webkit-transition: all 100ms ease-in-out;
+  transition: all 100ms ease-in-out;
+  position: absolute !important;
+  bottom: 0;
+  background: #f9f9f9;
+  padding: 1rem;
+  margin: 0 10px;
+  font-size: 0.9rem;
+  width: auto;
+  right: 0;
+  left: 0;
+}
+
 /*# sourceMappingURL=style.css.map */

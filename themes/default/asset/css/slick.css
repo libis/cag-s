@@ -21,10 +21,8 @@
 .slick-list
 {
     position: relative;
-
     display: block;
     overflow: hidden;
-
     margin: 0;
     padding: 0;
 }
@@ -89,6 +87,8 @@
 .slick-slide img
 {
     display: block;
+    height: 250px;
+    margin: 10px;
 }
 .slick-slide.slick-loading img
 {
@@ -116,4 +116,48 @@
 }
 .slick-arrow.slick-hidden {
     display: none;
+}
+
+.slick-prev {
+    left: -25px;
+}
+
+.slick-prev, .slick-next {
+    font-size: 0;
+    line-height: 0;
+    position: absolute;
+    top: 50%;
+    display: block;
+    padding: 5px;
+    -webkit-transform: translate(0, -50%);
+    -ms-transform: translate(0, -50%);
+    transform: translate(0, -50%);
+    cursor: pointer;
+    color: transparent;
+    border: none;
+    outline: none;
+    background: #f9f9f9;
+    z-index:2;
+}
+
+.slick-prev::before {
+    content: '\F10C';
+}
+
+.slick-next::before {
+    content: "\F10D";
+}
+
+.slick-next {
+    right: -25px;
+}
+
+.slick-prev::before, .slick-next::before {
+    font-family: "icons";
+    font-size: 2rem;
+    line-height: 1;
+    opacity: .75;
+    color: #006b65;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
 }

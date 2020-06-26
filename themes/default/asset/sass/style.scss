@@ -494,3 +494,39 @@
     height: 100px !important;
   }
 }
+
+//slick caption
+
+.slick-slide div{
+  position: relative;
+
+  img{
+    margin-bottom: 0;
+  }
+
+
+  .caption{
+    visibility: hidden;
+  }
+
+  &:hover{
+    .caption{
+      visibility: visible;
+
+    }
+  }
+}
+.caption{
+  padding-bottom:0;
+  -webkit-transition: all 100ms ease-in-out;
+  transition: all 100ms ease-in-out;
+  position: absolute !important;
+  bottom:0;
+  background: #f9f9f9;
+  padding: 1rem;
+  margin: 0 10px;
+  font-size: 0.9rem;
+  width: auto;
+  right: 0;
+  left: 0;
+}
