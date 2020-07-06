@@ -86,12 +86,13 @@
 {
     float: right;
 }
-.slick-slide img
+.gallery-block .slick-slide img
 {
     display: block;
     height: 250px;
     margin: 10px;
 }
+
 .slick-slide.slick-loading img
 {
     display: none;
