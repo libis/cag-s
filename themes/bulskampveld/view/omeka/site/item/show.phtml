@@ -5,6 +5,13 @@ $this->htmlElement('body')->appendAttribute('class', 'item resource show');
 $embedMedia = $this->siteSetting('item_media_embed', false);
 $itemMedia = $item->media();
 $thumb = $item->primaryMedia();
+$template = $item->resourceTemplate();
+
+if($template):
+  $type = $template->label();
+else:
+  $type = "";
+endif;
 ?>
 
 <!-- beeldbank: image / table -->
@@ -15,39 +22,71 @@ $thumb = $item->primaryMedia();
             <a href="<?php echo $site->url();?>" itemprop="url" class="breadcrumb__item"><span itemprop="title">Home</span></a>
         </span>
         <span itemscope="" itemtype="https://data-vocabulary.org/Breadcrumb" class="breadcrumb__scope">
-            <a href="<?php echo $site->url();?>/beeldbank?q=" itemprop="url" class="breadcrumb__item"><span itemprop="title">Beeldbank</span></a>
+        <?php if($type == "Nieuws BKV"):?>
+          <a href="/nieuws-bkv?q=" itemprop="url" class="breadcrumb__item"><span itemprop="title">Nieuws</span></a>
+        <?php elseif($type == "Agendapunt BKV"):?>
+          <a href="/agenda-bkv?q=" itemprop="url" class="breadcrumb__item"><span itemprop="title">Agenda</span></a>
+        <?php endif;?>
         </span>
         <span itemscope="" itemtype="https://data-vocabulary.org/Breadcrumb" class="breadcrumb__scope">
             <span itemprop="title"><?php echo $item->displayTitle();?></span>
         </span>
     </div>
     <h1><?php echo $this->pageTitle($item->displayTitle(), 2); ?></h1>
+    <?php if($item->value('dcterms:date')):?>
+        <?php
+          $date = $item->value('dcterms:date');
+          //echo $date;
+          $output = DateTime::createFromFormat('Ymd', $date);
+          if(!$output){
+              $output = DateTime::createFromFormat('Y-m-d', $date);
+          }
+          $output = $output->format('d-m-Y');
+        ?>
+        <p class="datering"><?php echo $output;?></p>
+    <?php endif;?>
   </div>
 </div>
-<?php if ($embedMedia && $thumb): ?>
-  <div class="section section--default">
-    <div class="container">
-      <!-- beeld -->
-      <div class="beeld">
-        <?php
-          $url = str_replace('http:', '', $thumb->thumbnailUrl('large'));
-        ?>
-        <img src="<?php echo $url;?>" />
 
+<div class="section section--default">
+  <div class="container">
+    <div class="grid grid--2-col@med">
+      <div class="grid__item">
+        <?php echo $item->displayDescription(); ?>
+      </div>
+      <div class="grid__item">
+        <?php if(sizeof($itemMedia) > 1):?>
+          <div class="slider-for">
+            <?php foreach($itemMedia as $media):?>
+              <div class="beeld">
+                <?php
+                  $url = str_replace('http:', '', $media->thumbnailUrl('large'));
+                ?>
+                <img src="<?php echo $url;?>">
+              </div>
+            <?php endforeach;?>
+          </div>
+          <div class="slider-nav" role="toolbar">
+            <?php foreach($itemMedia as $media):?>
+              <div class="beeld-nav">
+                <?php
+                  $url = str_replace('http:', '', $media->thumbnailUrl('square'));
+                ?>
+                <img src="<?php echo $url;?>">
+              </div>
+            <?php endforeach;?>
+          </div>
+        <?php else: ?>
+          <div class="beeld">
+            <?php
+              $url = str_replace('http:', '', $itemMedia[0]->thumbnailUrl('large'));
+            ?>
+            <img src="<?php echo $url;?>">
+          </div>
+        <?php endif;?>
+             <?php //echo $this->thumbnail($thumb, 'large');?>
       </div>
     </div>
-  </div>
-<?php endif; ?>
-<div class="section section--default">
-  <div class="container">
-    <div class="panel panel--light">
-      <p><?php echo $item->displayDescription(); ?></p>
-    </div>
-  </div>
-</div>
-<div class="section section--default">
-  <div class="container">
-
   </div>
 </div>
 
@@ -148,3 +187,25 @@ endif;
 
 ?>
 <?php endif; ?>
+<script>
+  $(document).ready(function(){
+    $('.slider-for').slick({
+      slidesToShow: 1,
+      slidesToScroll: 1,
+      arrows: false,
+      fade: true,
+      centerMode: true,
+      asNavFor: '.slider-nav'
+    });
+    $('.slider-nav').slick({
+      slidesToShow: 10,
+      slidesToScroll: 1,
+      asNavFor: '.slider-for',
+      focusOnSelect: true
+    });
+
+    $('.beeld').on('contextmenu', 'img', function(e){
+      return false;
+    });
+  });
+</script>

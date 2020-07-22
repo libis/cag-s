@@ -5,11 +5,11 @@
                 <h2><?php echo $block->dataValue('title');?></h2>
                 <?php echo $block->dataValue('text');?>
             </span>
-
-            <div class="spacer">
-                <a href="<?php echo $block->dataValue('link');?>" class="btn spacer">Meer lezen</a>
-            </div>
-
+            <?php if($block->dataValue('link')):?>
+              <div class="spacer">
+                  <a href="<?php echo $block->dataValue('link');?>" class="btn spacer">Meer lezen</a>
+              </div>
+            <?php endif;?>
         </div>
     </div>
 </div>

@@ -164,3 +164,8 @@
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
 }
+
+.slider-nav .beeld-nav img {
+    padding: 2px;
+    width: 100px;
+}

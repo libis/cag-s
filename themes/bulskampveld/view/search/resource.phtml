@@ -49,7 +49,7 @@ endif;
 if($type == 'Object BKV'):
   $type = 'Object';
 endif;
-
+$url = $resource->url();
 if($resource->value('dcterms:relation')):
   //$url = '/page/'.$resource->value('dcterms:relation');
 else:
