@@ -61,8 +61,12 @@ $translate = $this->plugin('translate');
                 $mediaurl = "";
               endif;
 
-              if($type == 'Verhaal' || $type == 'Project' || $type == 'Object BKV'):
-                $url = "/page/".$resource->value('dcterms:relation');
+              if($type == 'Verhaal' || $type == 'Project' || $type == 'Object BKV' || $type == 'Nieuws BKV' || $type == 'Agendapunt BKV'):
+                if($resource->value('dcterms:relation')):
+                  $url = "/page/".$resource->value('dcterms:relation');
+                else:
+                  $url = $resource->url();
+                endif;
               else:
                 $url = $resource->url();
                 $date = '';
