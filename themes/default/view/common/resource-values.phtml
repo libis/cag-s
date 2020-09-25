@@ -84,8 +84,11 @@ $labelInfo = $this->setting('property_label_information');
                     else:
                       $string = '<a href="'.$rights[$text]['link'].'"><img src="'.$rights[$text]['img'].'" /></a>';
                     endif;
-                    if($template = 'Film'):
+                    if($template == 'Film'):
                       $string .= "<br />Neem contact op met de betreffende bewaarinstelling voor meer informatie over de rechtenstatus";
+                    endif;
+                    if($template == 'Beeld'):
+                      $string .= '<br />Voorwaarden voor hergebruik worden bepaald door de rechthebbenden. Gebruik <a href="https://cagnet.be/page/aanvraag?aanvraag=1&id='.$value->resource()->id().'">het aanvraagformulier</a> voor meer informatie.';
                     endif;
                   endif;
 

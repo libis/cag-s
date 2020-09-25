@@ -120,7 +120,7 @@ class CagBrowseBlock extends AbstractBlockLayout
 
         $site = $block->page()->site();
         if ($view->siteSetting('browse_attached_items', false)) {
-            $query['site_attachments_only'] = true;
+            //$query['site_attachments_only'] = true;
         }
 
         $query['site_id'] = $site->id();
@@ -132,7 +132,7 @@ class CagBrowseBlock extends AbstractBlockLayout
         if (!isset($query['sort_order'])) {
             $query['sort_order'] = 'desc';
         }
-        
+
         $response = $view->api()->search($resourceType, $query);
         $resources = $response->getContent();
 
