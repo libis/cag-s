@@ -41,7 +41,7 @@ endif;
           if(!$output){
               $output = DateTime::createFromFormat('Y-m-d', $date);
           }
-          $output = $output->format('d-m-Y');
+          //$output = $output->format('d-m-Y');
         ?>
         <p class="datering"><?php echo $output;?></p>
     <?php endif;?>
