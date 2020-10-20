@@ -303,11 +303,11 @@ if($type != 'Nieuws' && $type != 'Agendapunt'):
         </div>
         <div class="text--center u-mt-med">
           <?php if($type == "Collectie"):?>
-            <a href="<?php echo $site->url();?>/collecties?q=" class="btn btn--ext">
+            <a href="/collecties?q=" class="btn btn--ext">
               Bekijk alle collecties
             </a>
           <?php elseif($type == "Beeld"): ?>
-            <a href="<?php echo $site->url();?>/beeldbank?q=" class="btn btn--ext">
+            <a href="/beeldbank?q=" class="btn btn--ext">
               Bekijk alle beelden
             </a>
           <?php endif;?>
