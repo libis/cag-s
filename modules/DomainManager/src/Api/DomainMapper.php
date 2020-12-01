@@ -443,6 +443,12 @@ class DomainMapper
 
     public function createRoute($routes = null)
     {
+
+        if (strpos($this->url, 's/en') !== false) {
+
+            return;
+        }
+
         if ($this->isIgnoredRoute()) {
             return;
         }
