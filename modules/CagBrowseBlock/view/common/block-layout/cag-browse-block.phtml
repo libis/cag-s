@@ -28,8 +28,10 @@ $translate = $this->plugin('translate');
         'Project' => 'projecten',
         'Film' => 'films',
         'Filmkopie' => 'filmkopies',
-        'Collecite' => 'collecties',
+        'Collectie' => 'collecties',
         'Nieuws' => 'nieuws',
+        'News' => 'news',
+        'Event' => 'events',
         'Agendapunt' => 'agenda',
         'Agendapunt BKV' => 'agenda-bkv',
         'Nieuws BKV' => 'nieuws-bkv',
@@ -67,8 +69,8 @@ $translate = $this->plugin('translate');
                 else:
                   $url = $resource->url();
                 endif;
-              else:
-                $url = $resource->url();
+              elseif($type == 'Event' || $type == 'News'):
+                $url = '/s/en'.$resource->url();
                 $date = '';
               endif;
             ?>
@@ -123,6 +125,8 @@ $translate = $this->plugin('translate');
                   ?>
                   <?php if($type == 'Film' || $type == 'Filmkopie'):?>
                     <a href="<?php echo $url;?>">Lees meer</a>
+                  <?php elseif($type == 'Event' || $type == 'News'):?>
+                      <a href="<?php echo $url;?>">Read more</a>
                   <?php else:?>
                     <a href="<?php echo $url;?>"><?php echo $typel.' bekijken';?></a>
                   <?php endif; ?>
@@ -137,6 +141,10 @@ $translate = $this->plugin('translate');
       <div class="text--center u-mt-med">
         <?php if($type == 'Nieuws' || $type == 'Agendapunt' || $type == 'Agendapunt BKV' || $type == 'Nieuws BKV'):?>
           <a href="<?php echo '/'.$templates[$type].'?q=&sort=dcterms:date desc'?>" class="btn btn--ext">
+            <?php echo $this->linkText;?>
+          </a>
+        <?php elseif($type == 'News' || $type == 'Event'):?>
+          <a href="<?php echo '/s/en/'.$templates[$type].'?q=&sort=dcterms:date desc'?>" class="btn btn--ext">
             <?php echo $this->linkText;?>
           </a>
         <?php else:?>

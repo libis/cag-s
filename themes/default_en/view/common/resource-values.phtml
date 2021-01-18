@@ -1,0 +1,170 @@
+<?php
+$translate = $this->plugin('translate');
+$escape = $this->plugin('escapeHtml');
+$labelInfo = $this->setting('property_label_information');
+?>
+<?php foreach ($templateProperties as $term => $property): ?>
+  <?php
+    $dontshow = ['Titel','Description', 'Is Version Of', 'Relation', 'Language'];
+    /*if(in_array($propertyData['property']->label(),$dontshow)):
+      continue;
+    endif;*/
+
+    //echo $propertyData['property']->label();
+    $template = $property->template()->label();
+
+    if($property->isPrivate()):
+      continue;
+    endif;
+    $propertyData = '';
+    if(isset($values[$property->property()->term()])):
+      $propertyData = $values[$property->property()->term()];
+    else:
+      continue;
+    endif;
+  ?>
+
+  <tr>
+      <td>
+        <strong>
+          <?php if ($property->alternateLabel()): ?>
+          <?php echo $escape($property->alternateLabel()); ?>
+          <?php else: ?>
+          <?php echo $escape($translate($property->property()->label())); ?>
+          <?php endif; ?>
+          <?php if ('term' === $labelInfo): ?>
+          <span class="field-term">(<?php echo $escape($property->term()); ?>)</span>
+          <?php elseif ('vocab' === $labelInfo): ?>
+          <span class="field-term">(<?php echo $escape($property->vocabulary()->label()); ?>)</span>
+          <?php endif; ?>
+        </strong>
+      </td>
+
+      <td>
+        <?php foreach ($propertyData['values'] as $key=>$value): ?>
+            <?php
+            $valueType = $value->type();
+            $class = ['value'];
+            if ('resource' == $valueType || strpos($valueType, 'resource') !== false) {
+                $class[] = 'resource';
+                $class[] = $escape($value->valueResource()->resourceName());
+            } elseif ('uri' == $valueType) {
+                $class[] = 'uri';
+            }
+            if (!$value->isPublic()) {
+                $class[] = 'private';
+            }
+            ?>
+            <div class="<?php echo implode(' ', $class); ?>" lang="<?php echo $escape($value->lang()); ?>">
+                <?php if ($language = $value->lang()): ?>
+                <span class="language"><?php echo $language; ?></span>
+                <?php endif; ?>
+                <?php
+                  $text = $value->asHtml();
+
+                  if($property->alternateLabel() != 'Bibliografische referentie'):
+                    $string = preg_replace('@(https?://([-\w\.]+)+(:\d+)?(/([\w/_\.%-=#]*(\?\S+)?)?)?)@', '<a target="_blank" href="$1">$1</a>', $text);
+                  else:
+                    $string = preg_replace("/<a(.*?)>/", "<a$1 target=\"_blank\">", html_entity_decode($text));
+                  endif;
+
+                  $rights = array(
+                    'http://rightsstatements.org/vocab/InC-NC/1.0/' => array('link' => 'https://creativecommons.org/licenses/by/4.0/deed.nl','img' => 'https://rightsstatements.org/files/buttons/InC-NC.white.svg'),
+                    'http://rightsstatements.org/vocab/InC-RUU/1.0/' => array('link' => 'https://creativecommons.org/licenses/by-nc/4.0/deed.nl','img' => 'https://rightsstatements.org/files/buttons/InC-RUU.white.svg'),
+                    'http://rightsstatements.org/vocab/InC/1.0/' => array('link' => 'https://creativecommons.org/licenses/by-nc-nd/4.0/deed.nl','img' => 'https://rightsstatements.org/files/buttons/InC.white.svg'),
+                    'http://rightsstatements.org/vocab/NKC/1.0/' => array('link' => 'https://creativecommons.org/licenses/by-nc-sa/4.0/deed.nl','img' => 'https://rightsstatements.org/files/buttons/NKC.white.svg'),
+                    'https://creativecommons.org/publicdomain/mark/1.0/' => array('link' => 'http://creativecommons.org/publicdomain/mark/1.0/deed.nl','img' => 'https://licensebuttons.net/p/mark/1.0/88x31.png'),
+
+                  );
+
+                  if(isset($rights[$text])):
+                    if(isset($values['dcterms:rights'])):
+                      $rightslink = $values['dcterms:rights']['values'][0]->asHtml();
+                      $string = '<a href="'.$rightslink.'"><img class="right-img" src="'.$rights[$text]['img'].'" /></a>';
+                    else:
+                      $string = '<a href="'.$rights[$text]['link'].'"><img src="'.$rights[$text]['img'].'" /></a>';
+                    endif;
+                    if($template == 'Film'):
+                      $string .= "<br />Neem contact op met de betreffende bewaarinstelling voor meer informatie over de rechtenstatus";
+                    endif;
+                    if($template == 'Beeld'):
+                      $string .= '<br />Voorwaarden voor hergebruik worden bepaald door de rechthebbenden. Gebruik <a href="https://cagnet.be/page/aanvraag?aanvraag=1&id='.$value->resource()->id().'">het aanvraagformulier</a> voor meer informatie.';
+                    endif;
+                  endif;
+
+                  if($property->alternateLabel() == 'Filmkopies'):
+                    $query = 'property[0][joiner]=and&property[0][property]=27&property[0][type]=eq&property[0][text]='.$text.'&resource_class_id[]=&resource_template_id[]=13&item_set_id[]=&site_id=';
+                    parse_str($query,$query);
+
+                    $filmkopie = $items = $this->api()->searchOne('items',$query);
+                    $filmkopie = $filmkopie->getContent();
+                    if($filmkopie):
+                      $string = $filmkopie->link($filmkopie->displayTitle());
+                    else:
+                      $string = "";
+                    endif;
+                  endif;
+
+                  if($property->alternateLabel() == 'Medewerker' || $property->alternateLabel() == 'Onderwerp' ):
+                    $text = str_replace(';','<br />',$text);
+                    $string = $text;
+                  endif;
+
+                  if($property->alternateLabel() == 'Film'):
+                    $text = str_replace('Filmcopy.','',$text);
+                    $query = 'property[0][joiner]=and&property[0][property]=35&property[0][type]=in&property[0][text]='.$text.'&resource_class_id[]=&resource_template_id[]=10&item_set_id[]=&site_id=';
+                    parse_str($query,$query);
+
+                    $filmkopie = $items = $this->api()->searchOne('items',$query);
+                    $filmkopie = $filmkopie->getContent();
+                    if($filmkopie):
+                      $string = $filmkopie->link($filmkopie->displayTitle());
+                    else:
+                      $string = "";
+                    endif;
+                  endif;
+
+                  if($property->alternateLabel() == 'Genre'):
+                    $string = '<a href="/films?q=&limit%5Bdcterms:type%5D%5B0%5D='.$text.'">'.$text.'</a>';
+                  endif;
+
+                  if($property->alternateLabel() == 'Onderwerp'):
+                    $searchpages = array(
+                      'Film' => 'films',
+                      'Beeld' => 'beeldbank',
+                      'Collectie' => 'collecties',
+                      'Filmkopie' => 'filmkopies'
+                    );
+                    $template;
+                    $string = '<a href="/'.$searchpages[$template].'?q=&limit%5Bdcterms:subject%5D%5B0%5D='.$text.'">'.$text.'</a>';
+                  endif;
+
+                  if($property->alternateLabel() == 'Plaats van vervaardiging'):
+                    $codes = array(
+                      'GB' => 'Verenigd Koninkrijk',
+                      'UK' => 'Verenigd Koninkrijk',
+                      'NL' => 'Nederland',
+                      'IT' => 'Italië',
+                      'SZ' => 'Zwitserland',
+                      'FR' => 'Frankrijk',
+                      'CN' => 'Canada',
+                      'BE' => 'België',
+                      'US' => 'Verenigde Staten',
+                      'AU' => 'Oostenrijk',
+                      'LU' => 'Luxemburg',
+                      'DE' => 'Duitsland',
+                      'GW' => 'Duitsland'
+                    );
+                    if(isset($codes[$text])):
+                      $string = $codes[$text];
+                    else:
+                      $string = $text;
+                    endif;
+                  endif;
+                  echo str_replace("&amp;","&",$string);
+                ?>
+            </div>
+        <?php endforeach; ?>
+      </td>
+    </tr>
+<?php endforeach; ?>

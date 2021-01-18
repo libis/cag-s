@@ -1,0 +1,76 @@
+<?php
+$this->htmlElement('body')->appendAttribute('class', 'page');
+$this->pageTitle($page->title(), 2);
+$showPagePagination = $this->siteSetting('show_page_pagination', true);
+?>
+
+<?php $this->trigger('view.show.before'); ?>
+
+<?php echo $this->content; ?>
+
+<?php $this->trigger('view.show.after'); ?>
+
+<?php
+  //only show pagination on pages under Themaverhalen
+  $flat = filter_bc_show(flattenArray_show($site->navigation()));
+  $key = array_search($page->id(), $flat);
+
+  $crumbs = "";
+
+  while(strlen($key) >= 4){
+    $key = explode('|',$key);
+
+    array_pop($key);
+    array_pop($key);
+    $key = implode('|',$key)."|";
+
+    if(isset($flat[$key])):
+      $id = $flat[$key];
+      $page = $this->api()->read('site_pages', $id)->getContent();
+      $link = '<a href="/s/en/'.$page->url().'">'.$page->title().'</a>';
+      $crumbs = $link.'</span>
+        <span itemscope="" itemtype="https://data-vocabulary.org/Breadcrumb" class="breadcrumb__scope">'.$crumbs;
+    endif;
+  }
+
+  if (strpos($crumbs, 'Verhalen') !== false && $showPagePagination) {
+    echo $this->sitePagePagination();
+  }
+?>
+<?php
+function flattenArray_show($arr) {
+    $output = [];
+
+    foreach ($arr as $key => $value) {
+        if (is_array($value)) {
+            foreach(flattenArray_show($value) as $flattenKey => $flattenValue) {
+
+                $output["${key}.${flattenKey}"] = $flattenValue;
+            }
+        } else {
+            $output[$key] = $value;
+        }
+    }
+    return $output;
+}
+function filter_bc_show($arr){
+  $output = [];
+  foreach($arr as $key=>$value):
+    $level = substr_count($key,'links');
+    $temp = explode(".", $key);
+    $nr = $temp[0];
+    $order = '';
+
+    //echo $key."<br />";
+    if (strpos($key, 'id') !== false) {
+
+      foreach($temp as $t){
+        if($t != 'links' && $t != 'id' && $t != 'data'):
+          $order .= $t."|";
+        endif;
+      }
+      $output[$order] = $value;
+    }
+  endforeach;
+  return $output;
+}?>

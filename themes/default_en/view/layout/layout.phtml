@@ -1,0 +1,338 @@
+<?php
+
+$escape = $this->plugin('escapeHtml');
+$this->htmlElement('html')->setAttribute('lang', 'nl');
+$this->headMeta()->setCharset('utf-8');
+$this->headMeta()->appendName('viewport', 'width=device-width, initial-scale=1');
+$this->headTitle()->setSeparator(' · ');
+
+$this->headLink()->prependStylesheet($this->assetUrl('css/main.css'));
+$this->headLink()->prependStylesheet($this->assetUrl('css/style.css'));
+$this->headLink()->prependStylesheet($this->assetUrl('css/slick.css'));
+$this->headLink()->prependStylesheet($this->assetUrl('css/iconfonts.css', 'Omeka'));
+
+$this->headScript()->prependFile($this->assetUrl('js/default.js'));
+$this->headScript()->prependFile($this->assetUrl('js/slick.js'));
+$this->headScript()->prependFile($this->assetUrl('js/global.js', 'Omeka'));
+$this->headScript()->prependFile($this->assetUrl('vendor/jquery/jquery.min.js', 'Omeka'));
+//$this->headScript()->prependFile($this->assetUrl('js/docs.js'));
+
+$this->trigger('view.layout');
+$title = $this->pageTitle($site->title());
+$userBar = $this->userBar();
+?>
+<?php echo $this->doctype(); ?>
+<?php echo $this->htmlElement('html'); ?>
+    <head>
+        <?php echo $this->headMeta(); ?>
+        <?php echo $this->headTitle(); ?>
+        <?php echo $this->headLink(); ?>
+        <?php echo $this->headStyle(); ?>
+        <?php echo $this->headScript(); ?>
+        <meta name="google-site-verification" content="0urVxQDyV7rQ_QQOvZU_u05j_EArGzakWxqD1ykAm4U" />
+        <link rel="icon" href="<?php echo $this->assetUrl('img/icon.png');?>"/>
+    </head>
+
+    <?php echo $this->htmlElement('body'); ?>
+        <?php echo $userBar; ?>
+
+        <div class="page-wrap">
+          <!-- search overlay -->
+          <div class="search js-search-container">
+              <?php echo $this->partial('common/search-form'); ?>
+          </div>
+
+        <!-- logo + navigation -->
+        <?php
+          $url = $this->serverUrl(true);
+          if (strpos($url, 'page/home') !== false) {
+              $home = true;
+          }else{
+            $home = false;
+          }
+        ?>
+
+        <header class="page-header <?php echo (!$home)? 'page-header--simple' : '';?>">
+            <div class="page-header-wrapper">
+
+                <!-- site logo -->
+                <div class="container">
+                    <a href="<?php echo $site->url(); ?>" class="page-header__logo">
+                        <div class="flex flex-align-items-end">
+                            <img src="<?php echo $this->assetUrl('img/logo.png');?>" alt="logo CAG">
+                        </div>
+                    </a>
+                </div>
+                <!-- service nav -->
+                <div class="section section--no-padding section--gradient">
+                    <div class="container container--relative">
+                        <nav class="nav--service">
+                            <ul class="nav__menu">
+                                <div class="nav__item"><a href="/s/en/page/news-events" class="nav__link">News & events</a></div>
+                                <div class="nav__item"><a href="/s/en/page/about-cag" class="nav__link">About us</a></div>
+                                <div class="nav__item"><a href="/s/en/page/contact" class="nav__link">Contact</a></div>
+                                <li class="nav__item">
+
+                                    <!-- site search -->
+                                    <a href="#" class="search__link js-search-trigger">
+                                        <label class="u-pointer" for="form-search">
+                                            <i class="icon icon--lrg icon--search js-search-icon"></i>
+                                        </label>
+                                    </a>
+
+                                </li>
+                            </ul>
+                        </nav>
+                    </div>
+                </div>
+
+                <!-- main nav -->
+                <div class="section section--no-padding">
+                    <div class="container">
+                        <nav class="nav--main">
+                          <?php
+                          echo $site->publicNav()->menu()->renderMenu(null, [
+                              'ulClass' => 'nav__menu',
+                              'maxDepth' => $this->themeSetting('nav_depth') - 1
+                          ]);
+                          ?>
+                        </nav>
+                        <a href="" class="flyout__link pull--right js-flyout-toggle" role="button"><span class="lines" aria-label="menu"></span><span class="visuallyhidden">Menu</span></a>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <?php echo $this->content; ?>
+        <a href="#" class="scrollToTop">Back to top</a>
+
+        <!-- footer -->
+         <footer class="page-footer" role="contentinfo">
+             <div class="section section--light section--doormat">
+                 <div class="container">
+                     <div class="section__content">
+                         <div class="grid">
+                             <div class="grid__12 grid__8@lrg">
+
+                                 <div class="page-footer__logo">
+                                     <div class="flex flex-align-items-end">
+                                         <img src="<?php echo $this->assetUrl('img/logo.png');?>" alt="logo CAG">
+                                     </div>
+                                 </div>
+
+                                 <div class="grid grid--3-col@sml">
+                                     <div class="grid__item">
+                                         <div class="spacer">
+                                             <strong>Atrechtcollege | bus 5308</strong><br>
+                                             Naamsestraat 63<br>
+                                             3000 Leuven<br />
+                                             Belgium
+                                         </div>
+                                         <div class="spacer">
+                                             <a href="tel:+3216323525" class="link link--contact"><span class="icon icon--phone u-mr-xxs"></span>+32 (0)16 32 35 25</a><br>
+                                             <a href="mailto:contact@cagnet.be" class="link link--contact"><span class="icon icon--mail u-mr-xxs"></span>contact@cagnet.be</a>
+                                         </div>
+                                     </div>
+
+                                     <div class="grid__item">
+                                         <nav class="nav nav--doormat doormat-bold" aria-label="Footer navigatie">
+                                             <?php echo $nav;?>
+                                         </nav>
+                                     </div>
+
+                                     <div class="grid__item">
+                                         <nav class="nav nav--doormat" aria-label="Footer navigatie">
+
+                                             <ul class="nav__menu">
+                                                 <li class="nav__item">
+                                                     <a href="/s/en/page/news-events" class="nav__link">News & events
+                                                     </a>
+                                                 </li>
+                                                 <li class="nav__item">
+                                                     <a href="/s/en/page/about-cag" class="nav__link">About us
+                                                     </a>
+                                                 </li>
+                                                 <li class="nav__item">
+                                                     <a href="/s/en/page/contact" class="nav__link">Contact
+                                                     </a>
+                                                 </li>
+                                             </ul>
+                                         </nav>
+                                     </div>
+
+                                 </div>
+                                 <div class="u-mt-sml text--left">
+                                     <div class="u-float-left u-mr-xsm"><img src="<?php echo $this->assetUrl('img/svg/cc.svg');?>"></div>
+                                     <span class="text--sml">De teksten op deze website mogen vrij gebruikt worden met bronvermelding: www.cagnet.be - Centrum Agrarische Geschiedenis.</span>
+                                 </div>
+
+                             </div>
+
+                             <div class="grid__12 grid__4@lrg">
+                                 <div class="panel h-100 flex flex-column text--left flex-justify-center fullwidth">
+                                     <h3>Blijf op hoogte</h3>
+                                     <p>Abonneer je op de nieuwsbrief om op de hoogte te blijven van alle laatste nieuwtjes</p>
+                                     <!-- Begin Mailchimp Signup Form -->
+                                    <link href="//cdn-images.mailchimp.com/embedcode/classic-10_7.css" rel="stylesheet" type="text/css">
+
+                                    <form action="https://cagnet.us4.list-manage.com/subscribe/post?u=c111ee9e6028b8c49ddb60032&amp;id=f11195c04a" method="post" id="mc-embedded-subscribe-form" name="mc-embedded-subscribe-form" class="validate" target="_blank" novalidate>
+                                        <div id="mc_embed_signup_scroll">
+                                        <div class="mc-field-group form__item">
+                                            <label for="mce-EMAIL" class="form__label">E-mailadres</label>
+                                            <input  class="form__text" type="email" value="" name="EMAIL" class="required email" id="mce-EMAIL" placeholder="jouw@e-mailadres.be">
+                                        </div>
+                                        <div class="mc-field-group form__item">
+                                        	<label for="mce-MMERGE1" class="form__label">Naam</label>
+                                        	<input class="form__text" type="text" value="" name="MMERGE1" class="required" id="mce-MMERGE1">
+                                        </div>
+                                        <div class="mc-field-group input-group form__item">
+                                          <input type="checkbox" value="1" name="group[67923][1]" id="mce-group[67923]-67923-0"> <small class="text--italic"><label for="mce-group[67923]-67923-0">Ik ga akkoord met de <a href="https://cagnet.be/page/privacyverklaring">privacyverklaring</a></label></small>
+                                        </div>
+                                      <div id="mce-responses" class="clear">
+                                        <div class="response" id="mce-error-response" style="display:none"></div>
+                                        <div class="response" id="mce-success-response" style="display:none"></div>
+                                      </div>    <!-- real people should not fill this in and expect good things - do not remove this or risk form bot signups-->
+                                        <div style="position: absolute; left: -5000px;" aria-hidden="true"><input type="text" name="b_c111ee9e6028b8c49ddb60032_f11195c04a" tabindex="-1" value=""></div>
+                                        <div class="clear">
+                                          <div class="form__item"><input style="margin:0;" type="submit" value="Inschrijven" name="subscribe" id="mc-embedded-subscribe" class="button btn"></div></div>
+                                        </div>
+                                    </form>
+                                    <script type='text/javascript' src='//s3.amazonaws.com/downloads.mailchimp.com/js/mc-validate.js'></script><script type='text/javascript'>(function($) {window.fnames = new Array(); window.ftypes = new Array();fnames[0]='EMAIL';ftypes[0]='email';fnames[3]='ADDRESS';ftypes[3]='address';fnames[4]='PHONE';ftypes[4]='phone';}(jQuery));var $mcj = jQuery.noConflict(true);</script>
+                                    <!--End mc_embed_signup-->
+
+                                    <!-- <form class="form">
+                                         <div class="form__item">
+                                             <label for="email" class="form__label">E-mailadres</label>
+                                             <input type="email" class="form__text" placeholder="jouw@e-mailadres.be" required>
+                                             <input type="checkbox" name="gdpr" value="gdpr"> <small class="text--italic">Ik ga akkoord met de <a href="">privacy policy</a></small>
+                                         </div>
+                                         <div class="form__item">
+                                             <input type="submit" class="btn" value="Inschrijven">
+                                         </div>
+                                     </form>-->
+
+                                 </div>
+                             </div>
+                         </div>
+                     </div>
+                 </div>
+             </div>
+
+             <!-- social media links -->
+             <div class="section section--med">
+                 <div class="container">
+                     <div class="grid grid--2-col@sml">
+                         <div class="grid__item">
+                             <nav class="nav--social">
+                                 <ul class="nav__menu">
+                                     <li class="nav__item">
+                                         <a href="https://www.facebook.com/CentrumAgrarischeGeschiedenis/" class="nav__link"><span class="icon icon--facebook"></span>like CAG</a>
+                                     </li>
+                                     <li class="nav__item">
+                                         <a href="https://www.instagram.com/centrumagrarischegeschiedenis/?hl=nl" class="nav__link"><span class="icon icon--instagram"></span>follow CAG</a>
+                                     </li>
+                                 </ul>
+                             </nav>
+                         </div>
+                         <div class="grid__item text--center">
+                             <div class="flex flex-align-items-center flex-justify-center u-ml-a@sml">in coöperation with <img src="<?php echo $this->assetUrl('img/svg/vlaanderen.svg');?>" alt="logo van Vlaanderen verbeelding werkt" class="u-ml-xsm"></div>
+                         </div>
+                     </div>
+                 </div>
+             </div>
+
+
+             <!-- footer legal links -->
+             <div class="section section--med section--footer">
+                 <div class="container">
+                     <div class="section__content">
+                         <div class="grid">
+                             <div class="grid__12 grid__6@lrg">
+                                 <div class="nav nav--copyright">
+                                     <ul class="nav__menu nav__menu--sep">
+                                         <li class="nav__item text--nowrap">&copy; 2020 Centrum Agrarische Geschiedenis</li>
+                                         <li class="nav__item"><span class="text--nowrap">Realised by <a href="//www.libis.be" target="_blank">Libis</a></span></li>
+                                     </ul>
+                                 </div>
+                             </div>
+                             <div class="grid__12 grid__6@lrg">
+                                 <nav class="nav nav--footer">
+                                     <div class="nav__menu">
+                                       <li class="nav__item"><a href="https://cagnet.be/page/privacyverklaring" class="nav__link">Privacy statement</a></li>
+                                       <li class="nav__item"><a href="https://cagnet.be/page/copyright-gebruiksvoorwaarden" class="nav__link">Copyright & terms of use</a></li>
+                                       <li class="nav__item"><a href="https://cagnet.be/page/cookies" class="nav__link">Cookies</a></li>
+                                     </div>
+                                 </nav>
+                             </div>
+                         </div>
+                     </div>
+                 </div>
+             </div>
+         </footer>
+      </div>
+
+      <!-- flyout overlay -->
+      <div class="flyout" id="flyout">
+          <div class="container">
+              <div class="nav--flyout">
+                 <div class="flyout__content">
+                      <a href="#flyout" class="js-flyout-toggle flyout__close spacer" data-flyout="#flyout" role="button"><i class="icon icon--clear icon--sml" aria-label="close"></i></a>
+                  </div>
+
+                  <!-- flyout search -->
+                  <div class="flyout__content">
+                      <?php echo $this->partial('common/search-form'); ?>
+                  </div>
+
+                  <!-- main navigation -->
+                  <div class="flyout__content">
+                    <nav class="nav--main">
+                        <?php echo $nav;?>
+                    </nav>
+                  </div>
+
+                  <!-- service nav -->
+                  <div class="flyout__content">
+                    <nav class="nav--service">
+                        <ul class="nav__menu">
+                            <div class="nav__item"><a href="/s/en/page/news-events" class="nav__link">News & events</a></div>
+                            <div class="nav__item"><a href="/s/en/page/about-cag" class="nav__link">About us</a></div>
+                            <div class="nav__item"><a href="/s/en/page/contact" class="nav__link">Contact</a></div>
+                        </ul>
+                    </nav>
+                  </div>
+
+                  <!-- social media -->
+                  <div class="flyout__content">
+                      <nav class="nav--social">
+                          <ul class="nav__menu">
+                              <li class="nav__item">
+                                  <a href="" class="nav__link"><span class="icon icon--facebook"></span>like CAG</a>
+                              </li>
+                              <li class="nav__item">
+                                  <a href="" class="nav__link"><span class="icon icon--instagram"></span>follow CAG</a>
+                              </li>
+                          </ul>
+                      </nav>
+                  </div>
+              </div>
+          </div>
+      </div>
+
+      <div class="flyout__overlay"></div>
+
+      <script src="<?php echo $this->assetUrl('js/main.js');?>"></script>
+      <script src="<?php echo $this->assetUrl('js/docs.js');?>"></script>
+      <!-- Global site tag (gtag.js) - Google Analytics -->
+      <!-- Global site tag (gtag.js) - Google Analytics -->
+      <script async src="https://www.googletagmanager.com/gtag/js?id=UA-16899634-1"></script>
+      <script>
+      window.dataLayer = window.dataLayer || [];
+      function gtag(){dataLayer.push(arguments);}
+      gtag('js', new Date());
+
+      gtag('config', 'UA-16899634-1');
+      </script>
+
+    </body>
+</html>

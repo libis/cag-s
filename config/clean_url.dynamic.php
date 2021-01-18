@@ -38,4 +38,4 @@ const SLUG_PAGE = 'page/';
 /**
  * Allows to have site urls without "s/" and page urls without "page/".
  */
-const SLUGS_SITE = 'bulskampveld|start';
+const SLUGS_SITE = 'bulskampveld|start|en';
