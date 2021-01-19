@@ -164,9 +164,12 @@ $thumb = $item->primaryMedia();
               <?php foreach($itemMedia as $media):?>
                 <div class="beeld">
                   <?php
-                    $url = str_replace('http:', '', $media->thumbnailUrl('large'));
+                    $render =  $media->render();
+                    $render = str_replace('http:', '', $render);
+                    echo $render;
+                    //$url = str_replace('http:', '', $media->thumbnailUrl('large'));
                   ?>
-                  <img src="<?php echo $url;?>">
+                  <!--<img src="<?php echo $url;?>">-->
                 </div>
               <?php endforeach;?>
             </div>
@@ -174,6 +177,7 @@ $thumb = $item->primaryMedia();
               <?php foreach($itemMedia as $media):?>
                 <div class="beeld-nav">
                   <?php
+                
                     $url = str_replace('http:', '', $media->thumbnailUrl('square'));
                   ?>
                   <img src="<?php echo $url;?>">
@@ -183,9 +187,11 @@ $thumb = $item->primaryMedia();
           <?php else: ?>
             <div class="beeld">
               <?php
-                $url = str_replace('http:', '', $itemMedia[0]->thumbnailUrl('large'));
+                $render =  $itemMedia[0]->render();
+                $render = str_replace('http:', '', $render);
+                echo $render;
               ?>
-              <img src="<?php echo $url;?>">
+              <!--<img src="<?php echo $url;?>">-->
             </div>
           <?php endif;?>
                <?php //echo $this->thumbnail($thumb, 'large');?>
@@ -307,7 +313,7 @@ if($type != 'Nieuws' && $type != 'Agendapunt'):
               Bekijk alle collecties
             </a>
           <?php elseif($type == "Beeld"): ?>
-            <a href="/beeldbank?q=" class="btn btn--ext">
+            <a href="/beeldbank?q=&limit[dcterms:subject][0]=<?php echo $item->value('dcterms:subject');?>" class="btn btn--ext">
               Bekijk alle beelden
             </a>
           <?php endif;?>

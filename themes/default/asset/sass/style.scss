@@ -1,5 +1,7 @@
 /* compileCompressed: "../css/$1.min.css", compileExpanded: "../css/$1.css" */
-
+img{
+  pointer-events: none;
+}
 //nav__main
 .nav--main li {
     margin: 0 26px;

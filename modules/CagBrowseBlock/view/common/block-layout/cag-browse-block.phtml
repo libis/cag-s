@@ -72,6 +72,8 @@ $translate = $this->plugin('translate');
               elseif($type == 'Event' || $type == 'News'):
                 $url = '/s/en'.$resource->url();
                 $date = '';
+              else:
+                $url = $resource->url();  
               endif;
             ?>
             <a href="<?php echo $url;?>">
