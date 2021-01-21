@@ -61,9 +61,12 @@ $thumb = $item->primaryMedia();
             <?php foreach($itemMedia as $media):?>
               <div class="beeld">
                 <?php
-                  $url = str_replace('http:', '', $media->thumbnailUrl('large'));
+                  $render =  $media->render();
+                  $render = str_replace('http:', '', $render);
+                  echo $render;
+                  //$url = str_replace('http:', '', $media->thumbnailUrl('large'));
                 ?>
-                <img src="<?php echo $url;?>">
+                <!--<img src="<?php echo $url;?>">-->
               </div>
             <?php endforeach;?>
           </div>
@@ -81,11 +84,13 @@ $thumb = $item->primaryMedia();
           <div class="beeld">
             <?php
               $url = str_replace('http:', '', $itemMedia[0]->thumbnailUrl('large'));
+              $render =  $itemMedia[0]->render();
+              $render = str_replace('http:', '', $render);
+              echo $render;
             ?>
-            <img src="<?php echo $url;?>">
+            <!--<img src="<?php echo $url;?>">-->
           </div>
         <?php endif;?>
-             <?php //echo $this->thumbnail($thumb, 'large');?>
       </div>
     </div>
   </div>
