@@ -83,7 +83,7 @@ $thumb = $item->primaryMedia();
         <?php else: ?>
           <div class="beeld">
             <?php
-              $url = str_replace('http:', '', $itemMedia[0]->thumbnailUrl('large'));
+              //$url = str_replace('http:', '', $itemMedia[0]->thumbnailUrl('large'));
               $render =  $itemMedia[0]->render();
               $render = str_replace('http:', '', $render);
               echo $render;
