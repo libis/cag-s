@@ -35,15 +35,15 @@ endif;
     <h1><?php echo $this->pageTitle($item->displayTitle(), 2); ?></h1>
     <?php if($item->value('dcterms:date')):?>
         <?php
-          $date = $item->value('dcterms:date');
-          //echo $date;
-          $output = DateTime::createFromFormat('Ymd', $date);
-          if(!$output){
-              $output = DateTime::createFromFormat('Y-m-d', $date);
-          }
-          //$output = $output->format('d-m-Y');
-        ?>
-        <p class="datering"><?php echo $output;?></p>
+        $date = $item->value('dcterms:date');
+        //echo $date;
+        $output = DateTime::createFromFormat('Ymd', $date);
+        if(!$output){
+            $output = DateTime::createFromFormat('Y-m-d', $date);
+        }
+        $output = $output->format('d-m-Y');
+      ?>
+      <p class="datering"><?php echo $output;?></p>
     <?php endif;?>
   </div>
 </div>
