@@ -73,7 +73,7 @@ $translate = $this->plugin('translate');
                 $url = '/s/en'.$resource->url();
                 $date = '';
               else:
-                $url = $resource->url();  
+                $url = $resource->url();
               endif;
             ?>
             <a href="<?php echo $url;?>">
@@ -89,7 +89,7 @@ $translate = $this->plugin('translate');
                   <a href="<?php echo $url;?>"><?php echo $resource->value('dcterms:title');?></a>
                 </h2>
 
-                <?php if($resource->value('dcterms:date') && ($type == 'Nieuws' || $type == 'Agendapunt' || $type == 'Agendapunt BKV' || $type == 'Nieuws BKV')):?>
+                <?php if($resource->value('dcterms:date') && ($type == 'Nieuws' || $type == 'Agendapunt' || $type == 'Agendapunt BKV' || $type == 'Nieuws BKV' || $type == 'Event' || $type == 'News')):?>
                     <?php
                       $date = $resource->value('dcterms:date');
                       //echo $date;
