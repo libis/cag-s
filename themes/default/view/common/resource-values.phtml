@@ -62,10 +62,21 @@ $labelInfo = $this->setting('property_label_information');
                 <?php
                   $text = $value->asHtml();
 
-                  if($property->alternateLabel() != 'Bibliografische referentie'):
+                  if($property->alternateLabel() != 'Bibliografische referentie' || $property->alternateLabel() != 'Entiteiten'):
                     $string = preg_replace('@(https?://([-\w\.]+)+(:\d+)?(/([\w/_\.%-=#]*(\?\S+)?)?)?)@', '<a target="_blank" href="$1">$1</a>', $text);
                   else:
                     $string = preg_replace("/<a(.*?)>/", "<a$1 target=\"_blank\">", html_entity_decode($text));
+                  endif;
+
+                  if($property->alternateLabel() == 'Entiteiten'):
+                    $array = explode('||', $text);
+                    $string = $array[0];
+                    if($array[1] != ''):
+                      $string .= ' <a target="_blank" href="'.$array[1].'">Wikipedia</i></a>';
+                    endif;
+                    if($array[2] != ''):
+                      $string .= ' <a target="_blank" href="'.$array[2].'">VIAF</a>';
+                    endif;
                   endif;
 
                   $rights = array(
