@@ -3,9 +3,18 @@ $translate = $this->plugin('translate');
 $escape = $this->plugin('escapeHtml');
 $labelInfo = $this->setting('property_label_information');
 ?>
+
+<?php
+//catch entiteiten
+foreach ($values as $term => $propertyData):
+  //echo $term;
+endforeach;
+?>
+
 <?php foreach ($templateProperties as $term => $property): ?>
   <?php
     $dontshow = ['Titel','Description', 'Is Version Of', 'Relation', 'Language'];
+    $entity_fields = ['Regisseur','Producent','Wetenschappelijk medewerker','Opdrachtgever','Sponsor','Medewerker','Eigenaar','Bewaarplaats','Vervaardiger'];
     /*if(in_array($propertyData['property']->label(),$dontshow)):
       continue;
     endif;*/
@@ -68,15 +77,39 @@ $labelInfo = $this->setting('property_label_information');
                     $string = preg_replace("/<a(.*?)>/", "<a$1 target=\"_blank\">", html_entity_decode($text));
                   endif;
 
-                  if($property->alternateLabel() == 'Entiteiten'):
-                    $array = explode('||', $text);
-                    $string = $array[0];
-                    if($array[1] != ''):
-                      $string .= ' <a target="_blank" href="'.$array[1].'">Wikipedia</i></a>';
-                    endif;
-                    if($array[2] != ''):
-                      $string .= ' <a target="_blank" href="'.$array[2].'">VIAF</a>';
-                    endif;
+                  //handle entiteiten
+                  if(in_array($property->alternateLabel(),$entity_fields) && isset($values['dcterms:bibliographicCitation'])):
+                    $text = $value->asHtml();
+                    $orginal_text = $text;
+                    //remove (...)
+                    $text = explode('(',$text);
+                    //trim whitespace
+                    $text = trim($text[0]);
+                    $string = $orginal_text;
+                    foreach($values['dcterms:bibliographicCitation']['values'] as $entval):
+                      $ent = $entval->asHtml();
+                      if (strpos($ent, $text) !== false) {
+                          $array = explode('||', $ent);
+                          if($array[1] != ''):
+                            if (strpos($array[1], 'wiki') !== false) {
+                              $string .= ' <a target="_blank" href="'.$array[1].'"><img style="height:18px;" src="/themes/default/asset/img/wiki.png" /></a>';
+                            }
+                            elseif (strpos($array[1], 'viaf') !== false) {
+                              $string .= ' <a target="_blank" href="'.$array[1].'"><img style="height:18px;" src="/themes/default/asset/img/viaf.png" /></a>';
+                            }else{
+                              $string = '<a target="_blank" href="'.$array[1].'">'.$orginal_text.'</a>';
+                            }
+                          endif;
+                          if($array[2] != ''):
+                            if (strpos($array[2], 'wiki') !== false) {
+                              $string .= ' <a target="_blank" href="'.$array[2].'"><img style="height:18px;" src="/themes/default/asset/img/wiki.png" /></a>';
+                            }
+                            elseif (strpos($array[2], 'viaf') !== false) {
+                              $string .= ' <a target="_blank" href="'.$array[2].'"><img style="height:18px;" src="/themes/default/asset/img/viaf.png" /></a>';
+                            }
+                          endif;
+                      }
+                    endforeach;
                   endif;
 
                   $rights = array(
@@ -110,16 +143,16 @@ $labelInfo = $this->setting('property_label_information');
                     $filmkopie = $items = $this->api()->searchOne('items',$query);
                     $filmkopie = $filmkopie->getContent();
                     if($filmkopie):
-                      $string = $filmkopie->link($filmkopie->displayTitle());
+                      $string = '<a href="#'.$text.'">'.$filmkopie->displayTitle().'</a>';
                     else:
                       $string = "";
                     endif;
                   endif;
 
-                  if($property->alternateLabel() == 'Medewerker' || $property->alternateLabel() == 'Onderwerp' ):
+                  /*if($property->alternateLabel() == 'Medewerker' || $property->alternateLabel() == 'Onderwerp' ):
                     $text = str_replace(';','<br />',$text);
                     $string = $text;
-                  endif;
+                  endif;*/
 
                   if($property->alternateLabel() == 'Film'):
                     $text = str_replace('Filmcopy.','',$text);

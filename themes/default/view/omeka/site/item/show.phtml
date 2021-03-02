@@ -177,7 +177,7 @@ $thumb = $item->primaryMedia();
               <?php foreach($itemMedia as $media):?>
                 <div class="beeld-nav">
                   <?php
-                
+
                     $url = str_replace('http:', '', $media->thumbnailUrl('square'));
                   ?>
                   <img src="<?php echo $url;?>">
@@ -210,6 +210,36 @@ $thumb = $item->primaryMedia();
             <table class="">
                 <tbody>
                   <?php echo $item->displayValues(); ?>
+                  <?php if($type == 'Film'):
+                    $copies = $item->value('dcterms:isReferencedBy',array('all'=>true));
+                    if($copies):
+                    ?>
+                    <tr><td><strong>Filmkopies</strong></td>
+                      <td>
+                          <?php foreach($copies as $copy):?>
+                            <?php $text = $copy;?>
+                            <?php $querycopy = 'property[0][joiner]=and&property[0][property]=27&property[0][type]=eq&property[0][text]='.$text.'&resource_class_id[]=&resource_template_id[]=13&item_set_id[]=&site_id=';?>
+                            <?php parse_str($querycopy,$querycopy);?>
+                            <?php $filmkopie = $this->api()->searchOne('items',$querycopy);?>
+                            <?php $filmkopie = $filmkopie->getContent();?>
+                            <?php if($filmkopie):?>
+                              <div style="margin-bottom:0.7rem;">
+                                <a class="copy_button untoggled" href="#<?php echo $copy; ?>"><?php echo $filmkopie->displayTitle();?></a>
+                                  <span style="display:none;"> <!-- content text must be in a wrapper if it's directly in a grid__item -->
+                                      <table id="<?php echo $copy;?>" class="" style="border-left:1px solid #006b65;padding-left: 1rem;margin:10px 0 10px 0.8rem ;">
+                                          <tbody>
+                                            <?php echo $filmkopie->displayValues();?>
+                                          </tbody>
+                                      </table>
+                                  </span>
+                              </div>
+                              <?php endif;?>
+                            <?php endforeach;?>
+                      </td>
+                    </tr>
+
+                    <?php endif;?>
+                  <?php endif; ?>
                 </tbody>
             </table>
         </span>
@@ -221,6 +251,8 @@ $thumb = $item->primaryMedia();
           </ul>
 
         <?php endif?>
+
+
   </div>
 </div>
 <?php endif;?>
@@ -297,6 +329,7 @@ if($type != 'Nieuws' && $type != 'Agendapunt'):
                <div class="card__body panel panel--light">
                    <h2 class="heading--3 card__title"><?php echo $resource->link($resource->displayTitle()); ?></h2>
                    <?php if ($description = $resource->displayDescription()): ?>
+                      <?php $description = strip_tags($description);?>
                        <p class="description">
                            <?php echo strlen($description) > 200 ? substr($description,0,200).'..' : $description; ?>
                        </p>
@@ -341,6 +374,12 @@ if($type != 'Nieuws' && $type != 'Agendapunt'):
 
     $('.beeld').on('contextmenu', 'img', function(e){
       return false;
+    });
+
+    $(".copy_button").click(function(e){
+        e.preventDefault();
+        $(this).next("span").fadeToggle("slow");
+        $(this).toggleClass('toggled untoggled');
     });
   });
 </script>

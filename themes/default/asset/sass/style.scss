@@ -532,3 +532,36 @@ img{
   right: 0;
   left: 0;
 }
+
+.copy_button::before{
+  display: inline-block;
+border: none;
+font-family: "icons";
+font-weight: 400;
+font-style: normal;
+font-size: inherit;
+line-height: inherit;
+text-indent: 0;
+text-transform: none;
+vertical-align: middle;
+text-rendering: auto;
+-webkit-transform: translate(0, 0);
+transform: translate(0, 0);
+  font-size: 1.125rem;
+  vertical-align: bottom;
+  color: white;
+  background: #006B65;;
+  font-family: "icons";
+  margin-right: 5px;
+  width: 1.5rem;
+  text-align: center;
+}
+.untoggled{
+  &::before{
+    content: "\F10D";
+  }
+}
+
+.toggled{
+  &::before{content: "\F113";}
+}
