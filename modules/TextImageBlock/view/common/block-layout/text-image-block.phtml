@@ -16,7 +16,7 @@
         </div>
         <div class="grid__item">
             <?php if($attachments):
-              $media = $attachments[0]->media();              
+              $media = $attachments[0]->media();
               if($media):
                 $url = $media->thumbnailUrl('large');
                 $url = str_replace('http:', '', $url);
@@ -24,7 +24,7 @@
                   $itemUrl = $media->item()->url();
                   $itemUrl = str_replace('http:', '', $itemUrl);
                   ?>
-                  <a href="<?php echo $itemUrl;?>"><img src="<?php echo $url;?>"></a>
+                  <a style="display:block;" href="<?php echo $itemUrl;?>"><img src="<?php echo $url;?>"></a>
                 <?php else:?>
                   <img src="<?php echo $url;?>">
                 <?php endif;?>

@@ -90,24 +90,25 @@ endforeach;
                       $ent = $entval->asHtml();
                       if (strpos($ent, $text) !== false) {
                           $array = explode('||', $ent);
-                          if($array[1] != ''):
-                            if (strpos($array[1], 'wiki') !== false) {
-                              $string .= ' <a target="_blank" href="'.$array[1].'"><img style="height:18px;" src="/themes/default/asset/img/wiki.png" /></a>';
-                            }
-                            elseif (strpos($array[1], 'viaf') !== false) {
-                              $string .= ' <a target="_blank" href="'.$array[1].'"><img style="height:18px;" src="/themes/default/asset/img/viaf.png" /></a>';
-                            }else{
-                              $string = '<a target="_blank" href="'.$array[1].'">'.$orginal_text.'</a>';
-                            }
-                          endif;
-                          if($array[2] != ''):
-                            if (strpos($array[2], 'wiki') !== false) {
-                              $string .= ' <a target="_blank" href="'.$array[2].'"><img style="height:18px;" src="/themes/default/asset/img/wiki.png" /></a>';
-                            }
-                            elseif (strpos($array[2], 'viaf') !== false) {
-                              $string .= ' <a target="_blank" href="'.$array[2].'"><img style="height:18px;" src="/themes/default/asset/img/viaf.png" /></a>';
-                            }
-                          endif;
+                          array_shift($array);
+                          foreach($array as $links):
+                            if($links != ''):
+                              if (strpos($links, 'wiki') !== false) {
+                                $links = explode(';',$links);
+                                foreach($links as $link):
+                                  $string .= ' <a target="_blank" href="'.$link.'"><img style="height:18px;" src="/themes/default/asset/img/wiki.png" /></a>';
+                                endforeach;
+                              }
+                              elseif (strpos($links, 'viaf') !== false) {
+                                $links = explode(';',$links);
+                                foreach($links as $link):
+                                  $string .= ' <a target="_blank" href="'.$link.'"><img style="height:18px;" src="/themes/default/asset/img/viaf.png" /></a>';
+                                endforeach;
+                              }else{
+                                $string = '<a target="_blank" href="'.$links.'">'.$orginal_text.'</a>';
+                              }
+                            endif;
+                          endforeach;
                       }
                     endforeach;
                   endif;
