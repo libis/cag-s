@@ -155,6 +155,10 @@ endforeach;
                     $string = $text;
                   endif;*/
 
+                  if($property->alternateLabel() == 'Beschikbaarheid' && $string == 'not online accessible to public'):
+                    $string = "niet online raadpleegbaar";
+                  endif;
+
                   if($property->alternateLabel() == 'Film'):
                     $text = str_replace('Filmcopy.','',$text);
                     $query = 'property[0][joiner]=and&property[0][property]=35&property[0][type]=in&property[0][text]='.$text.'&resource_class_id[]=&resource_template_id[]=10&item_set_id[]=&site_id=';

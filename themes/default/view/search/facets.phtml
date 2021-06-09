@@ -85,10 +85,18 @@
                   'https://creativecommons.org/publicdomain/mark/1.0/' => 'Geen auteursrecht',
                 );?>
 
+                <?php $beschikbaarheid = array(
+                  'not online accessible to public' => 'niet online raadpleegbaar',
+                  'online accessible to public' => 'online raadpleegbaar',
+                  'online raadpleegbaar' => 'online raadpleegbaar',
+                );?>
+
                 <?php foreach ($facetValues as $facetValue): ?>
                   <?php if($facetLabel($name) == 'Rechtenstatus film' && isset($rights[$facetValue['value']]) ):?>
-
                     <?php $facetValue['value'] = $rights[$facetValue['value']];?>
+                  <?php endif;?>
+                  <?php if($facetLabel($name) == 'Beschikbaarheid' && isset($beschikbaarheid[$facetValue['value']]) ):?>
+                    <?php $facetValue['value'] = $beschikbaarheid[$facetValue['value']];?>
                   <?php endif;?>
                     <div class="form__item search-facet-item">
                         <?php echo $facetLink($name, $facetValue); ?>

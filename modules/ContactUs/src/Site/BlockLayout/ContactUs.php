@@ -161,6 +161,9 @@ class ContactUs extends AbstractBlockLayout
                     $mail['fromName'] = $args['name'] ?: null;
                     $owner = $block->page()->site()->owner();
                     $mail['to'] = $owner ? $owner->email() : $view->setting('administrator_email');
+                    if(isset($args['motivation'])){
+                      $mail['to'] = "diantha.osseweijer@cagnet.be";
+                    }
                     $mail['toName'] = $owner ? $owner->name() : null;
                     $mail['subject'] = sprintf($translate('[Contact] %s'), $this->mailer->getInstallationTitle());
                     $body = "Een gebruiker heeft je gecontacteerd.<br />
@@ -198,7 +201,7 @@ class ContactUs extends AbstractBlockLayout
                         $subject = $data['confirmation_subject'] ?: $this->defaultSettings['confirmation_subject'];
                         $mail['subject'] = $this->fillMessage($translate($subject), $args);
                         $body = $data['confirmation_body'] ?: $this->defaultSettings['confirmation_body'];
-                      
+
                         $mail['body'] = $this->fillMessage($translate($body), $args);
 
                         $result = $this->sendEmail($mail);

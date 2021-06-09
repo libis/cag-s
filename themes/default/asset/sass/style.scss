@@ -255,6 +255,7 @@ img{
   }
 }
 
+
 .slider-nav{
   .slick-current{
 
@@ -271,6 +272,24 @@ img{
   }
 }
 
+.slick-embed{
+  text-align: center;
+  margin: auto;
+  width: 100%;
+  max-width: 950px;
+}
+
+.embed-video{
+  text-align: center;
+  margin: auto;
+  width: 100%;
+
+  iframe{
+    border: none;
+    width: 100%;
+    height: 600px;
+  }
+}
 
 .datering{
   text-transform: uppercase;
