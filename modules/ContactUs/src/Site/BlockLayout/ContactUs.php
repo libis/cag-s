@@ -141,16 +141,35 @@ class ContactUs extends AbstractBlockLayout
             $form->setData($params);
             if ($form->isValid()) {
                 $args = $form->getData();
+                if(isset($args['g-recaptcha-response'])){
+                    $captcha = $args['g-recaptcha-response'];
+                    if(!$captcha){
+                        $isSpam = true;
+                    }  
+                }
+                
+
+                if(!filter_var($args['from'], FILTER_VALIDATE_EMAIL)) {
+                    $isSpam = true;
+                }
+                
+
+                if (!preg_match("/^([a-zA-Z' ]+)$/",$args['name'])){
+                    $isSpam = true;
+                }
+               
                 $status = 'success';
                 // If spam, return a success message, but don't send email.
                 $message = new Message(
-                    $translate('Thank you for your message %s. We will answer you soon.'),
+                    $translate('Bedankt voor je interesse in onze beeldbank, %s. We behandelen je aanvraag en antwoorden je zo snel mogelijk.'),
                     $args['name']
                         ? sprintf('%s (%s)', $args['name'], $args['from'])
                         : sprintf('(%s)', $args['from'])
                 );
                 // Send the message to the administrator of the site.
+                
                 if (!$isSpam) {
+                    
                     // Add some keys to use as placeholders.
                     $args['email'] = $args['from'];
                     $args['site_title'] = $block->page()->site()->title();
