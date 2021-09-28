@@ -14,7 +14,7 @@ endforeach;
 <?php foreach ($templateProperties as $term => $property): ?>
   <?php
     $dontshow = ['Titel','Description', 'Is Version Of', 'Relation', 'Language'];
-    $entity_fields = ['Regisseur','Producent','Wetenschappelijk medewerker','Opdrachtgever','Sponsor','Medewerker','Eigenaar','Bewaarplaats','Vervaardiger'];
+    $entity_fields = ['Regisseur','Producent','Wetenschappelijk medewerker','Opdrachtgever','Sponsor','Medewerker','Eigenaar','Vervaardiger'];
     /*if(in_array($propertyData['property']->label(),$dontshow)):
       continue;
     endif;*/
@@ -69,12 +69,14 @@ endforeach;
                 <span class="language"><?php echo $language; ?></span>
                 <?php endif; ?>
                 <?php
-                  $text = $value->asHtml();
+                  $text = $value->asHtml();                  
 
-                  if($property->alternateLabel() != 'Bibliografische referentie' || $property->alternateLabel() != 'Entiteiten'):
-                    $string = preg_replace('@(https?://([-\w\.]+)+(:\d+)?(/([\w/_\.%-=#]*(\?\S+)?)?)?)@', '<a target="_blank" href="$1">$1</a>', $text);
-                  else:
+                  if($property->alternateLabel() == 'Bibliografische referentie' || $property->alternateLabel() == 'Entiteiten'):                
                     $string = preg_replace("/<a(.*?)>/", "<a$1 target=\"_blank\">", html_entity_decode($text));
+                  elseif($property->alternateLabel() == 'Bewaarplaats'):
+                    $string = $text;
+                  else:
+                    $string = preg_replace('@(https?://([-\w\.]+)+(:\d+)?(/([\w/_\.%-=#]*(\?\S+)?)?)?)@', '<a target="_blank" href="$1">$1</a>', $text);
                   endif;
 
                   //handle entiteiten
@@ -136,6 +138,20 @@ endforeach;
                       $string .= '<br />Voorwaarden voor hergebruik worden bepaald door de rechthebbenden. Gebruik <a href="https://cagnet.be/page/aanvraag?aanvraag=1&id='.$value->resource()->id().'">het aanvraagformulier</a> voor meer informatie.';
                     endif;
                   endif;
+
+                  if($property->alternateLabel() == 'Bewaarplaats'):
+                    
+                    $string = html_entity_decode($text);
+                  endif;  
+
+                  if($property->alternateLabel() == 'Bewaarplaats' && strpos($text, '||') !== false):
+                    $brons = explode('||', $text);
+                    if($brons[0]==''):
+                      $string = $brons[1];
+                    else:
+                      $string = $brons[0];
+                    endif;  
+                  endif;  
 
                   if($property->alternateLabel() == 'Filmkopies'):
                     $query = 'property[0][joiner]=and&property[0][property]=27&property[0][type]=eq&property[0][text]='.$text.'&resource_class_id[]=&resource_template_id[]=13&item_set_id[]=&site_id=';

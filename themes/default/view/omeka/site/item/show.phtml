@@ -251,7 +251,7 @@ $thumb = $item->primaryMedia();
                             <?php $filmkopie = $filmkopie->getContent();?>
                             <?php if($filmkopie):?>
                               <div style="margin-bottom:0.7rem;">
-                                <a class="copy_button untoggled" href="#<?php echo $copy; ?>"><?php echo $filmkopie->value('dcterms:hasVersion');?></a>
+                                <a class="copy_button untoggled" href="#<?php echo $copy; ?>"><?php echo $filmkopie->value('dcterms:title');?></a>
                                   <span style="display:none;"> <!-- content text must be in a wrapper if it's directly in a grid__item -->
                                       <table id="<?php echo $copy;?>" class="" style="border-left:1px solid #006b65;padding-left: 1rem;margin:10px 0 10px 0.8rem ;">
                                           <tbody>
