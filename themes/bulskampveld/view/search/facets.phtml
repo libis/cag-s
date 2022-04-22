@@ -42,7 +42,7 @@
             <h2>Filter <?php echo lcfirst($page->name());?></h2>
             <?php if($query->getQuery()):?>
               <div class="current-query">
-                  Zoekopdracht: <a title="verwijder zoekopdracht" href="<?= parse_url($_SERVER["REQUEST_URI"], PHP_URL_PATH).'?q=' ?>"><?= $query->getQuery();?> <span class="icon icon--clear"></span></a></button>
+                  Zoekopdracht: <a title="verwijder zoekopdracht" href="<?= parse_url($_SERVER["REQUEST_URI"], PHP_URL_PATH).'?q=' ?>"><?= htmlspecialchars($query->getQuery());?> <span class="icon icon--clear"></span></a></button>
               </div>
             <?php endif;?>
                 <hr>

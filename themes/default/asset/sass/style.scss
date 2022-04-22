@@ -584,3 +584,10 @@ transform: translate(0, 0);
 .toggled{
   &::before{content: "\F113";}
 }
+
+.entity{
+  padding: 3px;
+font-size: 0.8rem;
+font-weight: 300;
+font-style: italic;
+}

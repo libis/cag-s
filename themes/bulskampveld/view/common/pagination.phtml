@@ -2,7 +2,10 @@
 $translate = $this->plugin('translate');
 $get = $_GET;
 if(isset($get['page'])):
-  $currentPage = $get['page'];
+  $currentPage = htmlspecialchars($get['page']);
+  if(!is_numeric($currentPage)):
+    $currentPage = 1;    
+  endif;  
 else:
   $currentPage = 1;
 endif;

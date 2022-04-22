@@ -88,29 +88,34 @@ endforeach;
                     //trim whitespace
                     $text = trim($text[0]);
                     $string = $orginal_text;
+                    //remove doubles
+                    $entities = array();
                     foreach($values['dcterms:bibliographicCitation']['values'] as $entval):
+                      $entities[$entval->asHtml()] = $entval;
+                    endforeach;  
+                    foreach($entities as $entval):
                       $ent = $entval->asHtml();
                       if (strpos($ent, $text) !== false) {
-                          $array = explode('||', $ent);
-                          array_shift($array);
-                          foreach($array as $links):
-                            if($links != ''):
-                              if (strpos($links, 'wiki') !== false) {
-                                $links = explode(';',$links);
-                                foreach($links as $link):
-                                  $string .= ' <a target="_blank" href="'.$link.'"><img style="height:18px;" src="/themes/default/asset/img/wiki.png" /></a>';
-                                endforeach;
-                              }
-                              elseif (strpos($links, 'viaf') !== false) {
-                                $links = explode(';',$links);
-                                foreach($links as $link):
-                                  $string .= ' <a target="_blank" href="'.$link.'"><img style="height:18px;" src="/themes/default/asset/img/viaf.png" /></a>';
-                                endforeach;
-                              }else{
-                                $string = '<a target="_blank" href="'.$links.'">'.$orginal_text.'</a>';
-                              }
-                            endif;
-                          endforeach;
+                        $links = explode('||', $ent);
+                        //array_shift($array);
+                        if($links[1] != ''):
+                          $string .= ' <a target="_blank" href="'.$links[1].'"><span class="entity">Website</span></a>';
+                        endif;  
+                        if($links[2] != ''):
+                          $string .= ' <a target="_blank" href="'.$links[2].'"><img style="height:18px;" src="/themes/default/asset/img/wiki.png" /></a>';
+                        endif;  
+                        if($links[3] != ''):
+                          $string .= ' <a target="_blank" href="'.$links[3].'"><img style="height:18px;" src="/themes/default/asset/img/viaf.png" /></a>';
+                        endif; 
+                        if($links[4] != ''):
+                          $string .= ' <a target="_blank" href="'.$links[4].'"><span class="entity">ULAN</span></a>';
+                        endif; 
+                        if($links[5] != ''):
+                          $string .= ' <a target="_blank" href="'.$links[5].'"><span class="entity">RKDartists&</span></a>';
+                        endif;
+                        if($links[6] != ''):
+                          $string .= ' <a target="_blank" href="'.$links[6].'"><span class="entity">Biografie</span></a>';
+                        endif;
                       }
                     endforeach;
                   endif;
@@ -170,6 +175,22 @@ endforeach;
                     $text = str_replace(';','<br />',$text);
                     $string = $text;
                   endif;*/
+
+                  if($property->alternateLabel() == 'Meer informatie'):
+                    if (strpos($text,'wiki') !== false):                   
+                      $string = '<a target="_blank" href="'.$text.'">Wikipedia <img style="height:18px;" src="/themes/default/asset/img/wiki.png" /></a>';
+                    elseif (strpos($text,'viaf') !== false):   
+                      $string = '<a target="_blank" href="'.$text.'">VIAF <img style="height:18px;" src="/themes/default/asset/img/viaf.png" /></a>';
+                    elseif (strpos($text,'odis') !== false):   
+                      $string = '<a target="_blank" href="'.$text.'">ODIS</a>';
+                    elseif (strpos($text,'udal') !== false):   
+                      $string = '<a target="_blank" href="'.$text.'">UDAL</a>'; 
+                    elseif (strpos($text,'rkd.nl') !== false):   
+                      $string = '<a target="_blank" href="'.$text.'">RKDartists&</a>';         
+                    else:
+                      $string = '<a target="_blank" href="'.$text.'">Website</a>';
+                    endif; 
+                  endif;
 
                   if($property->alternateLabel() == 'Beschikbaarheid' && $string == 'not online accessible to public'):
                     $string = "niet online raadpleegbaar";

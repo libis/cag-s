@@ -51,7 +51,7 @@
                   <form>
                     <?php //echo $this->searchForm(); ?>
                     <div class="form__item">
-                        <input type="text" name="q" class="form__text" value="<?= $query->getQuery();?>">
+                        <input type="text" name="q" class="form__text" value="<?= htmlspecialchars($query->getQuery());?>">
                     </div>
                     <div class="form__actions">
                         <button type="submit" class="btn form__btn">Search <span class="icon icon--search"></span></button>

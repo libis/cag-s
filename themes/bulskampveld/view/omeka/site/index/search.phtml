@@ -2,7 +2,7 @@
   <div class="container">
     <div class="breadcrumb spacer">
     </div>
-    <?php echo $this->pageTitle(sprintf($this->translate('Zoekresultaten “%s”'), $query)); ?>
+    <?php echo $this->pageTitle(sprintf($this->translate('Zoekresultaten “%s”'), htmlspecialchars($query))); ?>
   </div>
 </div>
 <div class="section section--default">
@@ -20,7 +20,7 @@
               $this->url(
                   'site/page-browse',
                   ['controller' => 'page', 'action' => 'browse'],
-                  ['query' => ['fulltext_search' => $query]],
+                  ['query' => ['fulltext_search' => htmlspecialchars($query)]],
                   true
               )
           ); ?>

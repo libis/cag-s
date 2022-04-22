@@ -13,7 +13,7 @@ $this->htmlElement('body')->appendAttribute('class', 'page browse');
         </span>
     </div>
     <?php  $query = $this->params()->fromQuery();?>
-    <h1 class="spacer"><?php echo sprintf($this->translate('Zoekresultaten “%s”'), $query["fulltext_search"]); ?></h1>
+    <h1 class="spacer"><?php echo sprintf($this->translate('Zoekresultaten “%s”'), htmlspecialchars($query["fulltext_search"])); ?></h1>
   </div>
 </div>
 <div class="section section--default">
