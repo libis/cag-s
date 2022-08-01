@@ -34,7 +34,7 @@ $thumb = $item->primaryMedia();
         </span>
     </div>
     <h1><?php echo $this->pageTitle($item->displayTitle(), 2); ?></h1>
-    <?php if($item->value('dcterms:date') && ($type == 'Nieuws' || $type == 'Agendapunt')):?>
+    <?php if($item->value('dcterms:date') && ($type == 'Nieuws' || $type == 'Agendapunt' || $type == 'News')):?>
         <?php
           $date = $item->value('dcterms:date');
           //echo $date;

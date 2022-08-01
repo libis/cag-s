@@ -41,10 +41,11 @@ else:
   $type= "Object";
 endif;
 
-if($type == 'Verhaal' || $type == 'Project'):
-  $url = '/page/'.$resource->value('dcterms:relation');
-elseif($type == 'News' || $type == 'Event'):
-  $url = '/s/en'.$resource->url();
+if($type == 'News' || $type == 'Event'):
+  $url = $resource->url();
+  if($resource->value('dcterms:relation')):
+    $url = '/s/en/page/'.$resource->value('dcterms:relation');
+  endif; 
 else:
   $url = $resource->url();
 endif;

@@ -97,7 +97,14 @@ endif;
                     </thead>
                     <?php endif;?>
                     <tbody>
-                      <?php ksort($bibs);?>
+                      <?php $sortbibs = [];?>
+                      <?php foreach($bibs as $key=>$bib): ?>
+                        <?php $key = ltrim($key,"‘");?>
+                        <?php $sortbibs[ltrim($key,"'")] = $bib;?>
+                      <?php endforeach;?>  
+                      <?php ksort($sortbibs);?>
+                      <?php $bibs = $sortbibs;?>
+                      
                       <?php foreach($bibs as $bib): ?>
                           <tr>
                               <td><?php echo $bib;?></td>
