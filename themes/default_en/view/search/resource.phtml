@@ -42,7 +42,7 @@ else:
 endif;
 
 if($type == 'News' || $type == 'Event'):
-  $url = $resource->url();
+  $url = '/s/en' .$resource->url();
   if($resource->value('dcterms:relation')):
     $url = '/s/en/page/'.$resource->value('dcterms:relation');
   endif; 
@@ -127,9 +127,9 @@ endif;
                 </p>
             <?php endif; ?>
             <?php if($type == 'Film' || $type == 'Filmkopie'):?>
-              <div class="link link--ext card__link"><a href="<?php echo $url;?>">Lees meer</a></div>
+              <div class="link link--ext card__link"><a href="<?php echo $url;?>">Read more</a></div>
             <?php else:?>
-              <div class="link link--ext card__link"><a href="<?php echo $url;?>"><?php echo $type;?> bekijken</a></div>
+              <div class="link link--ext card__link"><a href="<?php echo $url;?>">View <?php echo $type;?></a></div>
             <?php endif; ?>
           </div>
       </a>
