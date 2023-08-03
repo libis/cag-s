@@ -1,8 +1,8 @@
-<?php
+<?php declare(strict_types=1);
 
 /*
  * Copyright BibLibre, 2016
- * Copyright Daniel Berthereau, 2018
+ * Copyright Daniel Berthereau, 2018-2021
  *
  * This software is governed by the CeCILL license under French law and abiding
  * by the rules of distribution of free software.  You can use, modify and/ or
@@ -30,31 +30,38 @@
 
 namespace Search\Querier;
 
+use Laminas\Log\LoggerAwareInterface;
+use Laminas\ServiceManager\ServiceLocatorInterface;
 use Search\Api\Representation\SearchIndexRepresentation;
 use Search\Query;
 use Search\Response;
-use Zend\Log\LoggerAwareInterface;
-use Zend\ServiceManager\ServiceLocatorInterface;
 
+/**
+ * The signature uses "QuerierInterface" instead of "self" for compatibility with php < 7.4.
+ */
 interface QuerierInterface extends LoggerAwareInterface
 {
-    /**
-     * @param ServiceLocatorInterface $serviceLocator
-     * @return self
-     */
-    public function setServiceLocator(ServiceLocatorInterface $serviceLocator);
+    public function setServiceLocator(ServiceLocatorInterface $serviceLocator): QuerierInterface;
 
-    /**
-     * @param SearchIndexRepresentation $index
-     * @return self
-     */
-    public function setSearchIndex(SearchIndexRepresentation $index);
+    public function setSearchIndex(SearchIndexRepresentation $index): QuerierInterface;
+
+    public function setQuery(Query $query): QuerierInterface;
 
     /**
      * Process a search query.
-     *
-     * @param Query $query
-     * @return Response
      */
-    public function query(Query $query);
+    public function query(): Response;
+
+    /**
+     * Process a search query for suggestions.
+     */
+    public function querySuggestions(): Response;
+
+    /**
+     * Prepare a search query.
+     *
+     * @return mixed|null The query formatted for this specific search engine.
+     * Return null if the query is not processable or without result.
+     */
+    public function getPreparedQuery();
 }

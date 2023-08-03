@@ -1,9 +1,9 @@
-<?php
+<?php declare(strict_types=1);
 namespace Search\Service\Form;
 
 use Interop\Container\ContainerInterface;
+use Laminas\ServiceManager\Factory\FactoryInterface;
 use Search\Form\SettingsFieldset;
-use Zend\ServiceManager\Factory\FactoryInterface;
 
 class SettingsFieldsetFactory implements FactoryInterface
 {
@@ -12,7 +12,6 @@ class SettingsFieldsetFactory implements FactoryInterface
         $fieldset = new SettingsFieldset(null, $options);
         $viewHelpers = $services->get('ViewHelperManager');
         $fieldset->setApi($viewHelpers->get('api'));
-        $fieldset->setBasePath($viewHelpers->get('basePath'));
         return $fieldset;
     }
 }

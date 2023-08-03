@@ -57,7 +57,7 @@ $userBar = $this->userBar();
 
                 <!-- site logo -->
                 <div class="container">
-                    <a href="<?php echo $site->url(); ?>" class="page-header__logo">
+                    <a href="https://collectiebulskampveld.be" class="page-header__logo">
                         <div class="flex flex-align-items-end">
                             <img src="<?php echo $this->assetUrl('img/logo.png');?>" alt="logo CAG">
                         </div>
@@ -111,7 +111,20 @@ $userBar = $this->userBar();
 
         <?php echo $this->content; ?>
         <a href="#" class="scrollToTop">Terug naar boven</a>
-
+        
+        <div class="section section--default" style="padding:1rem 0;">
+            <div class="container">
+                <div class="shareon" style="text-align:right;">
+                    <a class="facebook"></a>
+                    <a class="linkedin"></a>
+                    <a class="mastodon"></a>
+                    <a class="pinterest"></a>
+                    <a class="twitter"></a>
+                    <a class="whatsapp"></a>
+                </div>
+            </div>
+        </div>   
+        
         <!-- footer -->
          <footer class="page-footer" role="contentinfo">
              <div class="section section--light section--doormat">

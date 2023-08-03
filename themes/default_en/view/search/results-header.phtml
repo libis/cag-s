@@ -1,34 +1,22 @@
 <?php
 /**
- * @var \Zend\View\Renderer\PhpRenderer $this
- * @var \Search\Query $query
- * @var \Search\Response $response
- * @var array $sortOptions
+ * @var \Laminas\View\Renderer\PhpRenderer $this
+ * @var \AdvancedSearch\Api\Representation\SearchConfigRepresentation $searchConfig
+ * @var \AdvancedSearch\Api\Representation\SearchConfigRepresentation $searchPage Alias of $searchConfig
+ * @var \AdvancedSearch\Query $query
+ * @var \AdvancedSearch\Response $response
+ * @var \Omeka\Api\Representation\ItemSetRepresentation $itemSet
+ * @var string $resultPart
+ * @var int $documentCount
+ * @var string $pagination
  */
 
-$translate = $this->plugin('translate');
+// Kept for compatibility with old themes.
+
+$this->vars()->offsetSet('resultPart', 'header');
 ?>
 <div class="search-results-header">
     <div class="search-results-sort">
-        <form>
-            <?php if ($sortOptions):
-                $sortSelect = new Zend\Form\Element\Select('sort');
-                $sortOptions = array_map([$this, 'translate'], $sortOptions);
-                $sortSelect->setValueOptions($sortOptions);
-                $sortSelect->setValue($query->getSort());
-                $sortSelect->setLabel($translate('Sort'));
-            endif; ?>
-            <?php if (!empty($sortSelect)): ?>
-            <?php echo $this->formLabel($sortSelect); ?>
-            <?php echo $this->formSelect($sortSelect); ?>
-            <?php endif; ?>
-        </form>
-        <?php if($name == 'Cinema Rural Filmdatabank'):?>
-          <div class="layout-switch">
-            <a class="search-view-type search-view-type-grid2" href="#"><i class="fas fa-th"></i></a>
-            |
-            <a class="search-view-type search-view-type-list" href="#"><i class="fas fa-list"></i></a>
-          </div>
-        <?php endif;?>
-    </div>
+        <?php echo $this->partial('search/results-header-footer');?>
 </div>
+</div>    

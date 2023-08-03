@@ -3,10 +3,10 @@
 namespace DomainManager\Api;
 
 use DomainManager\Entity\DomainSiteMapping;
-use Zend\Mvc\Controller\AbstractController;
-use Zend\Mvc\MvcEvent;
-use Zend\View\Model\ViewModel;
-use Zend\View\Renderer\PhpRenderer;
+use Laminas\Mvc\Controller\AbstractController;
+use Laminas\Mvc\MvcEvent;
+use Laminas\View\Model\ViewModel;
+use Laminas\View\Renderer\PhpRenderer;
 
 class DomainMapper
 {
@@ -33,7 +33,8 @@ class DomainMapper
         'create-password',
         'forgot-password',
         // Compatibility with modules that have a route on root.
-
+        // Module Custom Ontology.
+        //'ns',
         // Module OAI-PMH Repository.
         'oai-pmh',
     ];
@@ -42,7 +43,7 @@ class DomainMapper
     private $scheme;
     private $url;
     private $query;
-    /** @var \Zend\Router\Http\TreeRouteStack $router */
+    /** @var \Laminas\Router\Http\TreeRouteStack $router */
     private $router;
     private $domain;
     private $siteSlug;
@@ -72,11 +73,13 @@ class DomainMapper
         $domain = $this->entityManager->createQueryBuilder()
             ->select('m.domain')
             ->from('DomainManager\Entity\DomainSiteMapping', 'm')
+            ->leftJoin('Omeka\Entity\Site', 's', \Doctrine\ORM\Query\Expr\Join::WITH, 'm.site_id = s.id')
             ->where('m.domain = ?1')
+            ->orWhere("s.slug = ?2")
             ->setParameter(1, $this->domain)
+            ->setParameter(2, $this->siteSlug)
             ->getQuery()
             ->getArrayResult();
-
         return count($domain) > 0 ? !is_null($domain[0]['domain']) : false;
     }
 
@@ -121,18 +124,18 @@ class DomainMapper
     }
 
     /**
-     * @var \Zend\Router\PriorityList $routes
-     * @var \Zend\Router\RouteInterface $route
-     *
+     * @var \Laminas\Router\PriorityList $routes
+     * @var \Laminas\Router\RouteInterface $route
+     * 
      */
     private function routeTemplate($routes)
     {
         $routeKey = "site";
-
+        
         /**
          * default route options
          */
-        $routeType = \Zend\Router\Http\Literal::class;
+        $routeType = \Laminas\Router\Http\Literal::class;
         $routePath = '/';
 
         if (empty($this->defaultPage)) {
@@ -145,11 +148,13 @@ class DomainMapper
                 'controller' => 'Item',
                 'action' => 'browse',
                 'site-slug' => $this->siteSlug,
+                'page-slug' => $this->defaultPage
             ];
             $defaultPageRouteDefaults = [
                 'controller' => 'Item',
                 'action' => 'browse',
                 'site-slug' => $this->siteSlug,
+                'page-slug' => $this->defaultPage
             ];
         } else {
             /**
@@ -161,14 +166,14 @@ class DomainMapper
                 'controller' => 'Page',
                 'action' => 'show',
                 'site-slug' => $this->siteSlug,
-                'page-slug' => $this->defaultPage,
+                'page-slug' => $this->defaultPage
             ];
             $defaultPageRouteDefaults = [
                 'controller' => 'Page',
                 'action' => 'show',
                 'site-slug' => $this->siteSlug,
-                'page-slug' => $this->defaultPage,
-            ];
+                'page-slug' => $this->defaultPage
+            ];        
         }
 
         $controller = strtolower($rootRouteDefaults["controller"]);
@@ -197,17 +202,18 @@ class DomainMapper
                      * this is the default page route (when url = /s/[SITE_SLUG])
                      */
                     'default-page' => [
-                        'type' => \Zend\Router\Http\Literal::class,
+                        'type' => \Laminas\Router\Http\Literal::class,
                         'options' => [
                             'route' => $this->defaultPageRoute(),
                             'defaults' => $defaultPageRouteDefaults,
                         ],
                     ],
                     'resource' => [
-                        'type' => \Zend\Router\Http\Segment::class,
+                        'type' => \Laminas\Router\Http\Segment::class,
                         'options' => [
                             'route' => ':controller[/:action]',
                             'defaults' => [
+                                'controller' => 'Item',
                                 'action' => 'browse',
                                 'site-slug' => $this->siteSlug,
                             ],
@@ -218,10 +224,11 @@ class DomainMapper
                         ],
                     ],
                     'resource-id' => [
-                        'type' => \Zend\Router\Http\Segment::class,
+                        'type' => \Laminas\Router\Http\Segment::class,
                         'options' => [
                             'route' => ':controller/:id[/:action]',
                             'defaults' => [
+                                'controller' => 'Item',
                                 'action' => 'show',
                                 'site-slug' => $this->siteSlug,
                             ],
@@ -233,9 +240,9 @@ class DomainMapper
                         ],
                     ],
                     'item-set' => [
-                        'type' => \Zend\Router\Http\Segment::class,
+                        'type' => \Laminas\Router\Http\Segment::class,
                         'options' => [
-                            'route' => 'item-set/:item-set-id',
+                            'route' => 'item-set[/:item-set-id]',
                             'defaults' => [
                                 'controller' => 'Item',
                                 'action' => 'browse',
@@ -247,7 +254,7 @@ class DomainMapper
                         ],
                     ],
                     'page-browse' => [
-                        'type' => \Zend\Router\Http\Literal::class,
+                        'type' => \Laminas\Router\Http\Literal::class,
                         'options' => [
                             'route' => 'page',
                             'defaults' => [
@@ -258,7 +265,7 @@ class DomainMapper
                         ],
                     ],
                     'page' => [
-                        'type' => \Zend\Router\Http\Segment::class,
+                        'type' => \Laminas\Router\Http\Segment::class,
                         'options' => [
                             'route' => 'page/:page-slug',
                             'defaults' => [
@@ -268,13 +275,23 @@ class DomainMapper
                             ],
                         ],
                     ],
+                    'cross-site-search' => [
+                        'type' => \Laminas\Router\Http\Segment::class,
+                        'options' => [
+                            'route' => '/cross-site-search[/:action]',
+                            'defaults' => [
+                                'controller' => 'CrossSiteSearch',
+                                'action' => 'index',
+                                'site-slug' => $this->siteSlug,
+                            ],
+                            'constraints' => [
+                                'action' => '[a-zA-Z0-9_-]+',
+                            ],
+                        ],
+                    ],
                 ],
             ],
         ];
-
-        /*
-         * Map all statically and dynamically created routes to the domain.
-         */
 
         /**
          * static routes (defined by the config files)
@@ -285,7 +302,7 @@ class DomainMapper
                     if (isset($mappedRoutes[$routeKey]["child_routes"][$childRouteKey])) {
                         continue;
                     }
-
+                    
                     $childRouteArray["options"]["route"] = substr($childRouteArray["options"]["route"], 1);
 
                     /**
@@ -294,7 +311,7 @@ class DomainMapper
                     if (!isset($childRouteArray["options"]["defaults"]["controller"])) {
                         $childRouteArray["options"]["defaults"]["controller"] = "Index";
                     }
-
+                    
                     $childRouteArray["options"]["defaults"]["site-slug"]  = $this->siteSlug;
 
                     if (isset($childRouteArray["options"]["constraints"]) && stripos($childRouteArray["options"]["route"], ":controller") !== false) {
@@ -309,9 +326,10 @@ class DomainMapper
         $ignoredRoutes = array_merge(['top', 'site'], $this->ignoredRoutes);
 
         /**
-         * @var \Zend\Router\PriorityList $routes
-         * @var \Zend\Router\RouteInterface $route
-         *
+         * dynamically created routes
+         * @var \Laminas\Router\PriorityList $routes
+         * @var \Laminas\Router\RouteInterface $route
+         * 
          */
         foreach ($routes as $routeName => $route) {
             if (in_array($routeName, $ignoredRoutes)) {
@@ -323,8 +341,8 @@ class DomainMapper
              * to array allows to access to it: protected keys start with "0*0".
              */
             $routeArray = [];
-            foreach ((array) $route as $k => $v) {
-                $routeArray[substr($k, 3)] = $v;
+            foreach ((array) $route as $key => $value) {
+                $routeArray[substr($key, 3)] = $value;
             }
 
             /**
@@ -333,12 +351,13 @@ class DomainMapper
             $routePath = '';
             if (isset($routeArray['parts'])) {
                 /**
-                 * The method assemble() is not available, because the site slug
+                 * The method assemble() is not available, because the site slug 
                  * is missing.
                  */
                 foreach ($routeArray['parts'] as $part) {
                     list($type, $path) = $part;
-                    /**
+                    
+                    /** 
                      * The module Scripto use another route format, at top
                      * level, but with optional site slug.
                      */
@@ -378,36 +397,73 @@ class DomainMapper
                 $mappedRoutes[$routeKey]['child_routes'][$routeName] = $newRoute;
             }
         }
-
+        
         return $mappedRoutes;
+    }
+
+    private function isMyDomain() {
+        return !preg_match("#(?<=\/s\/).*?(?=\/)#i", $this->url, $slug);
+    }
+
+    private function getDomain() {
+        $domain = $this->entityManager->createQueryBuilder()
+            ->select('m.domain')
+            ->from('DomainManager\Entity\DomainSiteMapping', 'm')
+            ->where('m.site_id = ?1')
+            ->setParameter(1, $this->siteId)
+            ->getQuery()
+            ->getArrayResult();
+        return count($domain) > 0 ? ($this->scheme . "://" . $domain[0]['domain']) : null;
     }
 
     private function getSiteId()
     {
-        $site = $this->entityManager->createQueryBuilder()
-            ->select('s.id')
-            ->from('DomainManager\Entity\DomainSiteMapping', 'm')
-            ->leftJoin('Omeka\Entity\Site', 's', \Doctrine\ORM\Query\Expr\Join::WITH, 'm.site_id = s.id')
-            ->where('m.domain = ?1')
-            ->setParameter(1, $this->domain)
-            ->getQuery()
-            ->getArrayResult();
-
-        return count($site) > 0 ? $site[0]['id'] : null;
+        if(!$this->isMyDomain()) {
+             $site = $this->entityManager->createQueryBuilder()
+                ->select('m.site_id')
+                ->from('DomainManager\Entity\DomainSiteMapping', 'm')
+                ->leftJoin('Omeka\Entity\Site', 's', \Doctrine\ORM\Query\Expr\Join::WITH, 'm.site_id = s.id')
+                ->where('s.slug = ?1')
+                ->setParameter(1, $this->getSiteSlug())
+                ->getQuery()
+                ->getArrayResult();
+            return count($site) > 0 ? $site[0]['site_id'] : null;
+        }
+        else {
+            $site = $this->entityManager->createQueryBuilder()
+                ->select('s.id')
+                ->from('DomainManager\Entity\DomainSiteMapping', 'm')
+                ->leftJoin('Omeka\Entity\Site', 's', \Doctrine\ORM\Query\Expr\Join::WITH, 'm.site_id = s.id')
+                ->where('m.domain = ?1')
+                ->orWhere("s.slug = ?2")
+                ->setParameter(1, $this->domain)
+                ->setParameter(2, $this->siteSlug)
+                ->getQuery()
+                ->getArrayResult();
+            return count($site) > 0 ? $site[0]['id'] : null;
+        }
     }
 
     private function getSiteSlug()
     {
-        $slug = $this->entityManager->createQueryBuilder()
-            ->select('s.slug')
-            ->from('DomainManager\Entity\DomainSiteMapping', 'm')
-            ->leftJoin('Omeka\Entity\Site', 's', \Doctrine\ORM\Query\Expr\Join::WITH, 'm.site_id = s.id')
-            ->where('m.domain = ?1')
-            ->setParameter(1, $this->domain)
-            ->getQuery()
-            ->getArrayResult();
-
-        return count($slug) > 0 ? $slug[0]['slug'] : null;
+        if(!$this->isMyDomain()) {
+            preg_match("#(?<=\/s\/).*?(?=\/)#i", $this->url, $slug);
+            return $slug[0];
+        }
+        else {
+            $slugFromUrl = preg_replace("#{$this->siteIndicator}#", "", $this->url);
+            $slug = $this->entityManager->createQueryBuilder()
+                ->select('s.slug')
+                ->from('DomainManager\Entity\DomainSiteMapping', 'm')
+                ->leftJoin('Omeka\Entity\Site', 's', \Doctrine\ORM\Query\Expr\Join::WITH, 'm.site_id = s.id')
+                ->where('m.domain = ?1')
+                ->orWhere("s.slug = ?2")
+                ->setParameter(1, $this->domain)
+                ->setParameter(2, $slugFromUrl)
+                ->getQuery()
+                ->getArrayResult();
+            return count($slug) > 0 ? $slug[0]['slug'] : null;
+        }
     }
 
     private function getDefaultPage()
@@ -421,11 +477,17 @@ class DomainMapper
             ->setParameter(1, $this->siteId)
             ->getQuery()
             ->getArrayResult();
-
+        
         if (count($defaultPage) > 0) {
             return $defaultPage[0]['slug'];
         }
-
+        else if(count($defaultPage) == 0 && !$this->isMyDomain()) {
+            if(preg_match("#\/s\/.*?(?=\/)\/page\/.*#i", $this->url)) {
+                $defaultPage = explode("/", $this->url);
+                return end($defaultPage);
+            }
+        }
+        
         return null;
     }
 
@@ -437,76 +499,77 @@ class DomainMapper
             $separator = '/';
         }
 
-        $url = "https://{$this->domain}{$separator}{$url}";
-        $controller->plugin('redirect')->toUrl($url);
+        $url = "{$this->scheme}://{$this->domain}{$separator}{$url}";
+        return $controller->plugin('redirect')->toUrl($url);
     }
 
     public function createRoute($routes = null)
     {
+        $domain = $this->getDomain();
 
         if (strpos($this->url, 's/en') !== false) {
-
             return;
         }
-
-        if ($this->isIgnoredRoute()) {
+        
+        if ($this->isIgnoredRoute() || is_null($domain)) {
             return;
-        }
-
-        if($this->router->hasRoute($this->siteSlug)) {
-            $this->router->removeRoute($this->siteSlug);
         }
 
         $routes = is_null($routes) ? $this->router->getRoutes() : $routes;
         $this->routes[$this->siteSlug] = $this->routeTemplate($routes);
         $this->router->addRoutes($this->routes[$this->siteSlug]);
-
-        if (substr($this->url, 0, 3) == $this->siteIndicator) {
+        
+        if ($this->isMyDomain() && substr($this->url, 0, 3) == $this->siteIndicator) {
             $this->redirectUrl = trim(preg_replace("#{$this->siteIndicator}|{$this->siteSlug}#", '', $this->url), '/');
         }
-
-        $doRedirect = true;
+        
+        $doRedirect = false;
         $routeMatch = $this->router->match($this->event->getRequest());
 
-        /**
-         * route exists however it is the default omeka route and not the domain specific route
-         */
-        $isOmekaDefaultRoute = stripos($this->url, $this->siteIndicator) !== false;
-        if ($isOmekaDefaultRoute) {
-          $url = str_replace("/s/","",$this->redirectUrl);
-          $url = str_replace($this->siteSlug,"",$url);
-          $r = $this->event->getRequest()->setUri("/".$url);
-          $routeMatch = $this->router->match($r);
+        if(is_null($routeMatch)) {
+            $doRedirect = true;
+
+            if($this->redirectUrl[0] != "/") {
+                $this->redirectUrl = "/" . $this->redirectUrl;
+            }
+            
+            $this->event->getRequest()->setUri($this->redirectUrl);
+            $routeMatch = $this->router->match($this->event->getRequest());
         }
 
         if (!is_null($routeMatch)) {
-            $doRedirect = false;
+            if (!$this->isMyDomain()) {
+                $this->redirectUrl = $domain . $this->redirectUrl;
+            }
+            else {
+                /**
+                 * route exists however it is the default omeka route and not the domain specific route
+                 */
+                $isOmekaDefaultRoute = stripos($this->url, $this->siteIndicator) !== false;
 
-            if($this->isIndexPage() || $this->isDefaultPageRoute()) {
-                $doRedirect = true;
-                $this->redirectUrl = $this->defaultPageUrl;
+                if($this->isIndexPage() || $this->isDefaultPageRoute()) {
+                    $doRedirect = true;
+                    $this->redirectUrl = $this->defaultPageUrl;
+                }
             }
 
             /*
              * append all query variables
              */
-            if (strlen($this->query) > 0) {
+            if (strlen($this->redirectUrl) && strlen($this->query)) {
                 $this->redirectUrl = $this->redirectUrl . '?' . $this->query;
             }
-
-            if (strlen($this->redirectUrl) > 0 && $doRedirect) {
-                $this->event->getApplication()->getEventManager()->getSharedManager()->attach(
-                    'Zend\Mvc\Controller\AbstractActionController',
-                    'dispatch',
-                    function ($event) {
-                        /*
-                         * redirect is only invoked when $routeMatch is not null
-                         */
-                        $controller = $event->getTarget();
-                        $this->redirect($controller, $this->redirectUrl);
-                    },
-                    100
-                );
+            
+            /**
+             * ensure we append the domain
+             */
+            if(!preg_match("#{$domain}#", $this->redirectUrl)) {
+                $this->redirectUrl = $domain . "/". $this->redirectUrl;
+            }
+            
+            if(strlen($this->redirectUrl) && $doRedirect) {
+                header("Location: {$this->redirectUrl}");
+                exit();
             }
         }
     }
@@ -562,16 +625,18 @@ class DomainMapper
 
     public function init()
     {
-        $this->initRoutingVariables();
+        if(php_sapi_name() !== 'cli') {
+            $this->initRoutingVariables();
 
-        if (!$this->isIgnoredRoute()) {
-            if (!$this->isPluginConfigured()) {
-                $renderer = $this->event->getApplication()->getServiceManager()->get('ViewPhpRenderer');
-                $view = new ViewModel();
-                $data = ['domain' => $this->domain];
-                $view->setTemplate('domain_not_configured');
-                $view->setVariables($data);
-                die($renderer->render($view));
+            if (!$this->isIgnoredRoute()) {
+                if (!$this->isPluginConfigured()) {
+                    $renderer = $this->event->getApplication()->getServiceManager()->get('ViewPhpRenderer');
+                    $view = new ViewModel();
+                    $data = ['domain' => $this->domain];
+                    $view->setTemplate('domain_not_configured');
+                    $view->setVariables($data);
+                    die($renderer->render($view));
+                }
             }
         }
     }
@@ -593,7 +658,6 @@ class DomainMapper
     public function saveConfiguration(AbstractController $controller)
     {
         $this->controller = $controller;
-
         $request = $controller->getRequest();
         $mapping_ids = $request->getPost('mapping_id');
         $site_ids = $request->getPost('site_id');
@@ -609,7 +673,7 @@ class DomainMapper
             $mapping_id = $row['mapping_id'];
             $site_id = $row['site_id'];
             $domain = $row['domain'];
-
+            
             if (strlen($domain) > 0) {
                 $validate = preg_match('#^(?!\-)(?:[a-zA-Z\d\-]{0,62}[a-zA-Z\d]\.){1,126}(?!\d+)[a-zA-Z\d]{1,63}$#', $domain);
 

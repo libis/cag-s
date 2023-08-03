@@ -1,9 +1,9 @@
-<?php
+<?php declare(strict_types=1);
 namespace Reference\Service\ViewHelper;
 
 use Interop\Container\ContainerInterface;
+use Laminas\ServiceManager\Factory\FactoryInterface;
 use Reference\View\Helper\References;
-use Zend\ServiceManager\Factory\FactoryInterface;
 
 class ReferencesFactory implements FactoryInterface
 {

@@ -93,6 +93,8 @@ $thumb = $item->primaryMedia();
         <?php endif;?>
       </div>
     </div>
+
+    <?php $this->trigger('view.show.after'); ?>
   </div>
 </div>
 

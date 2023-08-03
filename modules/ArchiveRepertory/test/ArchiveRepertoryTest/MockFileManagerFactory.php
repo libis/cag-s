@@ -1,8 +1,9 @@
-<?php
+<?php declare(strict_types=1);
+
 namespace ArchiveRepertoryTest;
 
 use Interop\Container\ContainerInterface;
-use Zend\ServiceManager\Factory\FactoryInterface;
+use Laminas\ServiceManager\Factory\FactoryInterface;
 
 class MockFileManagerFactory implements FactoryInterface
 {

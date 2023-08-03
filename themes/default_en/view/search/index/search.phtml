@@ -64,6 +64,8 @@ $this->headScript()->appendFile($this->assetUrl('js/search.js', 'Search'));
        $nav = $site->publicNav();
        $container = $nav->getContainer();
        $activePage = $nav->findActive($container);
+       $page = $searchPage;
+       var_dump($searchPage);die();
        ?>
        <h1 class="spacer">
          <?php echo $page->name()." (".$response->getTotalResults().")";?>
@@ -103,6 +105,7 @@ $this->headScript()->appendFile($this->assetUrl('js/search.js', 'Search'));
     <div class="grid">
 
      <!-- search filter -->
+     
      <?php if($page->name() != 'Verhalen'):?>
        <?php echo $this->partial('search/facets', ['facets' => $facets, 'page' => $page, 'query' => $query]); ?>
      <?php endif;?>

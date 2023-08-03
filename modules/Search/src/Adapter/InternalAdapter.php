@@ -1,4 +1,4 @@
-<?php
+<?php declare(strict_types=1);
 
 namespace Search\Adapter;
 
@@ -6,31 +6,37 @@ use Search\Api\Representation\SearchIndexRepresentation;
 
 class InternalAdapter extends AbstractAdapter
 {
-    public function getLabel()
+    public function getLabel(): string
     {
-        return 'Internal'; // @translate
+        return 'Internal [sql]'; // @translate
     }
 
-    public function getConfigFieldset()
+    public function getConfigFieldset(): ?\Laminas\Form\Fieldset
     {
         return null;
     }
 
-    public function getIndexerClass()
+    public function getIndexerClass(): string
     {
         return \Search\Indexer\InternalIndexer::class;
     }
 
-    public function getQuerierClass()
+    public function getQuerierClass(): string
     {
         return \Search\Querier\InternalQuerier::class;
     }
 
-    public function getAvailableFields(SearchIndexRepresentation $index)
+    public function getAvailableFields(SearchIndexRepresentation $index): array
     {
+        static $availableFields;
+
+        if (isset($availableFields)) {
+            return $availableFields;
+        }
+
         // Use a direct query to avoid a memory overload when there are many
         // vocabularies.
-        /* @var \Doctrine\DBAL\Connection $connection */
+        /** @var \Doctrine\DBAL\Connection $connection */
         $connection = $this->getServiceLocator()->get('Omeka\Connection');
 
         $qb = $connection->createQueryBuilder();
@@ -72,11 +78,17 @@ class InternalAdapter extends AbstractAdapter
             $fields[$field['name']] = $field;
         }
 
-        return $fields;
+        return $availableFields = $fields;
     }
 
-    public function getAvailableSortFields(SearchIndexRepresentation $index)
+    public function getAvailableSortFields(SearchIndexRepresentation $index): array
     {
+        static $sortFields;
+
+        if (isset($sortFields)) {
+            return $sortFields;
+        }
+
         $availableFields = $this->getAvailableFields($index);
 
         // There is no default score sort.
@@ -104,7 +116,7 @@ class InternalAdapter extends AbstractAdapter
         return $sortFields;
     }
 
-    public function getAvailableFacetFields(SearchIndexRepresentation $index)
+    public function getAvailableFacetFields(SearchIndexRepresentation $index): array
     {
         return $this->getAvailableFields($index);
     }

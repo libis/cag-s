@@ -1,12 +1,13 @@
-<?php
+<?php declare(strict_types=1);
+
 namespace CleanUrl;
 
 /*
  * Clean Url
  *
- * Allows to have URL like http://example.com/my_item_set/dc:identifier.
+ * Allows to have links like https://example.net/collection/dcterms:identifier.
  *
- * @copyright Daniel Berthereau, 2012-2020
+ * @copyright Daniel Berthereau, 2012-2023
  * @copyright BibLibre, 2016-2017
  * @license http://www.cecill.info/licences/Licence_CeCILL_V2.1-en.txt
  */
@@ -17,148 +18,164 @@ if (!class_exists(\Generic\AbstractModule::class)) {
         : __DIR__ . '/src/Generic/AbstractModule.php';
 }
 
-require_once file_exists(OMEKA_PATH . '/config/clean_url.config.php')
-    ? OMEKA_PATH . '/config/clean_url.config.php'
-    : __DIR__ . '/config/clean_url.config.php';
-
-require_once file_exists(OMEKA_PATH . '/config/clean_url.dynamic.php')
-    ? OMEKA_PATH . '/config/clean_url.dynamic.php'
-    : __DIR__ . '/config/clean_url.dynamic.php';
-
 use CleanUrl\Form\ConfigForm;
-use CleanUrl\Service\ViewHelper\GetResourceTypeIdentifiersFactory;
 use Generic\AbstractModule;
-use Zend\EventManager\Event;
-use Zend\EventManager\SharedEventManagerInterface;
-use Zend\Mvc\Controller\AbstractController;
-use Zend\Mvc\MvcEvent;
-use Zend\View\Renderer\PhpRenderer;
+use Laminas\EventManager\Event;
+use Laminas\EventManager\SharedEventManagerInterface;
+use Laminas\ModuleManager\ModuleEvent;
+use Laminas\ModuleManager\ModuleManager;
+use Laminas\Mvc\Controller\AbstractController;
+use Laminas\Mvc\MvcEvent;
+use Laminas\View\Renderer\PhpRenderer;
+use Omeka\Stdlib\Message;
 
 class Module extends AbstractModule
 {
     const NAMESPACE = __NAMESPACE__;
 
-    public function onBootstrap(MvcEvent $event)
+    public function init(ModuleManager $moduleManager): void
+    {
+        $moduleManager->getEventManager()->attach(ModuleEvent::EVENT_MERGE_CONFIG, [$this, 'onEventMergeConfig']);
+    }
+
+    public function onEventMergeConfig(ModuleEvent $event): void
+    {
+        // Check if the main site is skipped, else the standard urls apply.
+        if (!SLUG_MAIN_SITE) {
+            return;
+        }
+
+        /** @var \Laminas\ModuleManager\Listener\ConfigListener $configListener */
+        $configListener = $event->getParam('configListener');
+        // At this point, the config is read only, so it is copied and replaced.
+        $config = $configListener->getMergedConfig(false);
+
+        // Manage the routes for the main site when "s/site-slug/" is skipped.
+        // So copy routes from "site", without starting "/".
+        foreach ($config['router']['routes']['site']['child_routes'] as $routeName => $options) {
+            // Skip some routes for pages that are set directly in the config.
+            if (isset($config['router']['routes']['top']['child_routes'][$routeName])) {
+                continue;
+            }
+            $config['router']['routes']['top']['child_routes'][$routeName] = $options;
+            $config['router']['routes']['top']['child_routes'][$routeName]['options']['route'] =
+                ltrim($config['router']['routes']['top']['child_routes'][$routeName]['options']['route'], '/');
+        }
+
+        $configListener->setMergedConfig($config);
+    }
+
+    public function getConfig()
+    {
+        $localCleanUrlConfig = OMEKA_PATH . '/config/cleanurl.config.php';
+        require_once file_exists($localCleanUrlConfig)
+            ? $localCleanUrlConfig
+            : __DIR__ . '/config/cleanurl.config.php';
+        return include __DIR__ . '/config/module.config.php';
+    }
+
+    public function onBootstrap(MvcEvent $event): void
     {
         parent::onBootstrap($event);
         // The page controller is already allowed, because it's an override.
-        
         $this->addRoutes();
     }
 
-    protected function preInstall()
+    protected function preInstall(): void
     {
+        if (!$this->isConfigWriteable()) {
+            throw new \Omeka\Module\Exception\ModuleCannotInstallException('The file "cleanurl.config.php" in the config directory of Omeka is not writeable.'); // @translate
+        }
         $services = $this->getServiceLocator();
-        $t = $services->get('MvcTranslator');
-        $messenger = new \Omeka\Mvc\Controller\Plugin\Messenger;
-
-        $this->preInstallCopyConfigFiles();
-
-        $messenger->addWarning($t->translate('Some settings may be configured in the file "config/clean_url.config.php" in the root of Omeka.')); // @translate
+        $module = $services->get('Omeka\ModuleManager')->getModule('Generic');
+        if ($module && version_compare($module->getIni('version') ?? '', '3.4.43', '<')) {
+            $translator = $services->get('MvcTranslator');
+            $message = new \Omeka\Stdlib\Message(
+                $translator->translate('This module requires the module "%s", version %s or above.'), // @translate
+                'Generic', '3.4.43'
+            );
+            throw new \Omeka\Module\Exception\ModuleCannotInstallException((string) $message);
+        }
     }
 
-    protected function preInstallCopyConfigFiles()
-    {
-        $success = true;
-
-        $services = $this->getServiceLocator();
-        $t = $services->get('MvcTranslator');
-        $messenger = new \Omeka\Mvc\Controller\Plugin\Messenger;
-
-        $configPath = __DIR__ . '/config/clean_url.dynamic.php';
-        $omekaConfigPath = OMEKA_PATH . '/config/clean_url.dynamic.php';
-        if (file_exists($configPath) && !file_exists($omekaConfigPath)) {
-            $result = @copy($configPath, $omekaConfigPath);
-            if (!$result) {
-                $success = false;
-                $message = $t->translate('Unable to copy the file "config/clean_url.dynamic.php" in Omeka config directory. It should be kept writeable by the server.') // @translate
-                    . ' ' . $t->translate('Without this file, it won’t be possible to modify or remove the "s/".'); // @translate
-                $messenger->addWarning($message);
-            }
-        }
-
-        $configPath = __DIR__ . '/config/clean_url.config.php';
-        $omekaConfigPath = OMEKA_PATH . '/config/clean_url.config.php';
-        if (file_exists($configPath) && !file_exists($omekaConfigPath)) {
-            $result = @copy($configPath, $omekaConfigPath);
-            if (!$result) {
-                $success = false;
-                $message = $t->translate('Unable to copy the special config file "config/clean_url.config.php" in Omeka config directory.') // @translate
-                    . ' ' . $t->translate('Without this file, it won’t be possible to modify or remove the "s/" and "page/" or to define a main site.'); // @translate
-                $messenger->addWarning($message);
-            }
-        }
-
-        return $success;
-    }
-
-    protected function postInstall()
+    protected function postInstall(): void
     {
         $this->cacheCleanData();
-        $this->cacheItemSetsRegex();
+        $this->cacheRouteSettings();
+    }
+
+    protected function isConfigWriteable(): bool
+    {
+        $filepath = OMEKA_PATH . '/config/cleanurl.config.php';
+        return (file_exists($filepath) && is_writeable($filepath))
+            || (!file_exists($filepath) && is_writeable(dirname($filepath)));
     }
 
     /**
-     * Defines public routes like "main_path / my_item_set | generic / item dcterms:identifier / media dcterms:identifier".
-     *
-     * @todo Rechecks performance of routes definition.
+     * Defines routes.
      */
-    protected function addRoutes()
+    protected function addRoutes(): void
     {
         $services = $this->getServiceLocator();
         $router = $services->get('Router');
-        if (!$router instanceof \Zend\Router\Http\TreeRouteStack) {
+        if (!$router instanceof \Laminas\Router\Http\TreeRouteStack) {
             return;
         }
 
         $settings = $services->get('Omeka\Settings');
         $helpers = $services->get('ViewHelperManager');
+        $defaultSettings = [
+            'routes' => [],
+            'route_aliases' => [],
+        ];
+        $cleanUrlSettings = $settings->get('cleanurl_settings', []) + $defaultSettings;
 
-        $basePath = $helpers->get('basePath');
+        $configRoutes = $services->get('Config')['router']['routes'];
 
-        // TODO Add route specifications, not route names.
-        // Add first part or the routes, that is generally the name of the
-        // modules used as route.
-        // $adminRoutes = array_keys($router->getRoutes()->toArray()['admin']->getRoutes()->toArray());
-
-        // TODO Don't call status, it breaks construction of urls (media).
-        // $status = $services->get('Omeka\Status');
+        // Top routes are managed during init above.
+        $childRoutes = ($configRoutes['site']['child_routes']['resource-id']['child_routes'] ?? [])
+            + ($configRoutes['admin']['child_routes']['id']['child_routes'] ?? []);
 
         $router
             ->addRoute('clean-url', [
                 'type' => \CleanUrl\Router\Http\CleanRoute::class,
-                // Check clean url first.
+                // Check clean url before core and other module routes.
                 'priority' => 10,
                 'options' => [
+                    'routes' => $cleanUrlSettings['routes'],
+                    'route_aliases' => $cleanUrlSettings['route_aliases'],
                     'api' => $services->get('Omeka\ApiManager'),
-                    'base_path' => $basePath(),
-                    'settings' => $settings->get('cleanurl_quick_settings', []),
+                    'entityManager' => $services->get('Omeka\EntityManager'),
+                    'getMediaFromPosition' => $helpers->get('getMediaFromPosition'),
+                    'getResourceFromIdentifier' => $helpers->get('getResourceFromIdentifier'),
+                    'getResourceIdentifier' => $helpers->get('getResourceIdentifier'),
                 ],
+                // Fix https://gitlab.com/Daniel-KM/Omeka-S-module-CleanUrl/-/issues/11
+                // FIXME Go thorough to find why site/resource-id answer by a site/resource (so, above during merge of child routes).
+                // 'may_terminate' => !empty($childRoutes),
+                'may_terminate' => true,
+                'child_routes' => $childRoutes,
             ]);
     }
 
-    public function attachListeners(SharedEventManagerInterface $sharedEventManager)
+    public function attachListeners(SharedEventManagerInterface $sharedEventManager): void
     {
-        $serviceLocator = $this->getServiceLocator();
+        $sharedEventManager->attach(
+            'Omeka\Controller\Admin\ItemSet',
+            'view.show.sidebar',
+            [$this, 'displayViewResourceIdentifier']
+        );
+        $sharedEventManager->attach(
+            'Omeka\Controller\Admin\Item',
+            'view.show.sidebar',
+            [$this, 'displayViewResourceIdentifier']
+        );
+        $sharedEventManager->attach(
+            'Omeka\Controller\Admin\Media',
+            'view.show.sidebar',
+            [$this, 'displayViewResourceIdentifier']
+        );
 
-        $settings = $serviceLocator->get('Omeka\Settings');
-        if ($settings->get('cleanurl_admin_show_identifier')) {
-            $sharedEventManager->attach(
-                'Omeka\Controller\Admin\ItemSet',
-                'view.show.sidebar',
-                [$this, 'displayViewResourceIdentifier']
-            );
-            $sharedEventManager->attach(
-                'Omeka\Controller\Admin\Item',
-                'view.show.sidebar',
-                [$this, 'displayViewResourceIdentifier']
-            );
-            $sharedEventManager->attach(
-                'Omeka\Controller\Admin\Media',
-                'view.show.sidebar',
-                [$this, 'displayViewResourceIdentifier']
-            );
-        }
         $sharedEventManager->attach(
             'Omeka\Controller\Admin\Item',
             'view.details',
@@ -171,22 +188,6 @@ class Module extends AbstractModule
         );
 
         $sharedEventManager->attach(
-            \Omeka\Api\Adapter\ItemSetAdapter::class,
-            'api.create.post',
-            [$this, 'handleSaveItemSet']
-        );
-        $sharedEventManager->attach(
-            \Omeka\Api\Adapter\ItemSetAdapter::class,
-            'api.update.post',
-            [$this, 'handleSaveItemSet']
-        );
-        $sharedEventManager->attach(
-            \Omeka\Api\Adapter\ItemSetAdapter::class,
-            'api.delete.post',
-            [$this, 'handleSaveItemSet']
-        );
-
-        $sharedEventManager->attach(
             \Omeka\Api\Adapter\SiteAdapter::class,
             'api.create.post',
             [$this, 'handleSaveSite']
@@ -205,75 +206,47 @@ class Module extends AbstractModule
         $sharedEventManager->attach(
             \Omeka\Api\Adapter\SiteAdapter::class,
             'api.create.pre',
-            [$this, 'handleCheckSlug']
+            [$this, 'handleCheckSlugSite']
         );
         $sharedEventManager->attach(
             \Omeka\Api\Adapter\SiteAdapter::class,
             'api.update.pre',
-            [$this, 'handleCheckSlug']
+            [$this, 'handleCheckSlugSite']
         );
         $sharedEventManager->attach(
             \Omeka\Api\Adapter\SitePageAdapter::class,
             'api.create.pre',
-            [$this, 'handleCheckSlug']
+            [$this, 'handleCheckSlugPage']
         );
         $sharedEventManager->attach(
             \Omeka\Api\Adapter\SitePageAdapter::class,
             'api.update.pre',
-            [$this, 'handleCheckSlug']
+            [$this, 'handleCheckSlugPage']
         );
     }
 
     public function getConfigForm(PhpRenderer $renderer)
     {
         $services = $this->getServiceLocator();
+        $messenger = $services->get('ControllerPluginManager')->get('messenger');
 
-        $config = $services->get('Config');
-        $settings = $services->get('Omeka\Settings');
+        $translate = $renderer->plugin('translate');
+        $html = $translate('"Clean Url" module allows to have clean, readable and search engine optimized urls for pages and resources, like https://example.net/item_set_identifier/item_identifier.') // @translate
+            . '<br/>'
+            . $translate('For identifiers, it is recommended to use a pattern that includes at least one letter to avoid confusion with internal numerical ids.') // @translate
+            . '<br/>'
+            . $translate('For a good seo, it’s not recommended to have multiple urls for the same resource.') // @translate
+            . '<br/>'
+            . sprintf($translate('See %s for more information.'), // @translate
+                sprintf('<a href="https://gitlab.com/Daniel-KM/Omeka-S-module-CleanUrl">%s</a>', 'Readme')
+            );
 
-        // The params are cached on load and save, to manage the case the user
-        // doesn’t save the config.
-        $this->cacheCleanData();
-        $this->cacheItemSetsRegex();
-
-        // TODO Clean filling of the config form.
-        $data = [];
-        $defaultSettings = $config['cleanurl']['config'];
-        foreach ($defaultSettings as $name => $value) {
-            $data['clean_url_pages'][$name] = $settings->get($name, $value);
-            $data['clean_url_identifiers'][$name] = $settings->get($name, $value);
-            $data['clean_url_main_path'][$name] = $settings->get($name, $value);
-            $data['clean_url_item_sets'][$name] = $settings->get($name, $value);
-            $data['clean_url_items'][$name] = $settings->get($name, $value);
-            $data['clean_url_medias'][$name] = $settings->get($name, $value);
-            $data['clean_url_admin'][$name] = $settings->get($name, $value);
+        if (!$this->isConfigWriteable()) {
+            $messenger->addError(new Message('Warning: the config of the module cannot be saved in "config/cleanurl.config.php". It is required to skip the site paths.')); // @translate
         }
 
-        $data['clean_url_admin']['cleanurl_admin_reserved'] = implode("\n", $data['clean_url_admin']['cleanurl_admin_reserved']);
-
-        $form = $services->get('FormElementManager')->get(ConfigForm::class);
-        $form->init();
-        $form->setData($data);
-
-        $view = $renderer;
-        $translate = $view->plugin('translate');
-        $view->headStyle()->appendStyle('.inputs label { display: block; }');
-        $form->prepare();
-
-        $html = $translate('"CleanUrl" module allows to have clean, readable and search engine optimized urls for pages and resources, like http://example.com/my_item_set/item_identifier.') // @translate
-            . '<br />'
-            . sprintf($translate('See %s for more information.'), // @translate
-            sprintf('<a href="https://github.com/Daniel-KM/Omeka-S-module-CleanUrl">%s</a>', 'Readme'))
-            . '<br />'
-            . sprintf($translate('%sNote%s: it is not recommended to use identifiers with reserved characters such "/" or "%%", even if they can be managed.'), // @translate
-                '<strong>', '</strong>'
-            )
-            . '<br />'
-            . sprintf($translate('%sNote%s: For a good seo, it’s not recommended to have multiple urls for the same resource.'), // @translate
-                '<strong>', '</strong>'
-            )
-            . $view->formCollection($form);
-        return $html;
+        return $html
+            . parent::getConfigForm($renderer);
     }
 
     public function handleConfigForm(AbstractController $controller)
@@ -293,62 +266,48 @@ class Module extends AbstractModule
             return false;
         }
 
-        // TODO Normalize the filling of the config form.
+        // Check config.
+
         $params = $form->getData();
+        $params['cleanurl_settings'] = [];
 
-        $params['cleanurl_quick_settings'] = [];
+        /** @var \Doctrine\DBAL\Connection $connection */
+        $connection = $services->get('Omeka\Connection');
+        $messenger = $services->get('ControllerPluginManager')->get('messenger');
+        $hasError = false;
 
-        // Make the params a flat array.
-        $params = array_merge(
-            $params['clean_url_pages'],
-            $params['clean_url_identifiers'],
-            $params['clean_url_main_path'],
-            $params['clean_url_item_sets'],
-            $params['clean_url_items'],
-            $params['clean_url_medias'],
-            $params['clean_url_admin']
-        );
+        // TODO Move the formatters and validators inside the config form.
 
-        // TODO Move the post-checks into the form.
+        // TODO Make it an hidden input to forbid submission.
+        if (!$this->isConfigWriteable()) {
+            $controller->messenger()->addError(
+                'The config of the module cannot be saved in "config/cleanurl.config.php". It is required to skip the site paths.' // @translate
+            );
+            $hasError = true;
+        }
 
-        // Sanitize first.
-        $params['cleanurl_identifier_prefix'] = trim($params['cleanurl_identifier_prefix']);
+        // Sanitize params first.
+
+        $trimSlash = function ($v) {
+            return trim((string) $v, "/ \t\n\r\0\x0B");
+        };
+
+        $params['cleanurl_admin_reserved'] = array_unique(array_filter(array_map($trimSlash, $params['cleanurl_admin_reserved'])));
+
         foreach ([
-            'cleanurl_main_path',
-            'cleanurl_main_path_2',
-            'cleanurl_main_path_3',
-            'cleanurl_item_set_generic',
-            'cleanurl_item_generic',
-            'cleanurl_media_generic',
             'cleanurl_site_slug',
             'cleanurl_page_slug',
         ] as $posted) {
-            $value = trim(trim($params[$posted]), ' /');
-            $params[$posted] = mb_strlen($value) ? trim($value) . '/' : '';
+            $value = $trimSlash($params[$posted]);
+            $params[$posted] = mb_strlen($value) ? $value . '/' : '';
         }
 
-        $params['cleanurl_identifier_property'] = (int) $params['cleanurl_identifier_property'];
-
-        // Remove empty options for main path.
-        if (!mb_strlen($params['cleanurl_main_path_2']) && mb_strlen($params['cleanurl_main_path_3'])) {
-            $params['cleanurl_main_path_2'] = $params['cleanurl_main_path_3'];
-            $params['cleanurl_main_path_3'] = '';
-        }
-        if (!mb_strlen($params['cleanurl_main_path']) && mb_strlen($params['cleanurl_main_path_2'])) {
-            $params['cleanurl_main_path'] = $params['cleanurl_main_path_2'];
-            $params['cleanurl_main_path_2'] = '';
-        }
-
-        // The default url should be allowed for items and media.
-        $params['cleanurl_item_allowed'][] = $params['cleanurl_item_default'];
-        $params['cleanurl_item_allowed'] = array_values(array_unique($params['cleanurl_item_allowed']));
-        $params['cleanurl_media_allowed'][] = $params['cleanurl_media_default'];
-        $params['cleanurl_media_allowed'] = array_values(array_unique($params['cleanurl_media_allowed']));
-
-        $connection = $services->get('Omeka\Connection');
+        $siteSlug = $params['cleanurl_site_slug'];
+        $pageSlug = $params['cleanurl_page_slug'];
 
         // Check the default site.
-        $skip = $params['cleanurl_site_skip_main'];
+        $skip = $params['cleanurl_site_skip_main']
+            || !($siteSlug . $pageSlug);
         if ($skip) {
             $default = $settings->get('default_site', '');
             if ($default) {
@@ -359,8 +318,7 @@ class Module extends AbstractModule
                 }
             }
             if (!$default) {
-                $message = new \Omeka\Stdlib\Message('There is no default site: "/s/site-slug" cannot be skipped.'); // @translate
-                $messenger = new \Omeka\Mvc\Controller\Plugin\Messenger;
+                $message = new Message('There is no default site: "/s/site-slug" cannot be empty or skipped.'); // @translate
                 $messenger->addError($message);
                 return false;
             }
@@ -368,117 +326,142 @@ class Module extends AbstractModule
             // Check all pages of the default site.
             // TODO Manage the case where the default site is updated after (rare).
             $result = [];
-            $slugs = $connection->query('SELECT slug FROM site;')->fetchAll(\PDO::FETCH_COLUMN);
+            $slugs = $connection->executeQuery('SELECT slug FROM site ORDER BY id;')->fetchFirstColumn();
             foreach ($slugs as $slug) {
                 if (mb_stripos('|' . SLUGS_CORE . SLUGS_RESERVED . '|', '|' . trim($slug, '/') . '|')) {
                     $result[] = $slug;
                 }
             }
             if ($result) {
-                $message = new \Omeka\Stdlib\Message(
+                $message = new Message(
                     'The sites "%s" use a reserved string and the "/s/site-slug" cannot be skipped.', // @translate
                     implode('", "', $result)
                 );
-                $messenger = new \Omeka\Mvc\Controller\Plugin\Messenger;
                 $messenger->addError($message);
-                return false;
+                $hasError = true;
             }
-            $slugs = $connection->query('SELECT slug FROM site_page;')->fetchAll(\PDO::FETCH_COLUMN);
+            $slugs = $connection->executeQuery('SELECT slug FROM site_page ORDER BY id;')->fetchFirstColumn();
             foreach ($slugs as $slug) {
                 if (mb_stripos('|' . SLUGS_CORE . SLUGS_RESERVED . '|' . SLUGS_SITE . '|', '|' . trim($slug, '/') . '|') !== false) {
                     $result[] = $slug;
                 }
             }
             if ($result) {
-                $message = new \Omeka\Stdlib\Message(
+                $message = new Message(
                     'The site pages "%s" use a reserved string and "/s/site-slug" cannot be skipped.', // @translate
                     implode('", "', $result)
                 );
-                $messenger = new \Omeka\Mvc\Controller\Plugin\Messenger;
                 $messenger->addError($message);
-                return false;
+                $hasError = true;
             }
         }
 
         // Check the option site slug.
-        $slug = $params['cleanurl_site_slug'];
-        if (mb_strlen($slug)
-            && $slug !== 's/'
-            && mb_stripos('|' . SLUGS_CORE . SLUGS_RESERVED . '|' . SLUGS_SITE . '|', '|' . trim($slug, '/') . '|') !== false
+        if (mb_strlen($siteSlug)
+            && $siteSlug !== 's/'
+            && mb_stripos('|' . SLUGS_CORE . SLUGS_RESERVED . '|' . SLUGS_SITE . '|', '|' . trim($siteSlug, '/') . '|') !== false
         ) {
-            $message = new \Omeka\Stdlib\Message('The slug "%s" is used or reserved and the prefix for sites cannot be updated.', $slug); // @translate
-            $messenger = new \Omeka\Mvc\Controller\Plugin\Messenger;
+            $message = new Message('The slug "%s" is used or reserved and the prefix for sites cannot be updated.', $siteSlug); // @translate
             $messenger->addError($message);
-            return false;
+            $hasError = true;
         }
-
-        if (!mb_strlen($slug)) {
+        // Check the existing slugs with reserved slugs.
+        else {
             $result = [];
-            $slugs = $services->get('Omeka\Connection')->query('SELECT slug FROM site;')->fetchAll(\PDO::FETCH_COLUMN);
+            $slugs = $connection->executeQuery('SELECT slug FROM site ORDER by id;')->fetchFirstColumn();
             foreach ($slugs as $slug) {
                 if (mb_stripos('|' . SLUGS_CORE . SLUGS_RESERVED . '|', '|' . trim($slug, '/') . '|')) {
                     $result[] = $slug;
                 }
             }
-            if ($result) {
-                $message = new \Omeka\Stdlib\Message(
+            if (count($result)) {
+                $message = new Message(
                     'The sites "%s" use a reserved string and the prefix for sites cannot be removed.', // @translate
                     implode('", "', $result)
                 );
-                $messenger = new \Omeka\Mvc\Controller\Plugin\Messenger;
                 $messenger->addError($message);
-                return false;
+                $hasError = true;
             }
         }
 
         // Check the option page slug.
-        $slug = $params['cleanurl_page_slug'];
-        if (mb_strlen($slug)
-            && $slug !== 'page/'
-            && mb_stripos('|' . SLUGS_CORE . SLUGS_RESERVED . '|' . SLUGS_SITE . '|', '|' . trim($slug, '/') . '|') !== false
+        if (mb_strlen($pageSlug)
+            && $pageSlug !== 'page/'
+            && mb_stripos('|' . SLUGS_CORE . SLUGS_RESERVED . '|' . SLUGS_SITE . '|', '|' . trim($pageSlug, '/') . '|') !== false
         ) {
-            $message = new \Omeka\Stdlib\Message('The slug "%s" is used or reserved and the prefix for pages cannot be updated.', $slug); // @translate
-            $messenger = new \Omeka\Mvc\Controller\Plugin\Messenger;
+            $message = new Message('The slug "%s" is used or reserved and the prefix for pages cannot be updated.', $pageSlug); // @translate
             $messenger->addError($message);
-            return false;
+            $hasError = true;
         }
-
-        if (!mb_strlen($slug)) {
+        // Check the existing slugs with reserved slugs.
+        else {
             $result = [];
-            $slugs = $services->get('Omeka\Connection')->query('SELECT slug FROM site_page;')->fetchAll(\PDO::FETCH_COLUMN);
+            $slugs = $connection->executeQuery('SELECT slug FROM site_page ORDER BY id;')->fetchFirstColumn();
             foreach ($slugs as $slug) {
                 if (mb_stripos('|' . SLUGS_CORE . SLUGS_RESERVED . '|' . SLUGS_SITE . '|', '|' . trim($slug, '/') . '|')) {
                     $result[] = $slug;
                 }
             }
             if ($result) {
-                $message = new \Omeka\Stdlib\Message(
+                $message = new Message(
                     'The site pages "%s" use a reserved string and the prefix for pages cannot be removed.', // @translate
                     implode('", "', $result)
                 ); // @translate
-                $messenger = new \Omeka\Mvc\Controller\Plugin\Messenger;
                 $messenger->addError($message);
-                return false;
+                $hasError = true;
             }
         }
 
-        if ($params['cleanurl_media_media_undefined'] === 'position') {
-            $hasGeneric = (bool) array_intersect(['generic_media', 'generic_media_full', 'generic_item_media', 'generic_item_full_media', 'generic_item_media_full', 'generic_item_full_media_full'], $params['cleanurl_media_allowed']);
-            $hasNoGenericItem = (bool) array_intersect(['generic_item_media', 'generic_item_full_media', 'generic_item_media_full', 'generic_item_full_media_full'], $params['cleanurl_media_allowed']);
-            if ($hasGeneric && !$hasNoGenericItem) {
-                $params['cleanurl_media_allowed'][] = 'generic_item_media';
-                $message = new \Omeka\Stdlib\Message('The option "media position" requires to set a generic route with an item id. One route was added.'); // @translate
-                $messenger = new \Omeka\Mvc\Controller\Plugin\Messenger;
-                $messenger->addWarning($message);
+        $resourceTypes = ['item_set', 'item', 'media'];
+
+        foreach ($resourceTypes as $resourceType) {
+            $paramName = 'cleanurl_' . $resourceType;
+            foreach (['default', 'short', 'pattern', 'pattern_short'] as $name) {
+                $params[$paramName][$name] = $trimSlash($params[$paramName][$name]);
             }
-            $hasItemSet = (bool) array_intersect(['item_set_media', 'item_set_media_full', 'item_set_item_media', 'item_set_item_full_media', 'item_set_item_media_full', 'item_set_item_full_media_full'], $params['cleanurl_media_allowed']);
-            $hasNoItemSetItem = (bool) array_intersect(['item_set_item_media', 'item_set_item_full_media', 'item_set_item_media_full', 'item_set_item_full_media_full'], $params['cleanurl_media_allowed']);
-            if ($hasItemSet && !$hasNoItemSetItem) {
-                $params['cleanurl_media_allowed'][] = 'item_set_item_media';
-                $message = new \Omeka\Stdlib\Message('The option "media position" requires to set an item set route with an item id. One route was added.'); // @translate
-                $messenger = new \Omeka\Mvc\Controller\Plugin\Messenger;
-                $messenger->addWarning($message);
+            // Don't trim the prefix. See GetResourcesFromIdentifiers.
+            // TODO Remove the prefix fix for space.
+            foreach (['prefix'] as $name) {
+                $params[$paramName][$name] = trim($params[$paramName][$name]);
             }
+            foreach (['prefix_part_of', 'keep_slash', 'case_sensitive'] as $name) {
+                $params[$paramName][$name] = (bool) $params[$paramName][$name];
+            }
+            foreach (['property'] as $name) {
+                $params[$paramName][$name] = (int) $params[$paramName][$name];
+            }
+            $params[$paramName]['paths'] = array_unique(array_filter(array_map($trimSlash, $params[$paramName]['paths'])));
+        }
+
+        // Quick check of paths and pattern for identifiers.
+        $hasPattern = [];
+        foreach ($resourceTypes as $resourceType) {
+            $hasPattern[$resourceType]['full'] = !empty($params['cleanurl_' . $resourceType]['pattern']);
+            $hasPattern[$resourceType]['short'] = !empty($params['cleanurl_' . $resourceType]['pattern_short']);
+        }
+        foreach ($resourceTypes as $resourceType) {
+            $name = 'cleanurl_' . $resourceType;
+            $paths = $params[$name]['paths'];
+            $paths[] = $params[$name]['default'];
+            $paths[] = $params[$name]['short'];
+            foreach (array_filter($paths) as $path) {
+                foreach ($resourceTypes as $resource) {
+                    if (!$hasPattern[$resource]['full'] && mb_strpos($path, "{{$resource}_identifier}") !== false) {
+                        $message = new Message('A pattern for "%s", for example "[a-zA-Z0-9_-]+", is required to use the path "%s".', $resource, $path); // @translate
+                        $messenger->addError($message);
+                        $hasError = true;
+                    }
+                    if (!$hasPattern[$resource]['full'] && !$hasPattern[$resource]['short'] && mb_strpos($path, "{{$resource}_identifier_short}") !== false) {
+                        $message = new Message('A pattern for "%s", for example "[a-zA-Z0-9_-]+", is required to use the path "%s".', $resource, $path); // @translate
+                        $messenger->addError($message);
+                        $hasError = true;
+                    }
+                }
+            }
+        }
+
+        if ($hasError) {
+            return false;
         }
 
         // Save all the params.
@@ -488,9 +471,8 @@ class Module extends AbstractModule
             $settings->set($name, $value);
         }
 
-        $this->cacheRouteSettings();
         $this->cacheCleanData();
-        $this->cacheItemSetsRegex();
+        $this->cacheRouteSettings(true);
 
         return true;
     }
@@ -498,7 +480,7 @@ class Module extends AbstractModule
     /**
      * Display an identifier.
      */
-    public function displayViewResourceIdentifier(Event $event)
+    public function displayViewResourceIdentifier(Event $event): void
     {
         $resource = $event->getTarget()->resource;
         $this->displayResourceIdentifier($resource);
@@ -507,7 +489,7 @@ class Module extends AbstractModule
     /**
      * Display an identifier.
      */
-    public function displayViewEntityIdentifier(Event $event)
+    public function displayViewEntityIdentifier(Event $event): void
     {
         $resource = $event->getParam('entity');
         $this->displayResourceIdentifier($resource);
@@ -518,7 +500,7 @@ class Module extends AbstractModule
      *
      * @param \Omeka\Api\Representation\AbstractResourceRepresentation|Resource $resource
      */
-    protected function displayResourceIdentifier($resource)
+    protected function displayResourceIdentifier($resource): void
     {
         $services = $this->getServiceLocator();
         $translator = $services->get('MvcTranslator');
@@ -527,20 +509,10 @@ class Module extends AbstractModule
         $identifier = $getResourceIdentifier($resource, false, false);
 
         echo '<div class="meta-group"><h4>'
-            . $translator->translate('Clean identifier') // @translate
+            . $translator->translate('Identifier') // @translate
             . '</h4><div class="value">'
             . ($identifier ?: '<em>' . $translator->translate('[none]') . '</em>')
             . '</div></div>';
-    }
-
-    /**
-     * Process after saving or deleting an item set.
-     *
-     * @param Event $event
-     */
-    public function handleSaveItemSet(Event $event)
-    {
-        $this->cacheItemSetsRegex();
     }
 
     /**
@@ -548,9 +520,10 @@ class Module extends AbstractModule
      *
      * @param Event $event
      */
-    public function handleSaveSite(Event $event)
+    public function handleSaveSite(Event $event): void
     {
         $this->cacheCleanData();
+        $this->cacheRouteSettings();
     }
 
     /**
@@ -558,136 +531,86 @@ class Module extends AbstractModule
      *
      * @param Event $event
      */
-    public function handleCheckSlug(Event $event)
+    public function handleCheckSlugSite(Event $event): void
+    {
+        $this->handleCheckSlug($event, 'sites');
+    }
+
+    /**
+     * Check a site page before saving it.
+     *
+     * @param Event $event
+     */
+    public function handleCheckSlugPage(Event $event): void
+    {
+        $this->handleCheckSlug($event, 'site_pages');
+    }
+
+    /**
+     * Check a site before saving it.
+     *
+     * @param Event $event
+     * @param string $resourceType
+     */
+    protected function handleCheckSlug(Event $event, $resourceType): void
     {
         /** @var \Omeka\Api\Request $request */
         $request = $event->getParam('request');
         $data = $request->getContent();
         if (!isset($data['o:slug'])) {
             return;
-        };
+        }
         $slug = $data['o:slug'];
         if (!mb_strlen($slug)) {
             return;
         }
+
+        // Name of the site is already checked for duplication.
+        $slugCheck = $resourceType === 'sites' ? '' : SLUGS_SITE . '|';
+
         // Don't update if the slug didn't change.
-        if (mb_stripos('|' . SLUGS_CORE . SLUGS_RESERVED . '|' . SLUGS_SITE . '|', '|' . $slug . '|') === false) {
+        if (mb_stripos('|' . SLUGS_CORE . SLUGS_RESERVED . '|' . $slugCheck, '|' . $slug . '|') === false) {
             return;
         }
 
-        $data['o:slug'] .= '_' . substr(str_replace(['+', '/'], '', base64_encode(random_bytes(20))), 0, 4);
+        $data['o:slug'] .= '_' . substr(str_replace(['+', '/', '='], ['', '', ''], base64_encode(random_bytes(128))), 0, 4);
         $request->setContent($data);
 
-        $message = new \Omeka\Stdlib\Message('The slug "%s" is used or reserved. A random string has been automatically appended.', $slug); // @translate
+        $message = new Message('The slug "%s" is used or reserved. A random string has been automatically appended.', $slug); // @translate
         $messenger = new \Omeka\Mvc\Controller\Plugin\Messenger;
         $messenger->addWarning($message);
-        // throw new \Omeka\Api\Exception\ValidationException($message);
+        // throw new \Omeka\Api\Exception\ValidationException((string) $message);
     }
 
     /**
-     * Prepare the quick settings and regex one time.
-     */
-    protected function cacheRouteSettings()
-    {
-        $settings = $this->getServiceLocator()->get('Omeka\Settings');
-        $params = [
-            'cleanurl_main_path' => $settings->get('cleanurl_main_path'),
-            'cleanurl_main_path_2' => $settings->get('cleanurl_main_path_2'),
-            'cleanurl_main_path_3' => $settings->get('cleanurl_main_path_3'),
-            'cleanurl_main_short' => $settings->get('cleanurl_main_short'),
-            'cleanurl_item_set_generic' => $settings->get('cleanurl_item_set_generic'),
-            'cleanurl_item_generic' => $settings->get('cleanurl_item_generic'),
-            'cleanurl_media_generic' => $settings->get('cleanurl_media_generic'),
-        ];
-
-        $quickSettings = [
-            'default_site' => $settings->get('default_site'),
-            'main_path_full' => '',
-            'main_path_full_encoded' => '',
-            'main_short' => $settings->get('cleanurl_main_short'),
-            'main_short_path_full' => '',
-            'main_short_path_full_encoded' => '',
-            'main_short_path_full_regex' => '',
-            'item_set_generic' => $settings->get('cleanurl_item_set_generic'),
-            'item_generic' => $settings->get('cleanurl_item_generic'),
-            'media_generic' => $settings->get('cleanurl_media_generic'),
-            'item_allowed' => $settings->get('cleanurl_item_allowed'),
-            'media_allowed' => $settings->get('cleanurl_media_allowed'),
-            'admin_use' => $settings->get('cleanurl_admin_use'),
-            // Item set regex is managed separately.
-            'item_set_regex' => '',
-            'regex' => '',
-            'admin_reserved' => $settings->get('cleanurl_admin_reserved'),
-        ];
-
-        // Prepare hidden params with the full path to avoid checks later.
-        $quickSettings['main_path_full'] = $params['cleanurl_main_path'] . $params['cleanurl_main_path_2'] . $params['cleanurl_main_path_3'];
-        if (mb_strlen($params['cleanurl_main_path'])) {
-            $quickSettings['main_path_full_encoded'] = $this->encode(rtrim($params['cleanurl_main_path'], '/')) . '/';
-            if (mb_strlen($params['cleanurl_main_path_2'])) {
-                $quickSettings['main_path_full_encoded'] .= $this->encode(rtrim($params['cleanurl_main_path_2'], '/')) . '/';
-                if (mb_strlen($params['cleanurl_main_path_3'])) {
-                    $quickSettings['main_path_full_encoded'] .= $this->encode(rtrim($params['cleanurl_main_path_3'], '/')) . '/';
-                }
-            }
-        }
-
-        // Prepare hidden params with the short path to avoid checks later.
-        switch ($params['cleanurl_main_short']) {
-            default:
-            case 'no':
-                break;
-            case 'main':
-                $quickSettings['main_short_path_full'] = $params['cleanurl_main_path_2'] . $params['cleanurl_main_path_3'];
-                if (mb_strlen($params['cleanurl_main_path_2'])) {
-                    $quickSettings['main_short_path_full_encoded'] .= $this->encode(rtrim($params['cleanurl_main_path_2'], '/')) . '/';
-                    if (mb_strlen($params['cleanurl_main_path_3'])) {
-                        $quickSettings['main_short_path_full_encoded'] .= $this->encode(rtrim($params['cleanurl_main_path_3'], '/')) . '/';
-                    }
-                }
-                break;
-            case 'main_sub':
-                $quickSettings['main_short_path_full'] = $params['cleanurl_main_path_3'];
-                if (mb_strlen($params['cleanurl_main_path_3'])) {
-                    $quickSettings['main_short_path_full_encoded'] .= $this->encode(rtrim($params['cleanurl_main_path_3'], '/')) . '/';
-                }
-                break;
-            case 'main_sub_sub':
-                break;
-        }
-        if (strlen($quickSettings['main_short_path_full'])) {
-            $quickSettings['main_short_path_full_regex'] = str_replace('\\-', '-', preg_quote($quickSettings['main_short_path_full']));
-        }
-
-        $params['main_path_full'] = $quickSettings['main_path_full'];
-        $quickSettings['regex'] = $this->prepareRegexes($params);
-
-        $settings->set('cleanurl_quick_settings', $quickSettings);
-    }
-
-    /**
-     * Cache site slugs in file config/clean_url.dynamic.php.
+     * Cache site slugs in file config/clean_url.config.php.
      */
     protected function cacheCleanData()
     {
         $services = $this->getServiceLocator();
 
-        $filepath = OMEKA_PATH . '/config/clean_url.dynamic.php';
-        if (!$this->checkFilepath($filepath)) {
+        $filepath = OMEKA_PATH . '/config/cleanurl.config.php';
+        if (!$this->isConfigWriteable()) {
             $logger = $services->get('Omeka\Logger');
-            $logger->warn('The file "clean_url.dynamic.php" in the config directory of Omeka is not writeable.'); // @translate
+            $logger->err('The file "cleanurl.config.php" in the config directory of Omeka is not writeable.'); // @translate
             return false;
         }
 
         $settings = $services->get('Omeka\Settings');
 
-        // The file is always reset from original file.
-        $sourceFilepath = __DIR__ . '/config/clean_url.dynamic.php';
+        // The file is always reset from the original file.
+        $sourceFilepath = __DIR__ . '/config/cleanurl.config.php';
         $content = file_get_contents($sourceFilepath);
 
         // Update main site.
         $default = $settings->get('default_site', '');
         $skip = $settings->get('cleanurl_site_skip_main');
+        $siteSlug = $settings->get('cleanurl_site_slug');
+        $pageSlug = $settings->get('cleanurl_page_slug');
+
+        // Check the default site.
+        $skip = $skip
+            || !($siteSlug . $pageSlug);
         if ($default) {
             try {
                 $default = $services->get('Omeka\ApiManager')->read('sites', ['id' => $default])->getContent()->slug();
@@ -716,11 +639,7 @@ class Module extends AbstractModule
 
         // Update list of sites.
         // Get all site slugs, public or not.
-        $sql = 'SELECT slug FROM site;';
-        /** @var \Doctrine\DBAL\Connection $connection */
-        $connection = $services->get('Omeka\Connection');
-        $stmt = $connection->query($sql);
-        $slugs = $stmt->fetchAll(\PDO::FETCH_COLUMN);
+        $slugs = $services->get('Omeka\Connection')->executeQuery('SELECT slug FROM site ORDER BY id;')->fetchFirstColumn();
         $replaceRegex = $this->prepareRegex($slugs);
         $regex = "~const SLUGS_SITE = '[^']*?';~";
         $replace = "const SLUGS_SITE = '" . $replaceRegex . "';";
@@ -729,37 +648,502 @@ class Module extends AbstractModule
         file_put_contents($filepath, $content);
     }
 
-    protected function checkFilepath($filepath)
-    {
-        return file_exists($filepath)
-            && is_file($filepath)
-            && filesize($filepath)
-            && is_writeable($filepath);
-    }
-
     /**
-     * Cache item set identifiers as string to speed up routing.
+     * Prepare the quick settings and regex one time.
+     *
+     * @param bool $displayMessages
      */
-    protected function cacheItemSetsRegex()
+    protected function cacheRouteSettings($displayMessages = false): void
     {
         $services = $this->getServiceLocator();
-        // Get all item set identifiers with one query.
-        $viewHelpers = $services->get('ViewHelperManager');
-        // The view helper is not available during install, upgrade and tests.
-        if ($viewHelpers->has('getResourceTypeIdentifiers')) {
-            $getResourceTypeIdentifiers = $viewHelpers->get('getResourceTypeIdentifiers');
-            $itemSetIdentifiers = $getResourceTypeIdentifiers('item_sets', false, true);
-        } else {
-            $getResourceTypeIdentifiers = $this->getViewHelperRTI($services);
-            $itemSetIdentifiers = $getResourceTypeIdentifiers->__invoke('item_sets', false, true);
+        $settings = $services->get('Omeka\Settings');
+        $logger = $services->get('Omeka\Logger');
+
+        // Controller name and resource types.
+        $resourceTypes = [
+            'item-set' => 'item_set',
+            'item' => 'item',
+            'media' => 'media',
+        ];
+
+        $defaults = [
+            'default' => 'resource/{resource_id}',
+            'short' => '',
+            'paths' => [],
+            'pattern' => '\d+',
+            'pattern_short' => '',
+            'property' => 10,
+            'prefix' => '',
+            'prefix_part_of' => false,
+            'keep_slash' => false,
+            'case_sensitive' => false,
+        ];
+
+        $params = [
+            'default_site' => (int) $settings->get('default_site'),
+            'site_skip_main' => (bool) $settings->get('cleanurl_site_skip_main', false),
+            'site_slug' => $settings->get('cleanurl_site_slug', 's/'),
+            'page_slug' => $settings->get('cleanurl_site_slug', 'page/'),
+            'resource' => $settings->get('cleanurl_resource', $defaults) + $defaults,
+            'item_set' => $settings->get('cleanurl_item_set', $defaults) + $defaults,
+            'item' => $settings->get('cleanurl_item', $defaults) + $defaults,
+            'media' => $settings->get('cleanurl_media', $defaults) + $defaults,
+            'admin_use' => $settings->get('cleanurl_admin_use', true),
+            'admin_reserved' => $settings->get('cleanurl_admin_reserved', []),
+            'routes' => [],
+            'route_aliases' => [],
+        ];
+
+        // TODO Save the slug sites with the updated slugs_sites (but when the config is edited, the sites don't change).
+
+        // Default, short and core urls are merged to manage paths simpler,
+        // Set the default route the first in stacks if any for performance.
+        // foreach (['resource' => 'resource', 'item_set' => 'item-set', 'item' => 'item', 'media' => 'media'] as $resourceType => $controller) {
+        foreach (['resource', 'item_set', 'item', 'media'] as $resourceType) {
+            array_unshift($params[$resourceType]['paths'], $params[$resourceType]['default']);
+            $params[$resourceType]['paths'][] = $params[$resourceType]['short'];
+            // Core paths.
+            // $params[$resourceType]['paths'][] = "$controller/{{$resourceType}_id}";
+            $params[$resourceType]['paths'] = array_unique(array_filter(array_map('trim', $params[$resourceType]['paths'])));
+            if (empty($params[$resourceType]['pattern_short'])) {
+                $params[$resourceType]['pattern_short'] = $params[$resourceType]['pattern'];
+            }
         }
 
-        $regex = $this->prepareRegex($itemSetIdentifiers);
+        $baseRoutes = [
+            'public' => [
+                'base_route' => '/' . SLUG_SITE . ':site-slug/',
+                'base_regex' => '/' . SLUG_SITE . '(?P<site_slug>' . SLUGS_SITE . ')/',
+                'base_spec' => '/' . SLUG_SITE . '%site-slug%/',
+                'space' => '__SITE__',
+                'namespace' => 'CleanUrl\Controller\Site',
+                'site_slug' => null,
+                'forward' => [
+                    'route_name' => 'site/resource-id',
+                    'namespace' => 'Omeka\Controller\Site',
+                    'controller' => [
+                        'item_set' => 'Omeka\Controller\Site\ItemSet',
+                        'item' => 'Omeka\Controller\Site\Item',
+                        'media' => 'Omeka\Controller\Site\Media',
+                    ],
+                    'action' => 'show',
+                ],
+            ],
+            'admin' => [
+                'base_route' => '/admin/',
+                'base_regex' => '/admin/',
+                'base_spec' => '/admin/',
+                'space' => '__ADMIN__',
+                'namespace' => 'CleanUrl\Controller\Admin',
+                'site_slug' => null,
+                'forward' => [
+                    'route_name' => 'admin/default',
+                    'namespace' => 'Omeka\Controller\Admin',
+                    'controller' => [
+                        'item_set' => 'Omeka\Controller\Admin\ItemSet',
+                        'item' => 'Omeka\Controller\Admin\Item',
+                        'media' => 'Omeka\Controller\Admin\Media',
+                    ],
+                    'action' => 'show',
+                ],
+            ],
+            'top' => [
+                'base_route' => '/',
+                'base_regex' => '/',
+                'base_spec' => '/',
+                'space' => '__SITE__',
+                'namespace' => 'CleanUrl\Controller\Site',
+                'site_slug' => SLUG_MAIN_SITE,
+                'forward' => [
+                    'route_name' => 'site/resource-id',
+                    'namespace' => 'Omeka\Controller\Site',
+                    'controller' => [
+                        'item_set' => 'Omeka\Controller\Site\ItemSet',
+                        'item' => 'Omeka\Controller\Site\Item',
+                        'media' => 'Omeka\Controller\Site\Media',
+                    ],
+                    'action' => 'show',
+                ],
+            ],
+        ];
 
-        $settings = $services->get('Omeka\Settings');
-        $quickSettings = $settings->get('cleanurl_quick_settings', []);
-        $quickSettings['item_set_regex'] = $regex;
-        $settings->set('cleanurl_quick_settings', $quickSettings);
+        $regexes = [
+            '{resource_id}' => '(?P<resource_id>\d+)',
+            '{resource_identifier}' => '(?P<resource_identifier>' . $params['resource']['pattern'] . ')',
+            '{resource_identifier_short}' => '(?P<resource_identifier_short>' . $params['resource']['pattern_short'] . ')',
+            '{item_set_id}' => '(?P<item_set_id>\d+)',
+            '{item_set_identifier}' => '(?P<item_set_identifier>' . $params['item_set']['pattern'] . ')',
+            '{item_set_identifier_short}' => '(?P<item_set_identifier_short>' . $params['item_set']['pattern_short'] . ')',
+            '{item_id}' => '(?P<item_id>\d+)',
+            '{item_identifier}' => '(?P<item_identifier>' . $params['item']['pattern'] . ')',
+            '{item_identifier_short}' => '(?P<item_identifier_short>' . $params['item']['pattern_short'] . ')',
+            '{media_id}' => '(?P<media_id>\d+)',
+            '{media_identifier}' => '(?P<media_identifier>' . $params['media']['pattern'] . ')',
+            '{media_identifier_short}' => '(?P<media_identifier_short>' . $params['media']['pattern_short'] . ')',
+            '{media_position}' => '(?P<media_position>\d+)',
+        ];
+
+        $specs = [
+            '{resource_id}' => '%resource_id%',
+            '{resource_identifier}' => '%resource_identifier%',
+            '{resource_identifier_short}' => '%resource_identifier_short%',
+            '{item_set_id}' => '%item_set_id%',
+            '{item_set_identifier}' => '%item_set_identifier%',
+            '{item_set_identifier_short}' => '%item_set_identifier_short%',
+            '{item_id}' => '%item_id%',
+            '{item_identifier}' => '%item_identifier%',
+            '{item_identifier_short}' => '%item_identifier_short%',
+            '{media_id}' => '%media_id%',
+            '{media_identifier}' => '%media_identifier%',
+            '{media_identifier_short}' => '%media_identifier_short%',
+            '{media_position}' => '%media_position%',
+        ];
+
+        $trimSlash = function ($v) {
+            return trim((string) $v, "/ \t\n\r\0\x0B");
+        };
+
+        if ($displayMessages) {
+            /** @var \Omeka\Mvc\Controller\Plugin\Messenger $messenger */
+            $messenger = $services->get('ControllerPluginManager')->get('messenger');
+            $messager = function ($message) use ($messenger): void {
+                $messenger->addError($message);
+            };
+        } else {
+            $messager = function ($message) use ($logger): void {
+                $logger->err($message);
+            };
+        }
+
+        $getItemSetIdentifierName = function (string $path): ?string {
+            if (mb_strpos($path, '{item_set_id}') === false) {
+                if (mb_strpos($path, '{item_set_identifier}') === false) {
+                    return mb_strpos($path, '{item_set_identifier_short}') === false
+                        ? null
+                        : 'item_set_identifier_short';
+                }
+                return 'item_set_identifier';
+            }
+            return 'item_set_id';
+        };
+
+        $getItemIdentifierName = function (string $path): ?string {
+            if (mb_strpos($path, '{item_id}') === false) {
+                if (mb_strpos($path, '{item_identifier}') === false) {
+                    return mb_strpos($path, '{item_identifier_short}') === false
+                        ? null
+                        : 'item_identifier_short';
+                }
+                return 'item_identifier';
+            }
+            return 'item_id';
+        };
+
+        $checkPathItemSet = function (string $path) use ($messager): ?string {
+            $checks = [
+                '{item_set_id}',
+                '{item_set_identifier}',
+                '{item_set_identifier_short}',
+            ];
+            $resourceIdentifier = array_filter($checks, function ($v) use ($path) {
+                return mb_strpos($path, $v) !== false;
+            });
+            if (count($resourceIdentifier) !== 1) {
+                $messager(new Message('The path "%s" for item sets should contain one and only one item set identifier.', $path)); // @translate
+                return null;
+            }
+            $checks = [
+                '{site_slug}',
+                '{resource_id}',
+                '{resource_identifier}',
+                '{resource_identifier_short}',
+                '{item_id}',
+                '{item_identifier}',
+                '{item_identifier_short}',
+                '{media_id}',
+                '{media_identifier}',
+                '{media_identifier_short}',
+                '{media_position}',
+            ];
+            foreach ($checks as $check) {
+                if (mb_strpos($path, $check) !== false) {
+                    $messager(new Message('The path "%s" for item sets should not contain identifier "%s".', $path, $check)); // @translate
+                    return null;
+                }
+            }
+            return reset($resourceIdentifier);
+        };
+
+        $checkPathItem = function (string $path) use ($messager): ?string {
+            $checks = [
+                '{item_id}',
+                '{item_identifier}',
+                '{item_identifier_short}',
+            ];
+            $resourceIdentifier = array_filter($checks, function ($v) use ($path) {
+                return mb_strpos($path, $v) !== false;
+            });
+            if (count($resourceIdentifier) !== 1) {
+                $messager(new Message('The path "%s" for items should contain one and only one item identifier.', $path)); // @translate
+                return null;
+            }
+            $checks = [
+                '{site_slug}',
+                '{resource_id}',
+                '{resource_identifier}',
+                '{resource_identifier_short}',
+                '{media_id}',
+                '{media_identifier}',
+                '{media_identifier_short}',
+                '{media_position}',
+            ];
+            foreach ($checks as $check) {
+                if (mb_strpos($path, $check) !== false) {
+                    $messager(new Message('The path "%s" for items should not contain identifier "%s".', $path, $check)); // @translate
+                    return null;
+                }
+            }
+            return reset($resourceIdentifier);
+        };
+
+        $checkPathMedia = function (string $path) use ($messager, $getItemIdentifierName): ?string {
+            $checks = [
+                '{media_id}',
+                '{media_identifier}',
+                '{media_identifier_short}',
+                '{media_position}',
+            ];
+            $resourceIdentifier = array_filter($checks, function ($v) use ($path) {
+                return mb_strpos($path, $v) !== false;
+            });
+            if (count($resourceIdentifier) !== 1) {
+                $messager(new Message('The path "%s" for medias should contain one and only one item identifier.', $path)); // @translate
+                return null;
+            }
+            $checks = [
+                '{site_slug}',
+                '{resource_id}',
+                '{resource_identifier}',
+                '{resource_identifier_short}',
+            ];
+            foreach ($checks as $check) {
+                if (mb_strpos($path, $check) !== false) {
+                    $messager(new Message('The path "%s" for medias should not contain identifier "%s".', $path, $check)); // @translate
+                    return null;
+                }
+            }
+            $resourceIdentifier = reset($resourceIdentifier);
+            if ($resourceIdentifier === '{media_position}') {
+                $itemIdentifier = $getItemIdentifierName($path);
+                if (!$itemIdentifier) {
+                    $messager(new Message('The path "%s" for medias should contain an item identifier.', $path)); // @translate
+                    return null;
+                }
+            }
+            return $resourceIdentifier;
+        };
+
+        $checkPatterns = function (string $path) use ($resourceTypes, $params, $messager): bool {
+            foreach ($resourceTypes as $resourceType) {
+                if (mb_strpos($path, "{{$resourceType}_identifier}") !== false && !$params[$resourceType]['pattern']) {
+                    $messager(new Message('A pattern for "%s", for example "[a-zA-Z0-9_-]+", is required to use the path "%s".', $resourceType, $path)); // @translate
+                    return false;
+                } elseif (mb_strpos($path, "{{$resourceType}_identifier_short}") !== false && !$params[$resourceType]['pattern_short']) {
+                    $messager(new Message('A short pattern for "%s", for example "[a-zA-Z0-9_-]+", is required to use the path "%s".', $resourceType, $path)); // @translate
+                    return false;
+                }
+            }
+            return true;
+        };
+
+        $routeAction = function (string $path): string {
+            $route = '';
+            if (mb_strpos($path, '{item_set_id}') !== false
+                || mb_strpos($path, '{item_set_identifier}') !== false
+                || mb_strpos($path, '{item_set_identifier_short}') !== false
+            ) {
+                $route .= '-item-set';
+            }
+            if (mb_strpos($path, '{item_id}') !== false
+                || mb_strpos($path, '{item_identifier}') !== false
+                || mb_strpos($path, '{item_identifier_short}') !== false
+            ) {
+                $route .= '-item';
+            }
+            if (mb_strpos($path, '{media_id}') !== false
+                || mb_strpos($path, '{media_identifier}') !== false
+                || mb_strpos($path, '{media_identifier_short}') !== false
+                || mb_strpos($path, '{media_position}') !== false
+            ) {
+                $route .= '-media';
+            }
+            return trim($route, '-');
+        };
+
+        $getSpecParts = function (string $spec) use ($specs): array {
+            $result = [];
+            foreach ($specs as $specPart) {
+                if (mb_strpos($spec, $specPart) !== false) {
+                    $result[] = trim($specPart, '%');
+                }
+            }
+            return $result;
+        };
+
+        $siteParts = [];
+        if ($params['default_site']) {
+            $siteParts[] = 'public';
+        }
+        if ($params['admin_use']) {
+            $siteParts[] = 'admin';
+        }
+        if ($params['default_site']
+            && ($params['site_skip_main'] || !($params['site_slug'] . $params['page_slug']))
+        ) {
+            $siteParts[] = 'top';
+        }
+
+        $resourcesParams = [
+            'item_set' => [
+                'check' => $checkPathItemSet,
+                'controller' => 'item-set',
+                'name' => 'item_sets',
+            ],
+            'item' => [
+                'check' => $checkPathItem,
+                'controller' => 'item',
+                'name' => 'items',
+            ],
+            'media' => [
+                'check' => $checkPathMedia,
+                'controller' => 'media',
+                'name' => 'media',
+            ],
+        ];
+
+        $index = 0;
+        $mapRoutes = [];
+
+        foreach ($resourcesParams as $resourceType => $resourceParams) {
+            foreach ($params[$resourceType]['paths'] as $resourcePath) {
+                $resourcePath = $trimSlash($resourcePath);
+                $checkPathResource = $resourceParams['check'];
+                $resourceIdentifier = $checkPathResource($resourcePath);
+                if (empty($resourceIdentifier)) {
+                    continue;
+                }
+                if (!$checkPatterns($resourcePath)) {
+                    continue;
+                }
+                $action = $routeAction($resourcePath);
+                if (empty($action)) {
+                    continue;
+                }
+                if ($resourceType === 'item') {
+                    $itemSetIdentifierName = $getItemSetIdentifierName($resourcePath);
+                } elseif ($resourceType === 'media') {
+                    $itemSetIdentifierName = $getItemSetIdentifierName($resourcePath);
+                    $itemIdentifierName = $getItemIdentifierName($resourcePath);
+                }
+                foreach ($siteParts as $sitePart) {
+                    $routeName = 'cleanurl_' . $resourceType . '_' . $sitePart . '_' . ++$index;
+                    $spec = $baseRoutes[$sitePart]['base_spec'] . str_replace(array_keys($specs), array_values($specs), $resourcePath);
+                    $parts = $getSpecParts($spec);
+                    $isAdmin = $sitePart === 'admin';
+                    if ($sitePart === 'public') {
+                        $parts[] = 'site-slug';
+                    }
+                    $data = [
+                        'resource_path' => $resourcePath,
+                        'resource_type' => $resourceParams['name'],
+                        'resource_identifier' => trim($resourceIdentifier, '{}'),
+                        'context' => $isAdmin ? 'admin' : 'site',
+                        'regex' => $baseRoutes[$sitePart]['base_regex'] . str_replace(array_keys($regexes), array_values($regexes), $resourcePath),
+                        'spec' => $spec,
+                        'part' => $sitePart,
+                        'parts' => $parts,
+                        'route_name' => $routeName,
+                        'defaults' => [
+                            '__NAMESPACE__' => $baseRoutes[$sitePart]['namespace'],
+                            $baseRoutes[$sitePart]['space'] => true,
+                            'controller' => 'CleanUrlController',
+                            'action' => $action,
+                            'site-slug' => $baseRoutes[$sitePart]['site_slug'],
+                            // The forward is required to keep original routes,
+                            // that can be used by another module. It is build
+                            // one time here.
+                            'forward_route_name' => $baseRoutes[$sitePart]['forward']['route_name'],
+                            'forward' => [
+                                '__NAMESPACE__' => $baseRoutes[$sitePart]['forward']['namespace'],
+                                $baseRoutes[$sitePart]['space'] => true,
+                                'site-slug' => $baseRoutes[$sitePart]['site_slug'],
+                                'controller' => $baseRoutes[$sitePart]['forward']['controller'][$resourceType],
+                                'action' => $baseRoutes[$sitePart]['forward']['action'],
+                                'id' => null,
+                                '__CONTROLLER__' => $resourceParams['controller'],
+                                'cleanurl_route' => $action,
+                            ],
+                        ],
+                        'options' => [
+                            'keep_slash' => $params[$resourceType]['keep_slash'],
+                        ],
+                    ];
+                    if ($isAdmin) {
+                        unset($data['defaults']['forward']['site-slug']);
+                    }
+                    // Manage exceptions and other identifiers.
+                    if ($resourceType === 'item_set') {
+                        if ($sitePart === 'public' || $sitePart === 'top') {
+                            $data['defaults']['forward_route_name'] = 'site/item-set';
+                            $data['defaults']['forward']['controller'] = 'Omeka\Controller\Site\Item';
+                            $data['defaults']['forward']['action'] = 'browse';
+                            $data['defaults']['forward']['item-set-id'] = null;
+                            $data['defaults']['forward']['__CONTROLLER__'] = 'item';
+                        }
+                    } elseif ($resourceType === 'item') {
+                        $data['item_set_identifier'] = $itemSetIdentifierName;
+                    } elseif ($resourceType === 'media') {
+                        $data['item_set_identifier'] = $itemSetIdentifierName;
+                        $data['item_identifier'] = $itemIdentifierName;
+                    }
+                    $params['routes'][$routeName] = $data;
+                    $params['route_aliases'][$sitePart][$action][] = $routeName;
+                    $mapRoutes[$resourceType][$routeName] = $resourcePath;
+                }
+                // TODO Add search and browse route (replace or remove last identifier).
+            }
+        }
+
+        // Add missing routes to simplify url building: use the default one,
+        // that is the first in the list.
+        $firstRoute = function ($part, $resourceType, $routePath = null) use ($params): ?string {
+            foreach ($params['routes'] as $routeName => $route) {
+                if ($route['part'] === $part
+                    && $route['resource_type'] === $resourceType
+                    && (empty($routePath) || $route['resource_path'] === $routePath)
+                ) {
+                    return $routeName;
+                }
+            }
+            return null;
+        };
+
+        // Append the default and short routes.
+        foreach (['default', 'short'] as $routeType) {
+            foreach ($siteParts as $sitePart) {
+                foreach ($resourceTypes as $controllerName => $resourceType) {
+                    $routeName = $firstRoute($sitePart, $resourcesParams[$resourceType]['name'], $params[$resourceType][$routeType] ?? null);
+                    $params['route_aliases'][$sitePart][$controllerName . '-' . $routeType] = $routeName ? [$routeName] : [];
+                }
+            }
+        }
+
+        // Keep only useful keys.
+        $keys = [
+            'routes' => [],
+            'route_aliases' => [],
+        ];
+        $settings->set('cleanurl_settings', array_intersect_key($params, $keys));
     }
 
     protected function prepareRegex(array $list)
@@ -781,75 +1165,5 @@ class Module extends AbstractModule
         // To avoid a bug with identifiers that contain a "/", that is not
         // escaped with preg_quote().
         return str_replace('/', '\/', implode('|', $listRegex));
-    }
-
-    protected function prepareRegexes(array $params)
-    {
-        // No need to preg quote "/".
-        $result = [];
-        $result['main_path_full'] = str_replace('\\-', '-', preg_quote($params['main_path_full']));
-        $result['item_set_generic'] = str_replace('\\-', '-', preg_quote($params['cleanurl_item_set_generic']));
-        $result['item_generic'] = str_replace('\\-', '-', preg_quote($params['cleanurl_item_generic']));
-        $result['media_generic'] = str_replace('\\-', '-', preg_quote($params['cleanurl_media_generic']));
-        return $result;
-    }
-
-    /**
-     * Get the view helper getResourceTypeIdentifiers with some params.
-     *
-     * @return \CleanUrl\View\Helper\GetResourceTypeIdentifiers
-     */
-    protected function getViewHelperRTI()
-    {
-        $services = $this->getServiceLocator();
-
-        require_once __DIR__ . '/src/Service/ViewHelper/GetResourceTypeIdentifiersFactory.php';
-        require_once __DIR__ . '/src/View/Helper/GetResourceTypeIdentifiers.php';
-
-        $settings = $services->get('Omeka\Settings');
-        $propertyId = (int) $settings->get('cleanurl_identifier_property');
-        $prefix = $settings->get('cleanurl_identifier_prefix');
-
-        $factory = new GetResourceTypeIdentifiersFactory();
-        return $factory(
-            $services,
-            'getResourceTypeIdentifiers',
-            [
-                'propertyId' => $propertyId,
-                'prefix' => $prefix,
-            ]
-        );
-    }
-
-    /**
-     * Encode a path segment.
-     *
-     * @see \Zend\Router\Http\Segment::encode()
-     *
-     * @param  string $value
-     * @return string
-     */
-    protected function encode($value)
-    {
-        $urlencodeCorrectionMap = [
-            '%21' => "!", // sub-delims
-            '%24' => "$", // sub-delims
-            '%26' => "&", // sub-delims
-            '%27' => "'", // sub-delims
-            '%28' => "(", // sub-delims
-            '%29' => ")", // sub-delims
-            '%2A' => "*", // sub-delims
-            '%2B' => "+", // sub-delims
-            '%2C' => ",", // sub-delims
-            // '%2D' => "-", // unreserved - not touched by rawurlencode
-            // '%2E' => ".", // unreserved - not touched by rawurlencode
-            '%3A' => ":", // pchar
-            '%3B' => ";", // sub-delims
-            '%3D' => "=", // sub-delims
-            '%40' => "@", // pchar
-            // '%5F' => "_", // unreserved - not touched by rawurlencode
-            // '%7E' => "~", // unreserved - not touched by rawurlencode
-        ];
-        return strtr(rawurlencode($value), $urlencodeCorrectionMap);
     }
 }

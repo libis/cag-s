@@ -1,8 +1,8 @@
-<?php
+<?php declare(strict_types=1);
 
 /*
  * Copyright BibLibre, 2016-2017
- * Copyright Daniel Berthereau, 2018
+ * Copyright Daniel Berthereau, 2018-2021
  *
  * This software is governed by the CeCILL license under French law and abiding
  * by the rules of distribution of free software.  You can use, modify and/ or
@@ -30,84 +30,35 @@
 
 namespace Search\View\Helper;
 
-use Omeka\Api\Manager as ApiManager;
-use Search\Api\Representation\SearchPageRepresentation;
-use Zend\Mvc\Application;
-use Zend\View\Helper\AbstractHelper;
+use Laminas\View\Helper\AbstractHelper;
 
 class FacetLabel extends AbstractHelper
 {
-    /**
-     * @var Application
-     */
-    protected $application;
-
-    /**
-     * @var ApiManager
-     */
-    protected $api;
-
-    /**
-     * @var array
-     */
-    protected $availableFacetFields;
-
-    /**
-     * @var SearchPageRepresentation
-     */
-    protected $searchPage;
-
-    public function __construct(Application $application, ApiManager $api)
+    public function __invoke($name): string
     {
-        $this->application = $application;
-        $this->api = $api;
+        static $availableFacetFields;
+
+        $settings = $this->getSearchPage()->settings();
+        if (!empty($settings['facet']['facets'][$name]['label'])) {
+            return $settings['facet']['facets'][$name]['label'];
+        }
+
+        if (!isset($availableFacetFields)) {
+            $index = $this->getSearchPage()->index();
+            $availableFacetFields = $index->adapter()
+                ->getAvailableFacetFields($index);
+        }
+
+        return $availableFacetFields[$name]['label'] ?? $name;
     }
 
-    public function __invoke($name)
+    protected function getSearchPage(): \Search\Api\Representation\SearchPageRepresentation
     {
-        $searchPage = $this->getSearchPage();
-        $settings = $searchPage->settings();
-
-        if (!empty($settings['facets'][$name]['display']['label'])) {
-            return $settings['facets'][$name]['display']['label'];
+        if (!property_exists($this->view, 'searchPage')) {
+            $this->view->searchPage = $this->view->api()
+                ->read('search_pages', $this->view->params()->fromRoute('id'))
+                ->getContent();
         }
-
-        $availableFacetFields = $this->getAvailableFacetFields();
-        if (!empty($availableFacetFields[$name]['label'])) {
-            return $availableFacetFields[$name]['label'];
-        }
-
-        return $name;
-    }
-
-    /**
-     * @return array
-     */
-    protected function getAvailableFacetFields()
-    {
-        if (!isset($this->availableFacetFields)) {
-            $searchPage = $this->getSearchPage();
-            $searchAdapter = $searchPage->index()->adapter();
-
-            $this->availableFacetFields = $searchAdapter->getAvailableFacetFields($searchPage->index());
-        }
-
-        return $this->availableFacetFields;
-    }
-
-    /**
-     * @return \Search\Api\Representation\SearchPageRepresentation
-     */
-    protected function getSearchPage()
-    {
-        if (!isset($this->searchPage)) {
-            $mvcEvent = $this->application->getMvcEvent();
-            $routeMatch = $mvcEvent->getRouteMatch();
-
-            $response = $this->api->read('search_pages', $routeMatch->getParam('id'));
-            $this->searchPage = $response->getContent();
-        }
-
-        return $this->searchPage;
+        return $this->view->searchPage;
     }
 }

@@ -9,63 +9,169 @@ class SetsForm extends Form
     public function init()
     {
         $this->setAttribute('action', 'harvest');
+
+        $repositoryName = $this->getOption('repository_name');
+        $endpoint = $this->getOption('endpoint');
+        $resource_type = $this->getOption('resource_type');
         $resource_template = $this->getOption('resource_template');
-        $base_url = $this->getOption('base_url');
-        $sets = $this->getOption('sets');
         $formats = $this->getOption('formats');
+        $sets = $this->getOption('sets') ?: [];
+        $harvestAllRecords = $this->getOption('harvest_all_records');
+        $predefinedSets = $this->getOption('predefined_sets');
+        $favoriteFormat = $this->getOption('favorite_format');
 
-        $this->add([
-            'type' => Element\Hidden::class,
-            'name' => 'base_url',
-            'attributes' => [
-                'id' => 'base_url',
-                'value' => $base_url,
-            ],
-        ]);
-
-        $this->add([
-            'type' => Element\Hidden::class,
-            'name' => 'resource_template',
-            'attributes' => [
-                'id' => 'resource_template',
-                'value' => $resource_template,
-            ],
-        ]);
-
-        foreach ($sets as $id => $set) {
-            $this->add([
-                'type' => Element\Select::class,
-                'name' => 'namespace['  . $id . "]",
-                'options' => [
-                    'label' => strip_tags($set) . "($id)",
-                    'value_options' => $formats,
-                ],
-            ]);
-            $this->add([
-                'type' => 'hidden',
-                'name' => 'setSpec['  . $id . "]",
+        $this
+            ->add([
+                'type' => Element\Hidden::class,
+                'name' => 'repository_name',
                 'attributes' => [
-                    'id' => 'setSpec'  .  $id,
-                    'value' => strip_tags($set),
+                    'id' => 'repository_name',
+                    'value' => $repositoryName,
                 ],
-                'options' => [
-                    'label' => strip_tags($set),
-                    'value_options' => $formats,
+            ])
+            ->add([
+                'type' => Element\Hidden::class,
+                'name' => 'endpoint',
+                'attributes' => [
+                    'id' => 'endpoint',
+                    'value' => $endpoint,
                 ],
-            ]);
-            $this->add([
-                'type' => Element\Checkbox::class,
-                'name' => 'harvest['  . $id . "]",
+            ])
+            ->add([
+                'type' => Element\Hidden::class,
+                'name' => 'resource_type',
+                'attributes' => [
+                    'id' => 'resource_type',
+                    'value' => $resource_type,
+                ],
+            ])
+            ->add([
+                'type' => Element\Hidden::class,
+                'name' => 'resource_template',
+                'attributes' => [
+                    'id' => 'resource_template',
+                    'value' => $resource_template,
+                ],
+            ])
+            ->add([
+                'type' => Element\Hidden::class,
+                'name' => 'harvest_all_records',
+                'attributes' => [
+                    'id' => 'harvest_all_records',
+                    'value' => $harvestAllRecords,
+                ],
+            ])
+            ->add([
+                'name' => 'filters_whitelist',
+                'type' => Element\Textarea::class,
                 'options' => [
-                    'label' => 'Harvest this set ?',
-                    'use_hidden_element' => true,
-                    'checked_value' => 'yes',
-                    'unchecked_value' => 'no',
+                    'label' => 'Filters (whitelist)', // @translate
+                    'infos' => 'Add strings to filter the input, for example to import only some articles of a journal.', // @translate
                 ],
                 'attributes' => [
-                    'value' => 'no',
+                    'id' => 'filters_whitelist',
+                ],
+            ])
+            ->add([
+                'name' => 'filters_blacklist',
+                'type' => Element\Textarea::class,
+                'options' => [
+                    'label' => 'Filters (blacklist)', // @translate
+                    'infos' => 'Add strings to filter the input, for example to import only some articles of a journal.', // @translate
+                ],
+                'attributes' => [
+                    'id' => 'filters_blacklist',
                 ],
             ]);
+
+        // The predefined sets are already formatted, but have no label.
+        if ($predefinedSets) {
+            foreach ($sets as $id => $prefix) {
+                $this
+                    ->add([
+                        'type' => Element\Select::class,
+                        'name' => 'namespace[' . $id . ']',
+                        'options' => [
+                            'label' => $id,
+                            'value_options' => $formats,
+                        ],
+                        'attributes' => [
+                            'id' => 'namespace[' . $id . ']',
+                            'value' => $prefix,
+                        ],
+                    ])
+                    ->add([
+                        'type' => Element\Hidden::class,
+                        'name' => 'setSpec[' . $id . ']',
+                        'attributes' => [
+                            'id' => 'setSpec' . $id,
+                            'value' => $id,
+                        ],
+                    ])
+                    ->add([
+                        'type' => Element\Checkbox::class,
+                        'name' => 'harvest[' . $id . ']',
+                        'options' => [
+                            'label' => 'Harvest this set?', // @translate
+                            'use_hidden_element' => false,
+                        ],
+                        'attributes' => [
+                            'id' => 'harvest[' . $id . ']',
+                            'value' => true,
+                            'checked' => 'checked',
+                        ],
+                    ]);
+            }
+        } elseif ($sets && !$harvestAllRecords) {
+            foreach ($sets as $id => $set) {
+                $this
+                    ->add([
+                        'type' => Element\Select::class,
+                        'name' => 'namespace[' . $id . ']',
+                        'options' => [
+                            'label' => strip_tags($set) . " ($id)",
+                            'value_options' => $formats,
+                        ],
+                        'attributes' => [
+                            'id' => 'namespace[' . $id . ']',
+                            'value' => $favoriteFormat,
+                        ],
+                    ])
+                    ->add([
+                        'type' => Element\Hidden::class,
+                        'name' => 'setSpec[' . $id . ']',
+                        'attributes' => [
+                            'id' => 'setSpec' . $id,
+                            'value' => strip_tags($set),
+                        ],
+                    ])
+                    ->add([
+                        'type' => Element\Checkbox::class,
+                        'name' => 'harvest[' . $id . ']',
+                        'options' => [
+                            'label' => 'Harvest this set?', // @translate
+                            'use_hidden_element' => false,
+                        ],
+                        'attributes' => [
+                            'id' => 'harvest[' . $id . ']',
+                        ],
+                    ]);
+            }
+        } else {
+            $this
+                ->add([
+                    'type' => Element\Select::class,
+                    'name' => 'namespace[0]',
+                    'options' => [
+                        'label' => 'Whole repository', // @translate
+                        'value_options' => $formats,
+                    ],
+                    'attributes' => [
+                        'id' => 'namespace[0]',
+                        'value' => $favoriteFormat,
+                    ],
+                ])
+            ;
         }
     }
 }

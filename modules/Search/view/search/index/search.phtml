@@ -1,7 +1,7 @@
 <?php
 /*
  * Copyright BibLibre, 2016
- * Copyright Daniel Berthereau, 2017-2019
+ * Copyright Daniel Berthereau, 2017-2021
  *
  * This software is governed by the CeCILL license under French law and abiding
  * by the rules of distribution of free software.  You can use, modify and/ or
@@ -28,33 +28,64 @@
  */
 
 /**
- * @var \Zend\View\Renderer\PhpRenderer $this
+ * @var \Laminas\View\Renderer\PhpRenderer $this
  * @var \Omeka\Api\Representation\SiteRepresentation $site
+ * @var \Search\Api\Representation\SearchPageRepresentation $searchPage
  * @var \Search\Query $query
  * @var \Search\Response $response
- * @var array $sortOptions
- * @var array $facets
- * @var bool $isPartial Allow to use this partial in admin board when true.
+ * For block layout:
+ * @var string $heading Unused in current template.
+ * @var bool $skipFormAction Remove action of the form, so it uses current page.
  */
 
-$translate = $this->plugin('translate');
-$translatePlural = $this->plugin('translatePlural');
-$assetUrl = $this->plugin('assetUrl');
-$partial = $this->plugin('partial');
+$plugins = $this->getHelperPluginManager();
+$translate = $plugins->get('translate');
+$translatePlural = $plugins->get('translatePlural');
+$assetUrl = $plugins->get('assetUrl');
+$partial = $plugins->get('partial');
+$api = $plugins->get('api');
+$vars = $this->vars();
+
+$isPartial = !$site;
+$skipFormAction = !empty($skipFormAction);
+
+// Used in case of a redirect of item-set/show to search, when used like item/browse.
+$itemSetId = $this->params()->fromRoute('item-set-id');
+// TODO Use site item set ?
+$itemSet = $itemSetId ? $api->searchOne('item_sets', ['id' => $itemSetId])->getContent() : null;
 
 $this->headLink()->appendStylesheet($assetUrl('css/search.css', 'Search'));
 $this->headScript()->appendFile($assetUrl('js/search.js', 'Search'), 'text/javascript', ['defer' => 'defer']);
-
-$this->htmlElement('body')->appendAttribute('class', 'search-page resource browse');
 ?>
 
-<?= $this->pageTitle($translate('Search')) ?>
-
 <?php if (empty($isPartial)): ?>
-<div id="content" role="main">
+<div id="search-page">
 <?php endif; ?>
 
-<?= $this->searchForm() ?>
+<?php if ($itemSet): ?>
+
+    <?php
+    $vars->offsetSet('itemSet', $itemSet);
+    $vars->offsetSet('resourceType', 'item_sets'); // TODO Check if really needed.
+    $this->htmlElement('body')->appendAttribute('class', 'search-page item-set resource browse');
+    ?>
+    <?= $this->pageTitle($itemSet->displayTitle(), 2) ?>
+    <h3><?= $translate('Item set') ?></h3>
+    <div class="metadata">
+        <?= $itemSet->displayValues() ?>
+    </div>
+    <div class="item-set-items">
+        <h3><?= $translate('Items') ?></h3>
+    </div>
+
+<?php else: ?>
+
+    <?php $this->htmlElement('body')->appendAttribute('class', 'search-page resource browse'); ?>
+    <?= $this->pageTitle($translate('Search'), 2) ?>
+
+<?php endif; ?>
+
+<?= $this->searchForm($searchPage, null, $skipFormAction) ?>
 
 <?php if (isset($response)): ?>
 <div class="search-results-wrapper">
@@ -62,9 +93,9 @@ $this->htmlElement('body')->appendAttribute('class', 'search-page resource brows
 
         <?php if ($response->getTotalResults()): ?>
             <?= $partial('search/results-header', [
+                'searchPage' => $searchPage,
                 'query' => $query,
                 'response' => $response,
-                'sortOptions' => $sortOptions,
             ]) ?>
 
             <?php $itemSetsCount = $response->getResourceTotalResults('item_sets'); ?>
@@ -84,21 +115,43 @@ $this->htmlElement('body')->appendAttribute('class', 'search-page resource brows
             ]) ?>
 
             <?= $partial('search/results-footer', [
+                'searchPage' => $searchPage,
                 'query' => $query,
                 'response' => $response,
-                'sortOptions' => $sortOptions,
             ]) ?>
 
         <?php else: ?>
 
-            <div class="noresults"><?= $translate('Your query returned no results') ?></div>
+            <div class="noresults">
+                <?php if (empty($query) && !$itemSet): ?>
+                <?= $translate('Fill a query and get results.') ?>
+                <?php elseif (empty($query) && $itemSet): ?>
+                <?= $translate('This item set has no items.') ?>
+                <?php else: ?>
+                <?= $translate('Your query returned no results') ?>
+                <?php endif; ?>
+            </div>
 
         <?php endif; ?>
 
     </div>
 
-    <?= $partial('search/facets', ['facets' => $facets]) ?>
+    <?= $partial('search/facets', [
+        'searchPage' => $searchPage,
+        'query' => $query,
+        'response' => $response,
+        'itemSet' => $itemSet,
+    ]) ?>
 </div>
+
+<?php else: ?>
+
+<div class="search-results-wrapper">
+    <div class="search-results">
+        <div class="noresults"><?= $translate('An error occured and your query returned no results.') ?></div>
+    </div>
+</div>
+
 <?php endif; ?>
 
 <?php if (empty($isPartial)): ?>

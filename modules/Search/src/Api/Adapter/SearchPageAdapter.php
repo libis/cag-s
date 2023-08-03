@@ -1,8 +1,8 @@
-<?php
+<?php declare(strict_types=1);
 
 /*
  * Copyright BibLibre, 2016
- * Copyright Daniel Berthereau, 2017-2019
+ * Copyright Daniel Berthereau, 2017-2020
  *
  * This software is governed by the CeCILL license under French law and abiding
  * by the rules of distribution of free software.  You can use, modify and/ or
@@ -61,18 +61,10 @@ class SearchPageAdapter extends AbstractEntityAdapter
         return \Search\Entity\SearchPage::class;
     }
 
-    public function buildQuery(QueryBuilder $qb, array $query)
+    public function buildQuery(QueryBuilder $qb, array $query): void
     {
-        $isOldOmeka = \Omeka\Module::VERSION < 2;
-        $alias = $isOldOmeka ? $this->getEntityClass() : 'omeka_root';
         $expr = $qb->expr();
 
-        if (isset($query['id'])) {
-            $qb->andWhere($expr->eq(
-                $alias . '.id',
-                $this->createNamedParameter($qb, $query['id']))
-            );
-        }
         if (isset($query['index_id'])) {
             $searchIndexAlias = $this->createAlias();
             // The join avoids to find a page without index.
@@ -81,7 +73,7 @@ class SearchPageAdapter extends AbstractEntityAdapter
                 $searchIndexAlias,
                 \Doctrine\ORM\Query\Expr\Join::WITH,
                 $expr->andX(
-                    $expr->eq($searchIndexAlias . '.id', $alias . '.index'),
+                    $expr->eq($searchIndexAlias . '.id', 'omeka_root.index'),
                     $expr->in(
                         $searchIndexAlias . '.id',
                         $this->createNamedParameter($qb, $query['index_id'])
@@ -91,19 +83,19 @@ class SearchPageAdapter extends AbstractEntityAdapter
         }
         if (isset($query['name'])) {
             $qb->andWhere($expr->eq(
-                $alias . '.name',
+                'omeka_root.name',
                 $this->createNamedParameter($qb, $query['name']))
             );
         }
         if (isset($query['path'])) {
             $qb->andWhere($expr->eq(
-                $alias . '.path',
+                'omeka_root.path',
                 $this->createNamedParameter($qb, $query['path']))
             );
         }
         if (isset($query['form'])) {
             $qb->andWhere($expr->eq(
-                $alias . '.formAdapter',
+                'omeka_root.formAdapter',
                 $this->createNamedParameter($qb, $query['form']))
             );
         }
@@ -111,7 +103,7 @@ class SearchPageAdapter extends AbstractEntityAdapter
 
     public function hydrate(Request $request, EntityInterface $entity,
         ErrorStore $errorStore
-    ) {
+    ): void {
         if ($this->shouldHydrate($request, 'o:name')) {
             $entity->setName($request->getValue('o:name'));
         }
@@ -130,7 +122,7 @@ class SearchPageAdapter extends AbstractEntityAdapter
         }
     }
 
-    public function validateEntity(EntityInterface $entity, ErrorStore $errorStore)
+    public function validateEntity(EntityInterface $entity, ErrorStore $errorStore): void
     {
         if (false == $entity->getName()) {
             $errorStore->addError('o:name', 'The name cannot be empty.'); // @translate

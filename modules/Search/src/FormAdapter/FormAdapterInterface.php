@@ -1,8 +1,8 @@
-<?php
+<?php declare(strict_types=1);
 
 /*
  * Copyright BibLibre, 2016
- * Copyright Daniel Berthereau, 2018
+ * Copyright Daniel Berthereau, 2018-2021
  *
  * This software is governed by the CeCILL license under French law and abiding
  * by the rules of distribution of free software.  You can use, modify and/ or
@@ -32,25 +32,20 @@ namespace Search\FormAdapter;
 
 interface FormAdapterInterface
 {
-    /**
-     * @return string
-     */
-    public function getLabel();
+    public function getLabel(): string;
+
+    public function getFormClass(): ?string;
 
     /**
-     * @return string
+     * Optional partial to allow to prepare the rendering of the form.
+     *
+     * The partial will no be output: it is used to append css and js.
      */
-    public function getFormClass();
+    public function getFormPartialHeaders(): ?string;
 
-    /**
-     * @return string
-     */
-    public function getFormPartial();
+    public function getFormPartial(): ?string;
 
-    /**
-     * @return string
-     */
-    public function getConfigFormClass();
+    public function getConfigFormClass(): ?string;
 
     /**
      * Convert a user query from a form into a Search query via a form mapping.
@@ -62,5 +57,5 @@ interface FormAdapterInterface
      * @param array $formSettings The specific settings of the form page.
      * @return \Search\Query The normalized query of the module Search.
      */
-    public function toQuery(array $request, array $formSettings);
+    public function toQuery(array $request, array $formSettings): \Search\Query;
 }

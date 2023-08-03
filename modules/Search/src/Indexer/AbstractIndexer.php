@@ -1,8 +1,8 @@
-<?php
+<?php declare(strict_types=1);
 
 /*
  * Copyright BibLibre, 2016
- * Copyright Daniel Berthereau, 2018
+ * Copyright Daniel Berthereau, 2018-2021
  *
  * This software is governed by the CeCILL license under French law and abiding
  * by the rules of distribution of free software.  You can use, modify and/ or
@@ -30,9 +30,9 @@
 
 namespace Search\Indexer;
 
+use Laminas\Log\LoggerAwareTrait;
+use Laminas\ServiceManager\ServiceLocatorInterface;
 use Search\Api\Representation\SearchIndexRepresentation;
-use Zend\Log\LoggerAwareTrait;
-use Zend\ServiceManager\ServiceLocatorInterface;
 
 abstract class AbstractIndexer implements IndexerInterface
 {
@@ -48,21 +48,18 @@ abstract class AbstractIndexer implements IndexerInterface
      */
     protected $index;
 
-    public function setServiceLocator(ServiceLocatorInterface $serviceLocator)
+    public function setServiceLocator(ServiceLocatorInterface $serviceLocator): IndexerInterface
     {
         $this->serviceLocator = $serviceLocator;
         return $this;
     }
 
-    /**
-     * @return ServiceLocatorInterface
-     */
-    public function getServiceLocator()
+    protected function getServiceLocator(): ServiceLocatorInterface
     {
         return $this->serviceLocator;
     }
 
-    public function setSearchIndex(SearchIndexRepresentation $index)
+    public function setSearchIndex(SearchIndexRepresentation $index): IndexerInterface
     {
         $this->index = $index;
         return $this;
@@ -75,15 +72,10 @@ abstract class AbstractIndexer implements IndexerInterface
      * @param mixed $default
      * @return mixed
      */
-    protected function getSetting($name, $default = null)
+    protected function getSetting(string $name, $default = null)
     {
         $settings = $this->index->settings();
-
-        if (isset($settings[$name])) {
-            return $settings[$name];
-        }
-
-        return $default;
+        return $settings[$name] ?? $default;
     }
 
     /**
@@ -93,14 +85,9 @@ abstract class AbstractIndexer implements IndexerInterface
      * @param mixed $default
      * @return mixed
      */
-    protected function getAdapterSetting($name, $default = null)
+    protected function getAdapterSetting(string $name, $default = null)
     {
         $adapterSettings = $this->getSetting('adapter', []);
-
-        if (isset($adapterSettings[$name])) {
-            return $adapterSettings[$name];
-        }
-
-        return $default;
+        return $adapterSettings[$name] ?? $default;
     }
 }

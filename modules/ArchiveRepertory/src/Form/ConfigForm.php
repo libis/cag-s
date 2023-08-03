@@ -1,13 +1,14 @@
-<?php
+<?php declare(strict_types=1);
+
 namespace ArchiveRepertory\Form;
 
 use ArchiveRepertory\Helpers;
+use Laminas\Form\Element;
+use Laminas\Form\Element\Text;
+use Laminas\Form\Form;
+use Laminas\I18n\Translator\TranslatorAwareInterface;
+use Laminas\I18n\Translator\TranslatorAwareTrait;
 use Omeka\Form\Element\PropertySelect;
-use Zend\Form\Element;
-use Zend\Form\Element\Text;
-use Zend\Form\Form;
-use Zend\I18n\Translator\TranslatorAwareInterface;
-use Zend\I18n\Translator\TranslatorAwareTrait;
 
 class ConfigForm extends Form implements TranslatorAwareInterface
 {
@@ -15,17 +16,17 @@ class ConfigForm extends Form implements TranslatorAwareInterface
 
     protected $local_storage = '';
 
-    public function setLocalStorage($local_storage)
+    public function setLocalStorage($local_storage): void
     {
         $this->local_storage = $local_storage;
     }
 
-    public function setSettings($settings)
+    public function setSettings($settings): void
     {
         $this->settings = $settings;
     }
 
-    public function init()
+    public function init(): void
     {
         $this->add([
             'name' => 'archiverepertory_item_set_folder',
@@ -161,7 +162,7 @@ class ConfigForm extends Form implements TranslatorAwareInterface
             'spaces' => $this->translate('Convert spaces to underscores'), // @translate
             'first letter' => $this->translate('Convert first letter only'), // @translate
             'first and spaces' => $this->translate('Convert first letter and spaces'), // @translate
-            'full' => $this->translate('Full conversion to Ascii.') . $recommended, // @translate
+            'full' => $this->translate('Full conversion to Ascii') . $recommended, // @translate
          ]);
 
         return $radio;

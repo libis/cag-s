@@ -1,8 +1,8 @@
-<?php
+<?php declare(strict_types=1);
 
 /*
  * Copyright BibLibre, 2016-2017
- * Copyright Daniel Berthereau, 2018
+ * Copyright Daniel Berthereau, 2018-2021
  *
  * This software is governed by the CeCILL license under French law and abiding
  * by the rules of distribution of free software.  You can use, modify and/ or
@@ -31,16 +31,15 @@
 namespace Search\Controller\Admin;
 
 use Doctrine\ORM\EntityManager;
+use Laminas\Mvc\Controller\AbstractActionController;
+use Laminas\View\Model\ViewModel;
 use Omeka\Form\ConfirmForm;
 use Omeka\Stdlib\Message;
 use Search\Adapter\Manager as SearchAdapterManager;
 use Search\Api\Representation\SearchPageRepresentation;
-use Search\Form\Admin\SearchPageForm;
 use Search\Form\Admin\SearchPageConfigureForm;
-use Search\Form\Admin\SearchPageConfigureSimpleForm;
+use Search\Form\Admin\SearchPageForm;
 use Search\FormAdapter\Manager as SearchFormAdapterManager;
-use Zend\Mvc\Controller\AbstractActionController;
-use Zend\View\Model\ViewModel;
 
 class SearchPageController extends AbstractActionController
 {
@@ -59,11 +58,6 @@ class SearchPageController extends AbstractActionController
      */
     protected $searchFormAdapterManager;
 
-    /**
-     * @param EntityManager $entityManager
-     * @param SearchAdapterManager $searchAdapterManager
-     * @param SearchFormAdapterManager $searchFormAdapterManager
-     */
     public function __construct(
         EntityManager $entityManager,
         SearchAdapterManager $searchAdapterManager,
@@ -83,6 +77,7 @@ class SearchPageController extends AbstractActionController
         if (!$this->checkPostAndValidForm($form)) {
             return $view;
         }
+
         $formData = $form->getData();
         $response = $this->api()->create('search_pages', $formData);
         $searchPage = $response->getContent();
@@ -149,17 +144,21 @@ class SearchPageController extends AbstractActionController
         return $this->redirect()->toRoute('admin/search');
     }
 
+    /**
+     * @fixme Simplify to use a normal search config form with integrated elements checks.
+     */
     public function configureAction()
     {
         $entityManager = $this->getEntityManager();
 
         $id = $this->params('id');
 
-        $view = new ViewModel;
-
         /** @var \Search\Api\Representation\SearchPageRepresentation $searchPage */
         $searchPage = $this->api()->read('search_pages', $id)->getContent();
-        $view->setVariable('searchPage', $searchPage);
+
+        $view = new ViewModel([
+            'searchPage' => $searchPage,
+        ]);
 
         $index = $searchPage->index();
         $adapter = $index ? $index->adapter() : null;
@@ -182,34 +181,21 @@ class SearchPageController extends AbstractActionController
             return $view;
         }
 
-        $isSimple = $form instanceof SearchPageConfigureSimpleForm;
+        $searchPageSettings = $searchPage->settings() ?: [];
 
-        $settings = $searchPage->settings() ?: [];
-
-        if ($isSimple) {
-            $settings = $this->prepareSettingsForSimpleForm($searchPage, $settings);
-        }
-
-        if (empty($settings['facet_languages'])) {
-            $settings['facet_languages'] = '';
-        } elseif (is_array($settings['facet_languages'])) {
-            $settings['facet_languages'] = implode('|', $settings['facet_languages']);
-        }
-
-        $form->setData($settings);
+        $form->setData($searchPageSettings);
         $view->setVariable('form', $form);
 
         if (!$this->getRequest()->isPost()) {
             return $view;
         }
 
-        $params = $isSimple
-            ? $this->extractSimpleFields()
-            : $this->extractFullFields();
+        $params = $this->getRequest()->getPost()->toArray();
+        $params = $this->removeAvailableFields($params);
 
-        // TODO Check simple fields.
+        // TODO Check simple fields with normal way.
         $form->setData($params);
-        if (!$isSimple && !$form->isValid()) {
+        if (!$form->isValid()) {
             $messages = $form->getMessages();
             if (isset($messages['csrf'])) {
                 $this->messenger()->addError('Invalid or missing CSRF token'); // @translate
@@ -219,41 +205,21 @@ class SearchPageController extends AbstractActionController
             return $view;
         }
 
-        // TODO Why the fieldset "form" is removed from the params? Add an intermediate fieldset? Check if it is still the case.
-        $formParams = isset($params['form']) ? $params['form'] : [];
-        // TODO Check simple fields.
-        if (!$isSimple) {
-            $params = $form->getData();
-        }
-        $params['form'] = $formParams;
+        $params = $form->getData();
+        $params = $this->removeAvailableFields($params);
         unset($params['csrf']);
-
-        // Should be checked in form.
-
-
-
-        /*$params['facet_languages'] = strlen(trim($params['facet_languages']))
-            ? array_unique(array_map('trim', explode('|', $params['facet_languages'])))
-            : [];
-
-        if(!empty($params['facet_languages'])):
-          $params['facet_languages'] = array_unique(array_map('trim', explode('|', $params['facet_languages'])));
-        endif;*/
+        if (isset($params['search']['default_query'])) {
+            $params['search']['default_query'] = trim($params['search']['default_query'] ?? '', "? \t\n\r\0\x0B");
+        }
 
         // Add a warning because it may be a hard to understand issue.
-        if (!empty($params['facet_languages']) && !in_array('', $params['facet_languages'])) {
-            $this->messenger()->addWarning(
-                'Note that you didn‘t set "||", so all values without language will be removed.' // @translate
-            );
-        }
-
-        // Sort facets and sort fields to simplify next load.
-        foreach (['facets', 'sort_fields'] as $type) {
-            if (empty($params[$type])) {
-                continue;
+        if (isset($params['facet']['languages'])) {
+            $params['facet']['languages'] = array_unique(array_map('trim', $params['facet']['languages']));
+            if (!empty($params['facet']['languages']) && !in_array('', $params['facet']['languages'])) {
+                $this->messenger()->addWarning(
+                    'Note that you didn’t set a trailing "|", so all values without language will be removed.' // @translate
+                );
             }
-            // Sort enabled first, then available, else sort by weigth.
-            uasort($params[$type], [$this, 'sortByEnabledFirst']);
         }
 
         $page = $searchPage->getEntity();
@@ -271,14 +237,15 @@ class SearchPageController extends AbstractActionController
     public function deleteConfirmAction()
     {
         $id = $this->params('id');
-        $page = $this->api()->read('search_pages', $id)->getContent();
+        $searchPage = $this->api()->read('search_pages', $id)->getContent();
 
-        $view = new ViewModel;
-        $view->setTerminal(true);
-        $view->setTemplate('common/delete-confirm-details');
-        $view->setVariable('resourceLabel', 'search page');
-        $view->setVariable('resource', $page);
-        return $view;
+        $view = new ViewModel([
+            'resourceLabel' => 'search page',
+            'resource' => $searchPage,
+        ]);
+        return $view
+            ->setTerminal(true)
+            ->setTemplate('common/delete-confirm-details');
     }
 
     public function deleteAction()
@@ -304,7 +271,7 @@ class SearchPageController extends AbstractActionController
         return $this->redirect()->toRoute('admin/search');
     }
 
-    protected function checkPostAndValidForm($form)
+    protected function checkPostAndValidForm($form): bool
     {
         if (!$this->getRequest()->isPost()) {
             return false;
@@ -332,6 +299,11 @@ class SearchPageController extends AbstractActionController
             }
         }
 
+        if (strpos($path, 'https:') === 0 || strpos($path, 'http:') === 0) {
+            $this->messenger()->addError('The path should be relative to the root of the site, like "search".'); // @translate
+            return false;
+        }
+
         $form->setData($params);
         if ($form->isValid()) {
             return true;
@@ -348,202 +320,22 @@ class SearchPageController extends AbstractActionController
 
     /**
      * Check if the configuration should use simple or visual form and get it.
-     *
-     * The form is different when the number of fields is too big. This is
-     * generally needed for the internal adapter when there are many specific
-     * vocabularies. Unlike other adapters, it uses all properties by default.
-     * So the number of properties may be greater than 200, so a memory overload
-     * may occur (memory_limit = 128MB).
-     * For the full form, the issue about the limit for the for number of fields
-     * by request (max_input_vars = 1000) is fixed via js. Each property has 3
-     * fields, and as facet and sort in 2 directions, so the limit to use the
-     * full form or the simple form is set to 200.
-     *
-     * @param SearchPageRepresentation $searchPage
-     * @return \Search\Form\Admin\SearchPageConfigureForm|\Search\Form\Admin\SearchPageConfigureSimpleForm|null
      */
-    protected function getConfigureForm(SearchPageRepresentation $searchPage)
+    protected function getConfigureForm(SearchPageRepresentation $searchPage): ?\Search\Form\Admin\SearchPageConfigureForm
     {
-        $index = $searchPage->index();
-        if (!$index) {
-            return null;
-        }
-        $adapter = $index->adapter();
-        $availableFields = $adapter->getAvailableFields($index);
-
-        $isPostSimple = $this->getRequest()->isPost()
-            && $this->params()->fromPost('form_class') === SearchPageConfigureSimpleForm::class;
-        $forceForm = $this->params()->fromQuery('form');
-        $isSimple = $isPostSimple
-            || (count($availableFields) > 200 && $forceForm !== 'visual')
-            || $forceForm === 'simple';
-
-        $form = $isSimple
-            /* @var \Search\Form\Admin\SearchPageConfigureSimpleForm $form */
-            ? $this->getForm(SearchPageConfigureSimpleForm::class, ['search_page' => $searchPage])
-            /* @var \Search\Form\Admin\SearchPageConfigureForm $form */
-            : $this->getForm(SearchPageConfigureForm::class, ['search_page' => $searchPage]);
-
-        return $form;
+        return $searchPage->index()
+            ? $this->getForm(SearchPageConfigureForm::class, ['search_page' => $searchPage])
+            : null;
     }
 
-    /**
-     * Convert settings into strings in ordeer to manage many fields inside form.
-     *
-     * @param SearchPageRepresentation $searchPage
-     * @param array $settings
-     * @return array
-     */
-    protected function prepareSettingsForSimpleForm(SearchPageRepresentation $searchPage, $settings)
-    {
-        $index = $searchPage->index();
-        $adapter = $index->adapter();
-
-        $data = '';
-        $fields = empty($settings['facets']) ? [] : $settings['facets'];
-        foreach ($fields as $name => $field) {
-            if (!empty($field['enabled'])) {
-                $data .= $name . ' | ' . $field['display']['label'] . "\n";
-            }
-        }
-        $settings['facets'] = $data;
-
-        $data = '';
-        $fields = $adapter->getAvailableFacetFields($index);
-        foreach ($fields as $name => $field) {
-            $data .= $name . ' | ' . $field['label'] . "\n";
-        }
-        $settings['available_facets'] = $data;
-
-        $data = '';
-        $fields = empty($settings['sort_fields']) ? [] : $settings['sort_fields'];
-        foreach ($fields as $name => $field) {
-            if (!empty($field['enabled'])) {
-                $data .= $name . ' | ' . $field['display']['label'] . "\n";
-            }
-        }
-        $settings['sort_fields'] = $data;
-
-        $data = '';
-        $fields = $adapter->getAvailableSortFields($index);
-        foreach ($fields as $name => $field) {
-            $data .= $name . ' | ' . $field['label'] . "\n";
-        }
-        $settings['available_sort_fields'] = $data;
-
-        return $settings;
-    }
-
-    protected function extractSimpleFields()
-    {
-        $params = $this->getRequest()->getPost()->toArray();
-
-        unset($params['fieldsets']);
-        unset($params['form_class']);
-        unset($params['available_facets']);
-        unset($params['available_sort_fields']);
-
-        $data = $params['facets'] ?: '';
-        unset($params['facets']);
-        $data = $this->stringToList($data);
-        foreach ($data as $key => $value) {
-            list($term, $label) = array_map('trim', explode('|', $value));
-            $params['facets'][$term] = [
-                'enabled' => true,
-                'weight' => $key + 1,
-                'display' => [
-                    'label' => $label,
-                ],
-            ];
-        }
-
-        $data = $params['sort_fields'] ?: '';
-        unset($params['sort_fields']);
-        $data = $this->stringToList($data);
-        foreach ($data as $key => $value) {
-            list($term, $label) = array_map('trim', explode('|', $value));
-            $params['sort_fields'][$term] = [
-                'enabled' => true,
-                'weight' => $key + 1,
-                'display' => [
-                    'label' => $label,
-                ],
-            ];
-        }
-
-        return $params;
-    }
-
-    protected function extractFullFields()
-    {
-        $params = $this->getRequest()->getPost()->toArray();
-
-        $fields = isset($params['fieldsets']) ? $params['fieldsets'] : [];
-        unset($params['fieldsets']);
-        $fieldsData = $this->extractJsonEncodedFields($fields);
-        $params = array_merge($fieldsData, $params);
-        unset($fields);
-
-        unset($params['form_class']);
-
-        return $params;
-    }
-
-    /**
-     * To bypass the limit to 1000 fields posted, post is json encoded, so it
-     * should be decoded.
-     *
-     * @param string $jsonEncodedFields
-     * @return array
-     */
-    protected function extractJsonEncodedFields($jsonEncodedFields)
-    {
-        if (empty($jsonEncodedFields)) {
-            return [];
-        }
-        
-        $fields = json_decode($jsonEncodedFields, true);
-
-
-        // Recreate the array that was json encoded via js.
-        $fieldsData = [];
-        foreach ($fields as $type => $typeFields) {
-            foreach ($typeFields as $fieldData) {
-                $type = strtok($fieldData['name'], '[]');
-                $two = strtok('[]');
-                if (!strlen($two)) {
-                    $fieldsData[$type] = $fieldData['value'];
-                } else {
-                    $three = strtok('[]');
-                    if (!strlen($three)) {
-                        $fieldsData[$type][$two] = $fieldData['value'];
-                    } else {
-                        $four = strtok('[]');
-                        if (!strlen($four)) {
-                            $fieldsData[$type][$two][$three] = $fieldData['value'];
-                        } else {
-                            $fieldsData[$type][$two][$three][$four] = $fieldData['value'];
-                        }
-                    }
-                }
-            }
-        }
-
-        return $fieldsData;
-    }
-
-    protected function sitesWithSearchPage(SearchPageRepresentation $searchPage)
+    protected function sitesWithSearchPage(SearchPageRepresentation $searchPage): array
     {
         $result = [];
 
         // Check admin.
-        $adminSearchUrl = $this->settings()->get('search_main_page');
-        if ($adminSearchUrl) {
-            $basePath = $this->viewHelpers()->get('basePath');
-            $adminBasePath = $basePath('admin/');
-            if ($adminSearchUrl === ($adminBasePath . $searchPage->path())) {
-                $result[] = 'admin';
-            }
+        $adminSearchId = $this->settings()->get('search_main_page');
+        if ($adminSearchId) {
+            $result[] = 'admin';
         }
 
         // Check all sites.
@@ -561,17 +353,32 @@ class SearchPageController extends AbstractActionController
     }
 
     /**
+     * Remove all params starting with "available_".
+     */
+    protected function removeAvailableFields(array $params): array
+    {
+        foreach ($params as $name => $values) {
+            if (substr($name, 0, 10) === 'available_') {
+                unset($params[$name]);
+            } elseif (is_array($values)) {
+                foreach (array_keys($values) as $subName) {
+                    if (substr($subName, 0, 10) === 'available_') {
+                        unset($params[$name][$subName]);
+                    }
+                }
+            }
+        }
+        return $params;
+    }
+
+    /**
      * Config the page for all sites.
-     *
-     * @param SearchPageRepresentation $searchPage
-     * @param array $mainSearchPageForSites
-     * @param string $availability
      */
     protected function manageSearchPageOnSites(
         SearchPageRepresentation $searchPage,
         array $newMainSearchPageForSites,
         $availability
-    ) {
+    ): void {
         $searchPageId = $searchPage->id();
         $currentMainSearchPageForSites = $this->sitesWithSearchPage($searchPage);
 
@@ -581,20 +388,16 @@ class SearchPageController extends AbstractActionController
         if ($current !== $new) {
             $settings = $this->settings();
             if ($new) {
-                $basePath = $this->viewHelpers()->get('basePath');
-                $adminBasePath = $basePath('admin/');
-                $settings->set('search_main_page', $adminBasePath . $searchPage->path());
-
+                $settings->set('search_main_page', $searchPageId);
                 $searchPages = $settings->get('search_pages', []);
                 $searchPages[] = $searchPageId;
-                array_unique(array_filter($searchPages));
+                $searchPages = array_unique(array_filter(array_map('intval', $searchPages)));
                 sort($searchPages);
                 $settings->set('search_pages', $searchPages);
 
                 $message = 'The page has been set by default in admin board.'; // @translate
             } else {
                 $settings->set('search_main_page', null);
-
                 $message = 'The page has been unset in admin board.'; // @translate
             }
             $this->messenger()->addSuccess($message);
@@ -628,9 +431,6 @@ class SearchPageController extends AbstractActionController
                 if ($new) {
                     $siteSettings->set('search_main_page', $searchPageId);
                     $searchPages[] = $searchPageId;
-                    $searchPages = array_unique(array_filter($searchPages));
-                    sort($searchPages);
-                    $siteSettings->set('search_pages', $searchPages);
                 } else {
                     $siteSettings->set('search_main_page', null);
                 }
@@ -638,8 +438,6 @@ class SearchPageController extends AbstractActionController
 
             if ($new || $available) {
                 $searchPages[] = $searchPageId;
-                array_unique(array_filter($searchPages));
-                sort($searchPages);
             } else {
                 $key = array_search($searchPageId, $searchPages);
                 if ($key === false) {
@@ -647,82 +445,25 @@ class SearchPageController extends AbstractActionController
                 }
                 unset($searchPages[$key]);
             }
+            $searchPages = array_unique(array_filter(array_map('intval', $searchPages)));
+            sort($searchPages);
             $siteSettings->set('search_pages', $searchPages);
         }
 
         $this->messenger()->addSuccess($message);
     }
 
-    /**
-     * Compare fields to be sorted, with enabled fields first, and by weight.
-     *
-     * @param array $a First value
-     * @param array $b Second value
-     * @return int -1, 0, 1.
-     */
-    protected function sortByEnabledFirst($a, $b)
-    {
-        // Sort by availability.
-        if (isset($a['enabled']) && isset($b['enabled'])) {
-            if ($a['enabled'] > $b['enabled']) {
-                return -1;
-            } elseif ($a['enabled'] < $b['enabled']) {
-                return 1;
-            }
-        } elseif (isset($a['enabled'])) {
-            return -1;
-        } elseif (isset($b['enabled'])) {
-            return 1;
-        }
-
-        // In other cases, sort by weight.
-        if (isset($a['weight']) && isset($b['weight'])) {
-            return $a['weight'] == $b['weight']
-                ? 0
-                : ($a['weight'] < $b['weight'] ? -1 : 1);
-        } elseif (isset($a['weight'])) {
-            return -1;
-        } elseif (isset($b['weight'])) {
-            return 1;
-        }
-        return 0;
-    }
-
-    /**
-     * Get each line of a string separately.
-     *
-     * @param string $string
-     * @return array
-     */
-    protected function stringToList($string)
-    {
-        return array_filter(array_map('trim', explode("\n", $this->fixEndOfLine($string))));
-    }
-
-    /**
-     * Clean the text area from end of lines.
-     *
-     * This method fixes Windows and Apple copy/paste from a textarea input.
-     *
-     * @param string $string
-     * @return string
-     */
-    protected function fixEndOfLine($string)
-    {
-        return str_replace(["\r\n", "\n\r", "\r"], ["\n", "\n", "\n"], $string);
-    }
-
-    protected function getEntityManager()
+    protected function getEntityManager(): EntityManager
     {
         return $this->entityManager;
     }
 
-    protected function getSearchAdapterManager()
+    protected function getSearchAdapterManager(): SearchAdapterManager
     {
         return $this->searchAdapterManager;
     }
 
-    protected function getSearchFormAdapterManager()
+    protected function getSearchFormAdapterManager(): SearchFormAdapterManager
     {
         return $this->searchFormAdapterManager;
     }

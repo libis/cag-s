@@ -1,4 +1,4 @@
-<?php
+<?php declare(strict_types=1);
 
 /*
  * Copyright BibLibre, 2016
@@ -67,7 +67,7 @@ class SearchIndex extends AbstractEntity
     /**
      * @var array
      *
-     * @Column(type="json_array", nullable=true)
+     * @Column(type="json", nullable=true)
      */
     protected $settings;
 

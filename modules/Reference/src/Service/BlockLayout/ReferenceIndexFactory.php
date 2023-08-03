@@ -1,9 +1,9 @@
-<?php
+<?php declare(strict_types=1);
 namespace Reference\Service\BlockLayout;
 
 use Interop\Container\ContainerInterface;
+use Laminas\ServiceManager\Factory\FactoryInterface;
 use Reference\Site\BlockLayout\ReferenceIndex;
-use Zend\ServiceManager\Factory\FactoryInterface;
 
 class ReferenceIndexFactory implements FactoryInterface
 {

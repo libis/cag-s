@@ -1,0 +1,82 @@
+<?php
+/**
+ * @var \Laminas\View\Renderer\PhpRenderer $this
+ * @var string $name
+ * @var array $facetValues With value, count, active, label and url when needed.
+ * @var array $options
+ */
+
+$plugins = $this->getHelperPluginManager();
+$escape = $plugins->get('escapeHtml');
+$escapeAttr = $plugins->get('escapeHtmlAttr');
+
+$isFacetModeDirect = ($options['mode'] ?? '') === 'link';
+$displayCount = !empty($options['display_count']);
+
+
+?>    
+<?php
+/*if($facetLabel($name) == 'Onderwerp' || $facetLabel($name) == 'Status'):
+    $class="no-caps";
+else:
+    $class="";
+endif;*/
+?>
+<?php 
+    $beschikbaarheid = array(
+        'not online accessible to public' => 'niet online raadpleegbaar',
+        'online accessible to public' => 'online raadpleegbaar',
+        'online raadpleegbaar' => 'online raadpleegbaar',
+    );
+    $rights = array(
+        'http://rightsstatements.org/vocab/InC-NC/1.0/' => 'Auteursrechtelijk beschermd - niet-commercieel gebruik toegestaan',
+        'http://rightsstatements.org/vocab/InC-RUU/1.0/' => 'Auteursrechtelijk beschermd - rechthebbende(n) niet-lokaliseerbaar of niet-identificeerbaar',
+        'http://rightsstatements.org/vocab/InC/1.0/' => 'Auteursrechtelijk beschermd',
+        'http://rightsstatements.org/vocab/NKC/1.0/' => 'Geen auteursrechtelijke beperkingen bekend',
+        'https://creativecommons.org/publicdomain/mark/1.0/' => 'Geen auteursrecht',
+    );
+    
+
+?>
+<div class="search-facet-items form__group <?php echo $class;?>">
+    <?php foreach (array_slice($facetValues,0,8) as $facetValue):
+        $escapedValue = $escapeAttr($facetValue['value']);
+        if(isset($rights[$facetValue['label']])):
+            $facetValue['label'] = $rights[$facetValue['label']];
+        endif;
+        if(isset($beschikbaarheid[$facetValue['label']])):
+            $facetValue['label'] = $beschikbaarheid[$facetValue['label']];
+        endif;
+        $escapedId = $name . '[]' . $escapedValue;
+        if($facetValue['label'] == "[ ]"):
+            $facetValue['label'] = "No";
+        endif;    
+        $label = $displayCount
+            ? sprintf('%s (<span class="count">%d</span>)', $escape($facetValue['label']),  $facetValue['count'])
+            : $escape($facetValue['label']);
+    ?>
+    <div class="search-facet-item form__item search-facet-item">
+        <input type="checkbox" name="facet[<?= $name ?>][]" id="<?= $escapedId ?>" value="<?= $escapedValue ?>"<?= $isFacetModeDirect ? ' data-url="' . $escapeAttr($facetValue['url']) . '"' : '' ?><?= $facetValue['active'] ? ' checked="checked"' : '' ?>/>
+        <label for="<?= $escapedId ?>"><?= $label ?></label>
+    </div>
+    <?php endforeach; ?>
+    <?php if(sizeof($facetValues)>8):?>                
+        <div class="more-link"><span class="icon icon--plus"></span><a href="">meer tonen</a></div>
+        <div class="more" style="display:none;">
+            <?php foreach (array_slice($facetValues,8) as $facetValue):
+                $escapedValue = $escapeAttr($facetValue['value']);
+                $escapedId = $name . '[]' . $escapedValue;
+                $label = $displayCount
+                    ? sprintf('%s (<span class="count">%d</span>)', $escape($facetValue['label']),  $facetValue['count'])
+                    : $escape($facetValue['label']);
+            ?>
+            <div class="search-facet-item form__item search-facet-item">
+                <input type="checkbox" name="facet[<?= $name ?>][]" id="<?= $escapedId ?>" value="<?= $escapedValue ?>"<?= $isFacetModeDirect ? ' data-url="' . $escapeAttr($facetValue['url']) . '"' : '' ?><?= $facetValue['active'] ? ' checked="checked"' : '' ?>/>
+                <label for="<?= $escapedId ?>"><?= $label ?></label>
+            </div>
+            <?php endforeach; ?>
+            <div class="less-link"><span class="icon icon--minus"></span><a href="">toon minder</a></div>
+        </div> 
+    <?php endif;?>    
+            </div>
+

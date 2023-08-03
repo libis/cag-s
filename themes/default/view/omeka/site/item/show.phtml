@@ -184,7 +184,9 @@ $thumb = $item->primaryMedia();
     <div class="container">
       <div class="grid grid--2-col@med">
         <div class="grid__item">
+          <div class="text-description">
           <?php echo $item->displayDescription(); ?>
+          </div>
         </div>
         <div class="grid__item">
           <?php if(sizeof($itemMedia) > 1):?>
@@ -379,6 +381,7 @@ if($type != 'Nieuws' && $type != 'Agendapunt'):
     </div>
   <?php endif; ?>
 <?php endif; ?>
+<?php $this->trigger('view.show.after'); ?>
 <script>
   $(document).ready(function(){
     $('.slider-for').slick({

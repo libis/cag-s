@@ -29,6 +29,8 @@
                                             echo '<img src="'.$url.'" />';
                                           endif;
                                     endif;
+                                    $tel32 = $block->dataValue('tel');
+                                    $tel32 = str_replace('(0)','',$tel32);
                                   ?>
                                 </div>
                             </div>
@@ -41,7 +43,7 @@
                                     <?php endif;?>
                                     <h3 class="spacer spacer--xsm"><?php echo $block->dataValue('name');?></h3>
                                     <div class="spacer">
-                                        <span class="icon icon--phone"></span> <a href="tel:011223344"><?php echo $block->dataValue('tel');?></a><br>
+                                    <span class="icon icon--phone"></span> <a href="tel:<?php echo $tel32;?>"><?php echo $block->dataValue('tel');?></a><br>
                                         <span class="icon icon--mail"></span> <a href="mailto:<?php echo $block->dataValue('mail');?>"><?php echo $block->dataValue('mail');?></a>
                                     </div>
                                 </div>

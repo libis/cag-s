@@ -1,8 +1,8 @@
-<?php
+<?php declare(strict_types=1);
 namespace Search\View\Helper;
 
+use Laminas\View\Helper\AbstractHelper;
 use Search\Mvc\Controller\Plugin\ApiSearch as ApiSearchPlugin;
-use Zend\View\Helper\AbstractHelper;
 
 class ApiSearch extends AbstractHelper
 {
@@ -33,7 +33,6 @@ class ApiSearch extends AbstractHelper
      */
     public function __invoke($resource, array $data = [])
     {
-        $apiSearch = $this->apiSearch;
-        return $apiSearch($resource, $data);
+        return $this->apiSearch->__invoke($resource, $data);
     }
 }

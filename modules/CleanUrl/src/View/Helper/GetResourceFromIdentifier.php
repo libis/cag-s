@@ -1,12 +1,9 @@
-<?php
+<?php declare(strict_types=1);
 
 namespace CleanUrl\View\Helper;
 
-use Zend\View\Helper\AbstractHelper;
+use Laminas\View\Helper\AbstractHelper;
 
-/**
- * @package Omeka\Plugins\CleanUrl\View\Helper
- */
 class GetResourceFromIdentifier extends AbstractHelper
 {
     /**
@@ -18,7 +15,7 @@ class GetResourceFromIdentifier extends AbstractHelper
      * @param string $resourceName Optional. Search a specific resource type if any.
      * @return \Omeka\Api\Representation\AbstractResourceRepresentation|null
      */
-    public function __invoke($identifier, $resourceName = null)
+    public function __invoke($identifier, $resourceName = null): ?\Omeka\Api\Representation\AbstractResourceRepresentation
     {
         $result = $this->view->getResourcesFromIdentifiers([$identifier], $resourceName);
         return $result ? reset($result) : null;

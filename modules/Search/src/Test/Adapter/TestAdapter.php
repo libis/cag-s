@@ -1,8 +1,8 @@
-<?php
+<?php declare(strict_types=1);
 
 namespace Search\Test\Adapter;
 
-use Zend\Form\Fieldset;
+use Laminas\Form\Fieldset;
 use Search\Adapter\AbstractAdapter;
 
 class TestAdapter extends AbstractAdapter

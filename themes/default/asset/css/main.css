@@ -860,7 +860,7 @@ figcaption {
       flex-wrap: wrap;
 }
 .grid > * {
-  display: -webkit-box;
+  /* display: -webkit-box;*/
   display: -ms-flexbox;
   /*display: flex;*/
   -webkit-box-orient: vertical;

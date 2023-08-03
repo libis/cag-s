@@ -1,25 +1,23 @@
-<?php
+<?php declare(strict_types=1);
 
 namespace CleanUrl\Service\ViewHelper;
 
-use Interop\Container\ContainerInterface;
-use Zend\ServiceManager\Factory\FactoryInterface;
 use CleanUrl\View\Helper\GetResourceTypeIdentifiers;
+use Interop\Container\ContainerInterface;
+use Laminas\ServiceManager\Factory\FactoryInterface;
 
-/**
- * Service factory for the api view helper.
- */
 class GetResourceTypeIdentifiersFactory implements FactoryInterface
 {
     public function __invoke(ContainerInterface $services, $requestedName, array $options = null)
     {
-        $helper = new GetResourceTypeIdentifiers(
-            $services->get('Omeka\Connection')
-        );
-        if (isset($options['propertyId'])) {
-            $helper->setPropertyId($options['propertyId']);
-            $helper->setPrefix($options['prefix']);
+        $optionsResources = [];
+        $settings = $services->get('Omeka\Settings');
+        foreach (['item_set' => 'item_sets', 'item' => 'items', 'media' => 'media'] as $resourceType => $resourceName) {
+            $optionsResources[$resourceName] = $settings->get('cleanurl_' . $resourceType);
         }
-        return $helper;
+        return new GetResourceTypeIdentifiers(
+            $services->get('Omeka\Connection'),
+            $optionsResources
+        );
     }
 }

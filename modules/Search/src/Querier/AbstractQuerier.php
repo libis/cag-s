@@ -1,8 +1,8 @@
-<?php
+<?php declare(strict_types=1);
 
 /*
  * Copyright BibLibre, 2016
- * Copyright Daniel Berthereau, 2017-2018
+ * Copyright Daniel Berthereau, 2017-2021
  *
  * This software is governed by the CeCILL license under French law and abiding
  * by the rules of distribution of free software.  You can use, modify and/ or
@@ -30,10 +30,11 @@
 
 namespace Search\Querier;
 
+use Laminas\Log\LoggerAwareTrait;
+use Laminas\ServiceManager\ServiceLocatorInterface;
 use Search\Api\Representation\SearchIndexRepresentation;
 use Search\Query;
-use Zend\Log\LoggerAwareTrait;
-use Zend\ServiceManager\ServiceLocatorInterface;
+use Search\Response;
 
 abstract class AbstractQuerier implements QuerierInterface
 {
@@ -45,29 +46,43 @@ abstract class AbstractQuerier implements QuerierInterface
     protected $serviceLocator;
 
     /**
-     * @param SearchIndexRepresentation $index
+     * @var SearchIndexRepresentation $index
      */
     protected $index;
 
-    public function setServiceLocator(ServiceLocatorInterface $serviceLocator)
+    /**
+     * @var Query
+     */
+    protected $query;
+
+    public function setServiceLocator(ServiceLocatorInterface $serviceLocator): QuerierInterface
     {
         $this->serviceLocator = $serviceLocator;
         return $this;
     }
 
-    /**
-     * @return \Zend\ServiceManager\ServiceLocatorInterface
-     */
-    protected function getServiceLocator()
+    protected function getServiceLocator(): ServiceLocatorInterface
     {
         return $this->serviceLocator;
     }
 
-    public function setSearchIndex(SearchIndexRepresentation $index)
+    public function setSearchIndex(SearchIndexRepresentation $index): QuerierInterface
     {
         $this->index = $index;
         return $this;
     }
+
+    public function setQuery(Query $query): QuerierInterface
+    {
+        $this->query = $query;
+        return $this;
+    }
+
+    abstract public function query(): Response;
+
+    abstract public function querySuggestions(): Response;
+
+    abstract public function getPreparedQuery();
 
     /**
      * Get a setting of the search index.
@@ -76,15 +91,10 @@ abstract class AbstractQuerier implements QuerierInterface
      * @param mixed $default
      * @return mixed
      */
-    protected function getSetting($name, $default = null)
+    protected function getSetting(string $name, $default = null)
     {
         $settings = $this->index->settings();
-
-        if (isset($settings[$name])) {
-            return $settings[$name];
-        }
-
-        return $default;
+        return $settings[$name] ?? $default;
     }
 
     /**
@@ -94,16 +104,9 @@ abstract class AbstractQuerier implements QuerierInterface
      * @param mixed $default
      * @return mixed
      */
-    protected function getAdapterSetting($name, $default = null)
+    protected function getAdapterSetting(string $name, $default = null)
     {
         $adapterSettings = $this->getSetting('adapter', []);
-
-        if (isset($adapterSettings[$name])) {
-            return $adapterSettings[$name];
-        }
-
-        return $default;
+        return $adapterSettings[$name] ?? $default;
     }
-
-    abstract public function query(Query $query);
 }

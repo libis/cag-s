@@ -1,4 +1,5 @@
-<?php
+<?php declare(strict_types=1);
+
 namespace ArchiveRepertoryTest;
 
 class MockFileWriter
@@ -55,7 +56,7 @@ class MockFileWriter
         return $this->fileExists($file) ? [$file] : [];
     }
 
-    public function addFile($path)
+    public function addFile($path): void
     {
         $this->files[] = $path;
     }

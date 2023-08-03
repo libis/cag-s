@@ -1,8 +1,8 @@
-<?php
+<?php declare(strict_types=1);
 
 /*
  * Copyright BibLibre, 2016
- * Copyright Daniel Berthereau, 2018-2019
+ * Copyright Daniel Berthereau, 2018-2021
  *
  * This software is governed by the CeCILL license under French law and abiding
  * by the rules of distribution of free software.  You can use, modify and/ or
@@ -30,8 +30,18 @@
 
 namespace Search;
 
-class Response
+class Response implements \JsonSerializable
 {
+    /**
+     * @var bool
+     */
+    protected $isSuccess = false;
+
+    /**
+     * @var ?string
+     */
+    protected $message;
+
     /**
      * @var int
      */
@@ -50,21 +60,50 @@ class Response
     /**
      * @var array
      */
+    protected $activeFacets = [];
+
+    /**
+     * @var array
+     */
     protected $facetCounts = [];
+
+    /**
+     * @var array
+     */
+    protected $suggestions = [];
+
+    public function setIsSuccess(bool $isSuccess): self
+    {
+        $this->isSuccess = $isSuccess;
+        return $this;
+    }
+
+    public function isSuccess(): bool
+    {
+        return $this->isSuccess;
+    }
+
+    public function setMessage($message): self
+    {
+        $this->message = $message;
+        return $this;
+    }
+
+    public function getMessage(): ?string
+    {
+        return (string) $this->message ?: null;
+    }
 
     /**
      * @param int $totalResults
      */
-    public function setTotalResults($totalResults)
+    public function setTotalResults(?int $totalResults): self
     {
         $this->totalResults = (int) $totalResults;
         return $this;
     }
 
-    /**
-     * @return int
-     */
-    public function getTotalResults()
+    public function getTotalResults(): int
     {
         return $this->totalResults;
     }
@@ -73,21 +112,32 @@ class Response
      * @param string $resourceType The resource type ("items", "item_sets"…).
      * @param int $totalResults
      */
-    public function setResourceTotalResults($resourceType, $totalResults)
+    public function setResourceTotalResults(string $resourceType, ?int $totalResults): self
     {
         $this->resourceTotalResults[$resourceType] = (int) $totalResults;
         return $this;
     }
 
     /**
-     * @param string $resourceType The resource type ("items", "item_sets"…).
-     * @return int
+     * @param string|null $resourceType The resource type ("items", "item_sets"…).
+     * @return int|array
      */
-    public function getResourceTotalResults($resourceType)
+    public function getResourceTotalResults(?string $resourceType = null)
     {
-        return isset($this->resourceTotalResults[$resourceType])
-            ? $this->resourceTotalResults[$resourceType]
-            : 0;
+        return is_null($resourceType)
+            ? $this->resourceTotalResults
+            : $this->resourceTotalResults[$resourceType] ?? 0;
+    }
+
+    /**
+     * Store all results for all resources.
+     *
+     * @param array $results Results by resource type ("items", "item_sets"…).
+     */
+    public function setResults(array $results): self
+    {
+        $this->results = $results;
+        return $this;
     }
 
     /**
@@ -96,7 +146,7 @@ class Response
      * @param string $resourceType The resource type ("items", "item_sets"…).
      * @param array $results Each result is an array with "id" as key.
      */
-    public function addResults($resourceType, $results)
+    public function addResults(string $resourceType, array $results): self
     {
         $this->results[$resourceType] = isset($this->results[$resourceType])
             ? array_merge($this->results[$resourceType], array_values($results))
@@ -108,34 +158,88 @@ class Response
      * Store a result.
      *
      * @param string $resourceType The resource type ("items", "item_sets"…).
-     * @param array $result
      */
-    public function addResult($resourceType, $result)
+    public function addResult(string $resourceType, array $result): self
     {
         $this->results[$resourceType][] = $result;
         return $this;
     }
 
     /**
-     * Get stored results.
+     * Get stored results for a resource type or all resource types.
      *
-     * @param string $resourceType The resource type ("items", "item_sets"…).
-     * @return array
+     * @param string|null $resourceType The resource type ("items", "item_sets"…).
      */
-    public function getResults($resourceType)
+    public function getResults(string $resourceType = null): array
     {
-        return isset($this->results[$resourceType])
-            ? $this->results[$resourceType]
-            : [];
+        return is_null($resourceType)
+            ? $this->results
+            : $this->results[$resourceType] ?? [];
     }
 
     /**
-     * Store a list of result for a facet.
+     * Store a list of active facets.
+     *
+     * The active facets are the query filters ("filters" is used in solr).
+     */
+    public function setActiveFacets(array $activeFacetsByName): self
+    {
+        $this->activeFacets = array_map(function ($v) {
+            return array_values(array_unique($v));
+        }, $activeFacetsByName);
+        return $this;
+    }
+
+    /**
+     * Store a list of active facets for a name.
+     */
+    public function addActiveFacets(string $name, array $activeFacets): self
+    {
+        $this->activeFacets[$name] = isset($this->activeFacets[$name])
+            ? array_merge($this->activeFacets[$name], array_values($activeFacets))
+            : array_values($activeFacets);
+        $this->activeFacets[$name] = array_values(array_unique($this->activeFacets[$name]));
+        return $this;
+    }
+
+    /**
+     * Add an active facet for a name.
+     */
+    public function addActiveFacet(string $name, string $activeFacet): self
+    {
+        $this->activeFacets[$name][] = $activeFacet;
+        $this->activeFacets[$name] = array_values(array_unique($this->activeFacets[$name]));
+        return $this;
+    }
+
+    /**
+     * Get the list of active facets.
+     */
+    public function getActiveFacets(?string $name = null): array
+    {
+        return is_null($name)
+            ? $this->activeFacets
+            : $this->activeFacets[$name] ?? [];
+    }
+
+    /**
+     * Store a list of counts for all facets of all resources.
+     *
+     * @param array $facetCountsByField Counts by facet, with keys "value" and "count".
+     */
+    public function setFacetCounts(array $facetCountsByField): self
+    {
+        $this->facetCounts = $facetCountsByField;
+        return $this;
+    }
+
+    /**
+     * Store a list of counts for a facet.
      *
      * @param string $name
      * @param array $counts List of counts with keys "value" and "count".
      */
-    public function addFacetCounts($name, $counts)
+    public function addFacetCounts(string $name, array $counts): self
     {
         $this->facetCounts[$name] = isset($this->facetCounts[$name])
             ? array_merge($this->facetCounts[$name], array_values($counts))
@@ -144,13 +248,9 @@ class Response
     }
 
     /**
-     * Store the result for a facet.
-     *
-     * @param string $name
-     * @param string $value
-     * @param int $count
+     * Store the count for a facet.
      */
-    public function addFacetCount($name, $value, $count)
+    public function addFacetCount(string $name, $value, int $count): self
     {
         $this->facetCounts[$name][] = [
             'value' => $value,
@@ -160,12 +260,37 @@ class Response
     }
 
     /**
-     * Get all the facet counts.
-     *
-     * @return array
+     * Get all the facet counts or a specific one.
      */
-    public function getFacetCounts()
+    public function getFacetCounts(?string $name = null): array
     {
-        return $this->facetCounts;
+        return is_null($name)
+            ? $this->facetCounts
+            : $this->facetCounts[$name] ?? [];
+    }
+
+    public function setSuggestions(array $suggestions): self
+    {
+        $this->suggestions = $suggestions;
+        return $this;
+    }
+
+    public function getSuggestions(): array
+    {
+        return $this->suggestions;
+    }
+
+    public function jsonSerialize(): array
+    {
+        return [
+            'success' => $this->isSuccess(),
+            'message' => $this->getMessage(),
+            'total_results' => $this->getTotalResults(),
+            'resource_total_results' => $this->getResourceTotalResults(),
+            'results' => $this->getResults(),
+            'facet_counts' => $this->getFacetCounts(),
+            'active_facets' => $this->getActiveFacets(),
+            'suggestions' => $this->getSuggestions(),
+        ];
     }
 }

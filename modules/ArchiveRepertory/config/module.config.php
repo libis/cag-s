@@ -1,7 +1,14 @@
-<?php
+<?php declare(strict_types=1);
+
 namespace ArchiveRepertory;
 
 return [
+    'service_manager' => [
+        'factories' => [
+            'ArchiveRepertory\FileManager' => Service\FileManagerFactory::class,
+            'ArchiveRepertory\FileWriter' => Service\FileWriterFactory::class,
+        ],
+    ],
     'view_manager' => [
         'template_path_stack' => [
             dirname(__DIR__) . '/view',
@@ -15,12 +22,6 @@ return [
     'form_elements' => [
         'factories' => [
             Form\ConfigForm::class => Service\Form\ConfigFormFactory::class,
-        ],
-    ],
-    'service_manager' => [
-        'factories' => [
-            'ArchiveRepertory\FileManager' => Service\FileManagerFactory::class,
-            'ArchiveRepertory\FileWriter' => Service\FileWriterFactory::class,
         ],
     ],
     'translator' => [
@@ -40,10 +41,11 @@ return [
         'ingesters' => [
             // An empty array means that the thumbnail types / paths in config
             // and the default extension ("jpg") will be used.
-            // See the module IIIF Server for a full example.
+            // See the module Image Server for a full example.
             'upload' => [],
             'url' => [],
             'sideload' => [],
+            'sideload_dir' => [],
         ],
         'config' => [
             // Item sets options.

@@ -1,10 +1,12 @@
-<?php
+<?php declare(strict_types=1);
+
 namespace Search\Form;
 
+use Laminas\Form\Element;
+use Laminas\Form\Fieldset;
 use Omeka\View\Helper\Api;
-use Zend\View\Helper\BasePath;
-use Zend\Form\Element;
-use Zend\Form\Fieldset;
+use Search\Form\Element\OptionalMultiCheckbox;
+use Search\Form\Element\OptionalSelect;
 
 class SettingsFieldset extends Fieldset
 {
@@ -13,37 +15,26 @@ class SettingsFieldset extends Fieldset
      */
     protected $api;
 
-    /**
-     * @var BasePath
-     */
-    protected $basePath;
-
     protected $label = 'Search (admin board)'; // @translate
 
-    public function init()
+    public function init(): void
     {
-        $api = $this->getApi();
-        $basePath = $this->getBasePath();
-        $adminBasePath = $basePath('admin/');
-
         /** @var \Search\Api\Representation\SearchPageRepresentation[] $pages */
-        $pages = $api->search('search_pages')->getContent();
+        $pages = $this->api->search('search_pages')->getContent();
 
         $valueOptions = [];
-        $pageOptions = [];
         $apiOptions = [];
         foreach ($pages as $page) {
-            $label = sprintf('%s (/%s)', $page->name(), $page->path());
-            $valueOptions[$adminBasePath . $page->path()] = $label;
-            $pageOptions[$page->id()] = $label;
+            $labelSearchPage = sprintf('%s (/%s)', $page->name(), $page->path());
+            $valueOptions[$page->id()] = $labelSearchPage;
             if ($page->formAdapter() instanceof \Search\FormAdapter\ApiFormAdapter) {
-                $apiOptions[$page->id()] = $label;
+                $apiOptions[$page->id()] = $labelSearchPage;
             }
         }
 
         $this->add([
             'name' => 'search_main_page',
-            'type' => Element\Select::class,
+            'type' => OptionalSelect::class,
             'options' => [
                 'label' => 'Default search page (admin)', // @translate
                 'info' => 'This search engine is used in the admin bar.', // @translate
@@ -57,10 +48,10 @@ class SettingsFieldset extends Fieldset
 
         $this->add([
             'name' => 'search_pages',
-            'type' => Element\MultiCheckbox::class,
+            'type' => OptionalMultiCheckbox::class,
             'options' => [
                 'label' => 'Available search pages', // @translate
-                'value_options' => $pageOptions,
+                'value_options' => $valueOptions,
             ],
             'attributes' => [
                 'id' => 'search_pages',
@@ -69,7 +60,7 @@ class SettingsFieldset extends Fieldset
 
         $this->add([
             'name' => 'search_api_page',
-            'type' => Element\Select::class,
+            'type' => OptionalSelect::class,
             'options' => [
                 'label' => 'Page used for quick api search', // @translate
                 'info' => 'The method apiSearch() allows to do a quick search in some cases. It requires a mapping done with the Omeka api and the selected index.', // @translate
@@ -102,30 +93,5 @@ class SettingsFieldset extends Fieldset
     {
         $this->api = $api;
         return $this;
-    }
-
-    /**
-     * @return \Omeka\View\Helper\Api
-     */
-    public function getApi()
-    {
-        return $this->api;
-    }
-
-    /**
-     * @param BasePath $basePath
-     */
-    public function setBasePath(BasePath $basePath)
-    {
-        $this->basePath = $basePath;
-        return $this;
-    }
-
-    /**
-     * @return \Zend\View\Helper\BasePath
-     */
-    public function getBasePath()
-    {
-        return $this->basePath;
     }
 }

@@ -1,8 +1,8 @@
-<?php
+<?php declare(strict_types=1);
 
 /*
  * Copyright BibLibre, 2016-2017
- * Copyright Daniel Berthereau, 2018
+ * Copyright Daniel Berthereau, 2018-2021
  *
  * This software is governed by the CeCILL license under French law and abiding
  * by the rules of distribution of free software.  You can use, modify and/ or
@@ -30,52 +30,43 @@
 
 namespace Search\Adapter;
 
+use Laminas\ServiceManager\ServiceLocatorInterface;
 use Search\Api\Representation\SearchIndexRepresentation;
-use Zend\ServiceManager\ServiceLocatorInterface;
 
 interface AdapterInterface
 {
-    /**
-     * @param ServiceLocatorInterface $serviceLocator
-     */
-    public function setServiceLocator(ServiceLocatorInterface $serviceLocator);
+    public function setServiceLocator(ServiceLocatorInterface $serviceLocator): AdapterInterface;
 
     /**
      * Get the name of the adapter.
-     *
-     * @return string
      */
-    public function getLabel();
+    public function getLabel(): string;
 
     /**
      * Return the form used to managed the config of the adapter, if any.
-     *
-     * @çeturn \Zend\Form\Fieldset|null
      */
-    public function getConfigFieldset();
+    public function getConfigFieldset(): ?\Laminas\Form\Fieldset;
 
     /**
      * Get the fully qualified name of the indexer class used by this adapter.
-     *
-     * @return string
      */
-    public function getIndexerClass();
+    public function getIndexerClass(): string;
 
     /**
      * Get the fully qualified name of the querier class used by this adapter.
-     *
-     * @return string
      */
-    public function getQuerierClass();
+    public function getQuerierClass(): string;
 
     /**
      * Get the available fields.
+     *
+     * The available fields are used for filters.
      *
      * @param SearchIndexRepresentation $index
      * @return array Associative array with field name as key and an array with
      * field name and field label as value.
      */
-    public function getAvailableFields(SearchIndexRepresentation $index);
+    public function getAvailableFields(SearchIndexRepresentation $index): array;
 
     /**
      * Get the available sort fields.
@@ -84,7 +75,7 @@ interface AdapterInterface
      * @return array Associative array with sort name as key and an array with
      * sort name and sort label as value.
      */
-    public function getAvailableSortFields(SearchIndexRepresentation $index);
+    public function getAvailableSortFields(SearchIndexRepresentation $index): array;
 
     /**
      * Get the available facet fields.
@@ -93,5 +84,5 @@ interface AdapterInterface
      * @return array Associative array with facet name as key and an array with
      * facet name and facet label as value.
      */
-    public function getAvailableFacetFields(SearchIndexRepresentation $index);
+    public function getAvailableFacetFields(SearchIndexRepresentation $index): array;
 }

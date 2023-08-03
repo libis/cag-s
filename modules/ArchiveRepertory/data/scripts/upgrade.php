@@ -1,9 +1,13 @@
-<?php
+<?php declare(strict_types=1);
+
 namespace ArchiveRepertory;
+
+use Omeka\Mvc\Controller\Plugin\Messenger;
+use Omeka\Stdlib\Message;
 
 /**
  * @var Module $this
- * @var \Zend\ServiceManager\ServiceLocatorInterface $serviceLocator
+ * @var \Laminas\ServiceManager\ServiceLocatorInterface $serviceLocator
  * @var string $oldVersion
  * @var string $newVersion
  */
@@ -18,7 +22,7 @@ $services = $serviceLocator;
  */
 $settings = $services->get('Omeka\Settings');
 $connection = $services->get('Omeka\Connection');
-$config = require dirname(dirname(__DIR__)) . '/config/module.config.php';
+$config = require dirname(__DIR__, 2) . '/config/module.config.php';
 $plugins = $services->get('ControllerPluginManager');
 $api = $plugins->get('api');
 
@@ -54,4 +58,12 @@ if (version_compare($oldVersion, '3.15.3', '<')) {
         $settings->delete($oldName);
     }
     $settings->delete('archive_repertory_ingesters');
+}
+
+if (version_compare($oldVersion, '3.15.14.3', '<')) {
+    $messenger = new Messenger();
+    $message = new Message(
+        'The process is now working with background processes.' // @translate
+    );
+    $messenger->addSuccess($message);
 }

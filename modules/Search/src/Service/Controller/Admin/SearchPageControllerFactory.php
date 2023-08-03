@@ -1,8 +1,8 @@
-<?php
+<?php declare(strict_types=1);
 namespace Search\Service\Controller\Admin;
 
 use Interop\Container\ContainerInterface;
-use Zend\ServiceManager\Factory\FactoryInterface;
+use Laminas\ServiceManager\Factory\FactoryInterface;
 use Search\Controller\Admin\SearchPageController;
 
 class SearchPageControllerFactory implements FactoryInterface

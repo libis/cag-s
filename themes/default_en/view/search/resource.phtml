@@ -41,17 +41,18 @@ else:
   $type= "Object";
 endif;
 
-if($type == 'News' || $type == 'Event'):
-  $url = $resource->url();
+if($type == 'Verhaal' || $type == 'Project' || $type == 'Agendapunt'):
   if($resource->value('dcterms:relation')):
-    $url = '/s/en/page/'.$resource->value('dcterms:relation');
-  endif; 
+    $url = '/page/'.$resource->value('dcterms:relation');
+  else:
+    $url = $resource->url();
+  endif;  
 else:
   $url = $resource->url();
 endif;
 ?>
 <div class="grid__item">
-   <div class="card card--gray card--clickable card--link card--variant2">
+   <div class="card card--clickable card--link card--variant2">
      <a href="<?php echo $url;?>" style="display:block;">
         <?php echo sprintf('<%s class="%s resource">', $tag, $resource->resourceName()); ?>
         <?php $media = $resource->primaryMedia(); ?>
@@ -127,9 +128,9 @@ endif;
                 </p>
             <?php endif; ?>
             <?php if($type == 'Film' || $type == 'Filmkopie'):?>
-              <div class="link link--ext card__link"><a href="<?php echo $url;?>">Lees meer</a></div>
+              <div class="link link--ext card__link"><a href="<?php echo $url;?>">Read more</a></div>
             <?php else:?>
-              <div class="link link--ext card__link"><a href="<?php echo $url;?>"><?php echo $type;?> bekijken</a></div>
+              <div class="link link--ext card__link"><a href="<?php echo $url;?>">View <?php echo $type;?></a></div>
             <?php endif; ?>
           </div>
       </a>

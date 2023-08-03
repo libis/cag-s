@@ -1,10 +1,11 @@
-<?php
+<?php declare(strict_types=1);
+
 /*
  * Archive Repertory
  *
  * Keeps original names of files and put them in a hierarchical structure.
  *
- * Copyright Daniel Berthereau 2012-2018
+ * Copyright Daniel Berthereau 2012-2022
  * Copyright BibLibre, 2016
  *
  * This software is governed by the CeCILL license under French law and abiding
@@ -30,59 +31,28 @@
  * The fact that you are presently reading this means that you have had
  * knowledge of the CeCILL license and that you accept its terms.
  */
+
 namespace ArchiveRepertory;
 
+if (!class_exists(\Generic\AbstractModule::class)) {
+    require file_exists(dirname(__DIR__) . '/Generic/AbstractModule.php')
+        ? dirname(__DIR__) . '/Generic/AbstractModule.php'
+        : __DIR__ . '/src/Generic/AbstractModule.php';
+}
+
 use ArchiveRepertory\Form\ConfigForm;
+use Generic\AbstractModule;
+use Laminas\EventManager\Event;
+use Laminas\EventManager\SharedEventManagerInterface;
+use Laminas\View\Renderer\PhpRenderer;
 use Omeka\Entity\Media;
-use Omeka\Module\AbstractModule;
 use Omeka\Mvc\Controller\Plugin\Messenger;
-use Zend\EventManager\Event;
-use Zend\EventManager\SharedEventManagerInterface;
-use Zend\Mvc\Controller\AbstractController;
-use Zend\ServiceManager\ServiceLocatorInterface;
-use Zend\View\Renderer\PhpRenderer;
 
 class Module extends AbstractModule
 {
-    public function getConfig()
-    {
-        return include __DIR__ . '/config/module.config.php';
-    }
+    const NAMESPACE = __NAMESPACE__;
 
-    public function install(ServiceLocatorInterface $serviceLocator)
-    {
-        $settings = $serviceLocator->get('Omeka\Settings');
-        $this->manageSettings($settings, 'install');
-    }
-
-    public function uninstall(ServiceLocatorInterface $serviceLocator)
-    {
-        $settings = $serviceLocator->get('Omeka\Settings');
-        $this->manageSettings($settings, 'uninstall');
-    }
-
-    protected function manageSettings($settings, $process, $key = 'config')
-    {
-        $config = require __DIR__ . '/config/module.config.php';
-        $defaultSettings = $config[strtolower(__NAMESPACE__)][$key];
-        foreach ($defaultSettings as $name => $value) {
-            switch ($process) {
-                case 'install':
-                    $settings->set($name, $value);
-                    break;
-                case 'uninstall':
-                    $settings->delete($name);
-                    break;
-            }
-        }
-    }
-
-    public function upgrade($oldVersion, $newVersion, ServiceLocatorInterface $serviceLocator)
-    {
-        require_once 'data/scripts/upgrade.php';
-    }
-
-    public function attachListeners(SharedEventManagerInterface $sharedEventManager)
+    public function attachListeners(SharedEventManagerInterface $sharedEventManager): void
     {
         $sharedEventManager->attach(
             \Omeka\Api\Adapter\ItemAdapter::class,
@@ -102,6 +72,19 @@ class Module extends AbstractModule
             [$this, 'afterDeleteItem'],
             100
         );
+
+        $sharedEventManager->attach(
+            \Omeka\Api\Adapter\MediaAdapter::class,
+            'api.create.post',
+            [$this, 'afterUploadMedia'],
+            100
+        );
+        $sharedEventManager->attach(
+            \Omeka\Api\Adapter\MediaAdapter::class,
+            'api.update.post',
+            [$this, 'afterUploadMedia'],
+            100
+        );
     }
 
     public function getConfigForm(PhpRenderer $renderer)
@@ -112,7 +95,7 @@ class Module extends AbstractModule
         $form = $services->get('FormElementManager')->get(ConfigForm::class);
 
         $data = [];
-        $defaultSettings = $config[strtolower(__NAMESPACE__)]['config'];
+        $defaultSettings = $config['archiverepertory']['config'];
         foreach ($defaultSettings as $name => $value) {
             $data[$name] = $settings->get($name, $value);
         }
@@ -125,34 +108,10 @@ class Module extends AbstractModule
         return $html;
     }
 
-    public function handleConfigForm(AbstractController $controller)
-    {
-        $services = $this->getServiceLocator();
-        $config = $services->get('Config');
-        $settings = $services->get('Omeka\Settings');
-        $form = $services->get('FormElementManager')->get(ConfigForm::class);
-
-        $params = $controller->getRequest()->getPost();
-
-        $form->init();
-        $form->setData($params);
-        if (!$form->isValid()) {
-            $controller->messenger()->addErrors($form->getMessages());
-            return false;
-        }
-
-        $params = $form->getData();
-        $defaultSettings = $config[strtolower(__NAMESPACE__)]['config'];
-        $params = array_intersect_key($params, $defaultSettings);
-        foreach ($params as $name => $value) {
-            $settings->set($name, $value);
-        }
-    }
-
     /**
-     * Manages folders for attached files of items.
+     * Manage folders for attached files of items.
      */
-    public function afterSaveItem(Event $event)
+    public function afterSaveItem(Event $event): void
     {
         $item = $event->getParam('response')->getContent();
         foreach ($item->getMedia() as $media) {
@@ -161,12 +120,25 @@ class Module extends AbstractModule
     }
 
     /**
+     * Manage folders for media.
+     */
+    public function afterUploadMedia(Event $event): void
+    {
+        $media = $event->getParam('response')->getContent();
+        $this->afterSaveMedia($media);
+    }
+
+    /**
      * Set medias at the right place.
      *
      * @param Media $media
      */
-    protected function afterSaveMedia(Media $media)
+    protected function afterSaveMedia(Media $media): void
     {
+        /**
+         * @var \ArchiveRepertory\File\FileManager $fileManager
+         * @var \ArchiveRepertory\File\FileWriter $fileWriter
+         */
         $services = $this->getServiceLocator();
         $entityManager = $services->get('Omeka\EntityManager');
         $config = $services->get('Config');
@@ -221,9 +193,12 @@ class Module extends AbstractModule
 
     /**
      * Remove folders for attached files of items.
+     *
+     * The default files are removed with the standard process.
      */
-    public function afterDeleteItem(Event $event)
+    public function afterDeleteItem(Event $event): void
     {
+        /** @var \ArchiveRepertory\File\FileManager $fileManager */
         $services = $this->getServiceLocator();
         $config = $services->get('Config');
         $fileManager = $services->get('ArchiveRepertory\FileManager');
@@ -241,17 +216,18 @@ class Module extends AbstractModule
 
             // Check if there is a directory to remove. Note: only the "/" is
             // used during the saving.
-            $filename = $media->getFilename();
+            $filename = (string) $media->getFilename();
             if (strpos($filename, '/') === false) {
                 continue;
             }
+
             $storageDir = dirname($filename);
             $fileManager->removeArchiveFolders($storageDir);
             // Whatever the result, continue the other medias.
         }
     }
 
-    protected function addError($msg)
+    protected function addError($msg): void
     {
         $messenger = new Messenger;
         $messenger->addError($msg);

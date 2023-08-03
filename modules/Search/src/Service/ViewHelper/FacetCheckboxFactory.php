@@ -1,4 +1,4 @@
-<?php
+<?php declare(strict_types=1);
 
 /*
  * Copyright BibLibre, 2017
@@ -31,8 +31,8 @@
 namespace Search\Service\ViewHelper;
 
 use Interop\Container\ContainerInterface;
+use Laminas\ServiceManager\Factory\FactoryInterface;
 use Search\View\Helper\FacetCheckbox;
-use Zend\ServiceManager\Factory\FactoryInterface;
 
 class FacetCheckboxFactory implements FactoryInterface
 {

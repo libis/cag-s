@@ -1,4 +1,4 @@
-SetEnv APPLICATION_ENV "development"
+SetEnv APPLICATION_ENV "production"
 
 RewriteEngine On
 # The following rule tells Apache that if the requested filename
@@ -11,6 +11,20 @@ RewriteRule ^.*$ - [L]
 # Strip any trailing slashes from incoming requests
 RewriteCond %{REQUEST_URI} ^(.+)/+$
 RewriteRule .* %1 [R=307,L]
+
+Redirect 301 /beeldbank    https://cagnet.be/s/start/beeldbank
+Redirect 301 /films    https://cagnet.be/s/start/films
+Redirect 301 /collecties    https://cagnet.be/s/start/collecties
+Redirect 301 /filmkopies    https://cagnet.be/s/start/filmkopies
+Redirect 301 /nieuws    https://cagnet.be/s/start/nieuws
+Redirect 301 /projecten    https://cagnet.be/s/start/projecten
+Redirect 301 /verhalen    https://cagnet.be/s/start/verhalen
+Redirect 301 /agenda    https://cagnet.be/s/start/agenda
+Redirect 301 /objecten    https://collectiebulskampveld.be/s/bulskampveld/objecten
+Redirect 301 /agenda-bkv    https://collectiebulskampveld.be/s/bulskampveld/agenda-bkv
+Redirect 301 /nieuws-bkv   https://collectiebulskampveld.be/s/bulskampveld/nieuws-bkv
+Redirect 301 /item/236034    https://cagnet.be/item/235975
+Redirect 301 /item/236052    https://cagnet.be/item/235987
 
 # The following rewrites all other queries to index.php. The
 # condition ensures that if you are using Apache aliases to do

@@ -1,8 +1,8 @@
-<?php
+<?php declare(strict_types=1);
 
 /*
  * Copyright BibLibre, 2016-2017
- * Copyright Daniel Berthereau 2017-2018
+ * Copyright Daniel Berthereau 2017-2021
  *
  * This software is governed by the CeCILL license under French law and abiding
  * by the rules of distribution of free software.  You can use, modify and/ or
@@ -30,16 +30,13 @@
 
 namespace Search\Form\Admin;
 
+use Laminas\Form\Element;
+use Laminas\Form\Form;
 use Omeka\Api\Manager as ApiManager;
 use Omeka\Form\Element\SiteSelect;
-use Zend\Form\Element;
-use Zend\Form\Form;
-use Zend\I18n\Translator\TranslatorAwareTrait;
 
 class SearchPageForm extends Form
 {
-    use TranslatorAwareTrait;
-
     /**
      * @var ApiManager
      */
@@ -47,10 +44,8 @@ class SearchPageForm extends Form
 
     protected $formAdapterManager;
 
-    public function init()
+    public function init(): void
     {
-        $translator = $this->getTranslator();
-
         $this
             ->add([
                 'name' => 'o:name',
@@ -68,8 +63,7 @@ class SearchPageForm extends Form
                 'type' => Element\Text::class,
                 'options' => [
                     'label' => 'Path', // @translate
-                    'info' => $translator->translate('The path to the search form.') // @translate
-                        . ' ' . $translator->translate('The site path will be automatically prepended.'), // @translate
+                    'info' => 'The path to the search form. The site path will be automatically prepended.',
                 ],
                 'attributes' => [
                     'required' => true,
@@ -121,7 +115,6 @@ class SearchPageForm extends Form
                     'data-placeholder' => 'Select sites…', // @translate
                 ],
             ])
-
             ->add([
                 'name' => 'manage_page_availability',
                 'type' => Element\Radio::class,
@@ -135,12 +128,14 @@ class SearchPageForm extends Form
                     ],
                 ],
                 'attributes' => [
+                    'id' => 'manage_page_availability',
                     'value' => 'let',
                 ],
-            ]);
+            ])
+        ;
 
-        $inputFilter = $this->getInputFilter();
-        $inputFilter
+        $this
+            ->getInputFilter()
             ->add([
                 'name' => 'manage_page_default',
                 'required' => false,
@@ -152,21 +147,18 @@ class SearchPageForm extends Form
         ;
     }
 
-    /**
-     * @param ApiManager $apiManager
-     */
-    public function setApiManager(ApiManager $apiManager)
+    public function setApiManager(ApiManager $apiManager): self
     {
         $this->apiManager = $apiManager;
         return $this;
     }
 
-    public function getApiManager()
+    public function getApiManager(): \Omeka\Api\Manager
     {
         return $this->apiManager;
     }
 
-    public function setFormAdapterManager($formAdapterManager)
+    public function setFormAdapterManager($formAdapterManager): self
     {
         $this->formAdapterManager = $formAdapterManager;
         return $this;
@@ -177,7 +169,7 @@ class SearchPageForm extends Form
         return $this->formAdapterManager;
     }
 
-    protected function getIndexesOptions()
+    protected function getIndexesOptions(): array
     {
         $options = [];
 
@@ -192,7 +184,7 @@ class SearchPageForm extends Form
         return $options;
     }
 
-    protected function getFormsOptions()
+    protected function getFormsOptions(): array
     {
         $options = [];
 

@@ -5,9 +5,10 @@
     <?php echo $this->pageTitle(sprintf($this->translate('Zoekresultaten “%s”'), htmlspecialchars($query))); ?>
   </div>
 </div>
+<?php if($pagesTotal):?>
 <div class="section section--default">
-  <div class="container">
-        <h2><?php echo $this->translate('Pages'); ?></h2>
+  <div class="container">    
+        <h2><?php echo $this->translate('Pages')."(".$pagesTotal.")"; ?></h2>
         <?php if ($pages): ?>
             <?php foreach ($pages as $page): ?>
             <div class="list_page">
@@ -28,94 +29,52 @@
           <p><?php echo $this->translate('Geen resultaten'); ?></p>
           <?php endif; ?>
         </div>
-    </div>
+    </div>  
 </div>
+<?php endif;?> 
 <div class="section section--default">
   <div class="container">
-    <div class="grid__12">
-        <h2><?php echo $this->translate('Items'); ?></h2>
-        <?php if ($items): ?>
-        <?php $count = 0;?>
-        <div class="grid grid--3-col@med spacer--xsm">
-            <?php foreach ($items as $item): ?>
-              <?php
-                $url = $item->url();
-                $type = $item->resourceTemplate();
-                if($type):
-                  $type= $type->label();
-                  if($type == 'Bibliografie'):
-                    continue;
-                  endif;
-                  if($type == 'Verhaal' || $type == 'Project'):
-                    $url = '/s/start/page/'.$item->value('dcterms:relation');
-                  endif;
-                else:
-                  $type= "Object";
-                endif;
-                $count ++;
-              ?>
-              <div class="grid__item">
-                <div class="card card--gray card--clickable card--link">
-                  <?php $media = $item->primaryMedia(); ?>
-                  <?php if ($media): ?>
-                    <div class="card__img card__img_3"
-                      style="background:url(<?php echo $media->thumbnailUrl('large');?>) no-repeat center 20%;background-size: cover;"
-                    ></div>
-                  <?php endif; ?>
-                  <div class="card__body panel panel--light">
-                    <h2 class="heading--3 card__title"><a href="<?php echo $url;?>"><?php echo $item->displayTitle(); ?></a></h2>
-                    <?php if($type == 'Beeld'):?>
-                        <p class="datering"><?php echo $item->value('dcterms:date');?></p>
-                    <?php endif;?>
-                    <?php if($item->value('dcterms:date') && ($type == 'Nieuws' || $type == 'Agendapunt')):?>
-                        <?php
-                          $date = $item->value('dcterms:date');
-                          $date = DateTime::createFromFormat('Ymd', $date);
-                          $output = $date->format('d-m-Y');
-                        ?>
-                        <p class="datering"><?php echo $output;?></p>
-                    <?php endif;?>
-                    <?php if ($description = $item->displayDescription()): ?>
-                        <?php
-                          if(strlen($description) > 200):
-                            $description = substr($description, 0, 200);
-                            $description = substr($description, 0, strrpos($description, ' ')).' ...';
-                          endif;
-                        ?>
-                        <p class="description">
-                          <?php echo $description; ?>
-                        </p>
-                        <div class="link link--ext card__link"><a href="<?php echo $url;?>"><?php echo $type;?> bekijken</a></div>
-                    <?php endif; ?>
-                  </div>
-                </div>
-              </div>
-            <?php endforeach; ?>
-        </div>
-        <div class="more_results">
-          <?php if($count > 0):?>
-            <p><strong>Meer resultaten: </strong>
-              <?php
-                  $search_pages = array("beeldbank","collecties","projecten","verhalen","nieuws","agenda");
-                  $html = "";
-                  foreach($search_pages as $sp):
-                    $html .= $this->hyperlink(ucfirst($sp),
-                      $this->url(
-                          'site/resource',
-                          ['controller' => $sp, 'action' => ''],
-                          ['query' => ['q' => $query]],
-                          true
-                      )
-                    )." / ";
-                  endforeach;
-                  echo substr($html, 0, -3);
-              ?>
-            <?php else: ?>
-              <p><?php echo $this->translate('Geen resultaten'); ?></p>
-          <?php endif;?>
-        <?php else: ?>
-          <p><?php echo $this->translate('Geen resultaten'); ?></p>
-        <?php endif; ?>
+    <div class="grid__12">       
+
+        <?php 
+        
+        $templates= array(
+          "Beeldbank" => array("id" => "6","url" => "/beeldbank"),
+          "Cinema Rural Filmdatabank" => array("id" => "10","url" => "/films"),
+          "Collecties" => array("id" => "7","url" => "/collecties"),
+          "Projecten" => array("id" => "2","url" => "/projecten"),
+          "Verhalen" => array("id" => "3","url" => "/verhalen"),
+          "Nieuws" => array("id" => "16","url" => "/nieuws"),
+          "Agenda" => array("id" => "19","url" => "/agenda"),
+        );
+
+        parse_str("fulltext_search=".$query."&resource_template_id[]=6item_set_id[]=&site_id=&submit=Zoeken", $api_query);
+        $api_query['limit'] = 200000;  
+
+        $i = 0;
+        foreach($templates as $label => $template):          
+          $api_query['resource_template_id'] = $template["id"];
+          $items = $this->api()->search('items', $api_query);
+          $items = $items->getContent();
+          
+          if(sizeof($items)):
+            $i++;
+            if($i == 1):
+              echo "<h2>".$this->translate('Items')." in onze databanken</h2>";
+            endif;  
+
+            echo '<div class="list_page">';
+            echo '<h2 class="heading--3 card__title">';
+            echo "<a href='".$template["url"]."?q=".$query."'>".$label." (".sizeof($items).")</a><br>";
+            echo '</h2></div>';
+          endif;
+        endforeach;  
+        
+         
+        if(!$pagesTotal && $i==0):
+          echo "Geen resultaten";
+        endif;  
+        ?>  
         </div>
     </div>
   </div>

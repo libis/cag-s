@@ -1,7 +1,8 @@
-<?php
+<?php declare(strict_types=1);
 
 /*
  * Copyright BibLibre, 2016
+ * Copyright Daniel Berthereau, 2017-2021
  *
  * This software is governed by the CeCILL license under French law and abiding
  * by the rules of distribution of free software.  You can use, modify and/ or
@@ -45,14 +46,13 @@ class SearchPageRepresentation extends AbstractEntityRepresentation
 
     public function getJsonLd()
     {
-        $entity = $this->resource;
         return [
-            'o:name' => $entity->getName(),
-            'o:path' => $entity->getPath(),
-            'o:index_id' => $entity->getIndex()->getId(),
-            'o:form' => $entity->getFormAdapter(),
-            'o:settings' => $entity->getSettings(),
-            'o:created' => $this->getDateTime($entity->getCreated()),
+            'o:name' => $this->resource->getName(),
+            'o:path' => $this->resource->getPath(),
+            'o:index_id' => $this->resource->getIndex()->getId(),
+            'o:form' => $this->resource->getFormAdapter(),
+            'o:settings' => $this->resource->getSettings(),
+            'o:created' => $this->getDateTime($this->resource->getCreated()),
         ];
     }
 
@@ -70,10 +70,7 @@ class SearchPageRepresentation extends AbstractEntityRepresentation
         return $url('admin/search/page-id', $params, $options);
     }
 
-    /**
-     * @return string
-     */
-    public function adminSearchUrl($canonical = false)
+    public function adminSearchUrl($canonical = false): string
     {
         $url = $this->getViewHelper('Url');
         $options = [
@@ -84,71 +81,57 @@ class SearchPageRepresentation extends AbstractEntityRepresentation
 
     public function siteUrl($siteSlug = null, $canonical = false)
     {
-        $url = $this->getViewHelper('Url');
+        if (!$siteSlug) {
+            $siteSlug = $this->getServiceLocator()->get('Application')
+                ->getMvcEvent()->getRouteMatch()->getParam('site-slug');
+        }
         $params = [
             'site-slug' => $siteSlug,
         ];
         $options = [
             'force_canonical' => $canonical,
         ];
-
+        $url = $this->getViewHelper('Url');
         return $url('search-page-' . $this->id(), $params, $options);
     }
 
-    /**
-     * @return string
-     */
-    public function name()
+    public function name(): string
     {
         return $this->resource->getName();
     }
 
-    /**
-     * @return string
-     */
-    public function path()
+    public function path(): ?string
     {
         return $this->resource->getPath();
     }
 
-    /**
-     * @return \Search\Api\Representation\SearchIndexRepresentation
-     */
-    public function index()
+    public function index(): ?\Search\Api\Representation\SearchIndexRepresentation
     {
-        return $this->getAdapter('search_indexes')->getRepresentation($this->resource->getIndex());
+        $searchIndex = $this->resource->getIndex();
+        return $searchIndex
+            ? $this->getAdapter('search_indexes')->getRepresentation($searchIndex)
+            : null;
     }
 
-    /**
-     * @return string
-     */
-    public function formAdapterName()
+    public function formAdapterName(): ?string
     {
         return $this->resource->getFormAdapter();
     }
 
-    /**
-     * @return \Search\FormAdapter\FormAdapterInterface|null
-     */
-    public function formAdapter()
+    public function formAdapter(): ?\Search\FormAdapter\FormAdapterInterface
     {
-        if ($this->formAdapter) {
-            return $this->formAdapter;
-        }
-
-        $formAdapterName = $this->formAdapterName();
-        $formAdapterManager = $this->getServiceLocator()->get('Search\FormAdapterManager');
-        if ($formAdapterManager->has($formAdapterName)) {
-            $this->formAdapter = $formAdapterManager->get($formAdapterName);
+        if (!$this->formAdapter) {
+            $formAdapterManager = $this->getServiceLocator()->get('Search\FormAdapterManager');
+            $formAdapterName = $this->formAdapterName();
+            if ($formAdapterManager->has($formAdapterName)) {
+                $this->formAdapter = $formAdapterManager->get($formAdapterName);
+            }
         }
 
         return $this->formAdapter;
     }
 
-    /**
-     * @return \Zend\Form\Form|null
-     */
-    public function form()
+    public function form(): ?\Laminas\Form\Form
     {
         $formAdapter = $this->formAdapter();
         if (empty($formAdapter)) {
@@ -160,35 +143,37 @@ class SearchPageRepresentation extends AbstractEntityRepresentation
             return null;
         }
 
-        $form = $this->getServiceLocator()
+        return $this->getServiceLocator()
             ->get('FormElementManager')
             ->get($formClass, [
                 'search_page' => $this,
-            ]);
-        return $form
+            ])
             ->setAttribute('method', 'GET');
     }
 
-    /**
-     * @return array
-     */
-    public function settings()
+    public function settings(): array
     {
-        return $this->resource->getSettings();
+        return $this->resource->getSettings() ?? [];
     }
 
-    /**
-     * @return \DateTime
-     */
-    public function created()
+    public function setting(string $name, $default = null)
+    {
+        $settings = $this->resource->getSettings();
+        return $settings[$name] ?? $default;
+    }
+
+    public function subSetting(string $mainName, string $name, $default = null)
+    {
+        $settings = $this->resource->getSettings();
+        return $settings[$mainName][$name] ?? $default;
+    }
+
+    public function created(): \DateTime
     {
         return $this->resource->getCreated();
     }
 
-    /**
-     * @return \Search\Entity\SearchPage
-     */
-    public function getEntity()
+    public function getEntity(): \Search\Entity\SearchPage
     {
         return $this->resource;
     }

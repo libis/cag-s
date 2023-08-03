@@ -1,4 +1,4 @@
-<?php
+<?php declare(strict_types=1);
 
 /*
  * Copyright BibLibre, 2016-2017
@@ -29,8 +29,8 @@
 
 namespace Search\Service;
 
+use Laminas\Mvc\Service\AbstractPluginManagerFactory;
 use Search\Adapter\Manager;
-use Zend\Mvc\Service\AbstractPluginManagerFactory;
 
 class AdapterManagerFactory extends AbstractPluginManagerFactory
 {

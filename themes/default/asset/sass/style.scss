@@ -255,6 +255,22 @@ img{
   }
 }
 
+.slider-for{
+  flex: 0 !important;
+  background:#f9f9f9;
+  margin-bottom: 0.5rem;
+  font-size: 0;
+
+  .slick-track{
+    display: flex;
+    align-items: center;
+  }
+
+  .media-render a{
+    display: block;
+  }
+
+}
 
 .slider-nav{
   .slick-current{
@@ -590,4 +606,99 @@ transform: translate(0, 0);
 font-size: 0.8rem;
 font-weight: 300;
 font-style: italic;
+}
+
+
+.search-facet-item input[type="checkbox"]{
+  position:absolute;
+   top:5px;
+   left:0px;
+}
+
+.search-facet-item label{
+  position:relative;
+   padding-left:20px;
+   display:block;
+}
+
+input[type=checkbox]{
+  accent-color::#006b65;
+}
+
+.facet-active{
+  font-size: 1rem;
+}
+
+/* date slider */
+#psl-search-form{
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  margin: 1.5rem 0;
+}
+
+#psl-search-form-date{
+  flex: 1;
+}
+
+#psl-search-form-date > label {
+  font-weight: bold;
+}
+
+#psl-search-form-date #psl-search-form-date-slider {
+  margin-top: 1em;
+  height: 5px;
+}
+
+#psl-search-form-date #psl-search-form-date-slider .ui-slider-handle {
+  background: #666;
+  width: 5px;
+  margin-left: -5px;
+  top: -8px;
+  border-radius: 0;
+  border: 0 none;
+}
+
+#psl-search-form-date #psl-search-form-date-slider .ui-slider-range {
+  background: #006b65;
+}
+
+.ui-widget.ui-widget-content {
+  border: none;
+}
+
+#psl-search-form-date-graduations {
+  display: flex;
+  justify-content: space-around;
+  margin-top: 0.8em;
+  font-size: 0.9rem;
+}
+
+#psl-search-form-date-graduations > div {
+  border-right: 1px solid #ccc;
+  border-left: 1px solid #ccc;
+  flex-grow: 1;
+  flex-basis: 12.5%;
+  text-align: center;
+}
+
+#psl-search-form-date-graduations > div:last-child {
+  border-right: 0 none;
+}
+
+#psl-search-form-date-graduations > div:first-child {
+  border-left: 0 none;
+}
+
+
+.psl-tab-submit{
+  input[type=submit]{
+    background: #006b65;
+    color: white;
+    border: none;
+    padding: 0.4rem 0.5rem 0.3rem 0.4rem;
+    margin-left: 1rem;
+    font-size: 1rem;
+  }
 }

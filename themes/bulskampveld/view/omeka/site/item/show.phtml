@@ -52,7 +52,9 @@ endif;
   <div class="container">
     <div class="grid grid--2-col@med">
       <div class="grid__item">
+        <div>
         <?php echo $item->displayDescription(); ?>
+        </div>
       </div>
       <div class="grid__item">
         <?php if(sizeof($itemMedia) > 1):?>
@@ -186,7 +188,9 @@ endif;
   endif;
 
 ?>
+
 <?php endif; ?>
+<?php $this->trigger('view.show.after'); ?>
 <script>
   $(document).ready(function(){
     $('.slider-for').slick({

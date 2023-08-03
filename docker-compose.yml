@@ -5,7 +5,7 @@ services:
   omeka-s:
     build: ./
     ports:
-      - "9001:80"
+      - "9016:80"
     volumes:
       - ./modules/:/var/www/html/modules/
       - ./themes/:/var/www/html/themes/

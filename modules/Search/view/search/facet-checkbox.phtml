@@ -1,18 +1,23 @@
 <?php
 /**
- * @var \Zend\View\Renderer\PhpRenderer $this
+ * @var \Laminas\View\Renderer\PhpRenderer $this
  * @var string $name
  * @var string $value
  * @var string $label
  * @var int $count
  * @var bool $active
  * @var string $url
- * @var \Zend\View\Helper\EscapeHtml $escapeHtml
+ * @var array $options
+ * @var \Laminas\View\Helper\EscapeHtml $escapeHtml
+ * @var \Laminas\View\Helper\EscapeHtmlAttr $escapeHtmlAttr
+ * @var \Laminas\View\Helper\TranslatorAwareTrait $translate
+ * @var \Search\View\Helper\FacetLabel $facetLabel
  */
 
-$escapedValue = $escapeHtml($value);
+$escapedValue = $escapeHtmlAttr($value);
 $escapedId = $name . '[]' . $escapedValue;
+$displayCount = !empty($options['display_count']);
 ?>
 
-<input type="checkbox" name="<?= $name ?>[]" id="<?= $escapedId ?>" value="<?= $escapedValue ?>" data-url="<?= $url ?>" <?php if ($active) echo ' checked="checked"'; ?>/>
-<label for="<?= $escapedId ?>"><?= $escapeHtml($label) ?> (<span class="count"><?= $count ?></span>)</label>
+<input type="checkbox" name="facet[<?= $name ?>][]" id="<?= $escapedId ?>" value="<?= $escapedValue ?>" data-url="<?= $escapeHtmlAttr($url) ?>" <?php if ($active) echo ' checked="checked"'; ?>/>
+<label for="<?= $escapedId ?>"><?= $escapeHtml($label) ?><?php if ($displayCount): ?> (<span class="count"><?= $count ?></span>)<?php endif; ?></label>

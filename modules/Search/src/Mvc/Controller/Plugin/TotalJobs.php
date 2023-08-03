@@ -1,8 +1,8 @@
-<?php
+<?php declare(strict_types=1);
 namespace Search\Mvc\Controller\Plugin;
 
 use Doctrine\ORM\EntityManager;
-use Zend\Mvc\Controller\Plugin\AbstractPlugin;
+use Laminas\Mvc\Controller\Plugin\AbstractPlugin;
 
 class TotalJobs extends AbstractPlugin
 {

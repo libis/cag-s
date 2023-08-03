@@ -1,4 +1,6 @@
 <?php
+namespace DomainManager;
+
 return [
     'entity_manager' => [
         'mapping_classes_paths' => [

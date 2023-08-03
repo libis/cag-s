@@ -1,4 +1,4 @@
-<?php
+<?php declare(strict_types=1);
 /*
  * Copyright BibLibre, 2016
  * Copyright Daniel Berthereau, 2018
@@ -66,7 +66,14 @@ class SearchPage implements LinkInterface
     public function toZend(array $data, SiteRepresentation $site)
     {
         $api = $site->getServiceLocator()->get('Omeka\ApiManager');
-        $page = $api->read('search_pages', ['id' => $data['search_page_id']])->getContent();
+        try {
+            $page = $api->read('search_pages', ['id' => $data['search_page_id']])->getContent();
+        } catch (\Omeka\Api\Exception\NotFoundException $e) {
+            return [
+                'type' => 'uri',
+                'uri' => null,
+            ];
+        }
         return [
             'label' => $data['label'],
             'route' => 'search-page-' . $page->id(),
@@ -78,8 +85,8 @@ class SearchPage implements LinkInterface
 
     public function toJstree(array $data, SiteRepresentation $site)
     {
-        $label = isset($data['label']) ? $data['label'] : $site->title();
-        $searchPageId = isset($data['search_page_id']) ? $data['search_page_id'] : null;
+        $label = $data['label'] ?? $site->title();
+        $searchPageId = $data['search_page_id'] ?? null;
         return [
             'label' => $label,
             'search_page_id' => $searchPageId,

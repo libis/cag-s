@@ -1,8 +1,8 @@
-<?php
+<?php declare(strict_types=1);
 
 /*
  * Copyright BibLibre, 2016
- * Copyright Daniel Berthereau, 2018
+ * Copyright Daniel Berthereau, 2018-2021
  *
  * This software is governed by the CeCILL license under French law and abiding
  * by the rules of distribution of free software.  You can use, modify and/ or
@@ -31,13 +31,13 @@
 namespace Search\Controller\Admin;
 
 use Doctrine\ORM\EntityManager;
+use Laminas\Mvc\Controller\AbstractActionController;
+use Laminas\View\Model\ViewModel;
 use Omeka\Form\ConfirmForm;
 use Omeka\Stdlib\Message;
 use Search\Adapter\Manager as SearchAdapterManager;
-use Search\Form\Admin\SearchIndexForm;
 use Search\Form\Admin\SearchIndexConfigureForm;
-use Zend\Mvc\Controller\AbstractActionController;
-use Zend\View\Model\ViewModel;
+use Search\Form\Admin\SearchIndexForm;
 
 class SearchIndexController extends AbstractActionController
 {
@@ -51,10 +51,6 @@ class SearchIndexController extends AbstractActionController
      */
     protected $searchAdapterManager;
 
-    /**
-     * @param EntityManager $entityManager
-     * @param SearchAdapterManager $searchAdapterManager
-     */
     public function __construct(
         EntityManager $entityManager,
         SearchAdapterManager $searchAdapterManager
@@ -66,8 +62,9 @@ class SearchIndexController extends AbstractActionController
     public function addAction()
     {
         $form = $this->getForm(SearchIndexForm::class);
-        $view = new ViewModel;
-        $view->setVariable('form', $form);
+        $view = new ViewModel([
+            'form' => $form,
+        ]);
 
         if ($this->getRequest()->isPost()) {
             $form->setData($this->params()->fromPost());
@@ -88,13 +85,12 @@ class SearchIndexController extends AbstractActionController
 
     public function editAction()
     {
-        $entityManager = $this->getEntityManager();
         $adapterManager = $this->getSearchAdapterManager();
 
         $id = $this->params('id');
 
         /** @var \Search\Entity\SearchIndex $searchIndex */
-        $searchIndex = $entityManager->find(\Search\Entity\SearchIndex::class, $id);
+        $searchIndex = $this->getEntityManager()->find(\Search\Entity\SearchIndex::class, $id);
         $searchIndexAdapterName = $searchIndex->getAdapter();
         if (!$adapterManager->has($searchIndexAdapterName)) {
             $this->messenger()->addError(new Message('The adapter "%s" is not available.', // @translate
@@ -102,6 +98,8 @@ class SearchIndexController extends AbstractActionController
             ));
             return $this->redirect()->toRoute('admin/search', ['action' => 'browse'], true);
         }
+
+        /** @var \Search\Adapter\AdapterInterface $adapter */
         $adapter = $adapterManager->get($searchIndexAdapterName);
 
         $form = $this->getForm(SearchIndexConfigureForm::class, [
@@ -109,14 +107,20 @@ class SearchIndexController extends AbstractActionController
         ]);
         $adapterFieldset = $adapter->getConfigFieldset();
         if ($adapterFieldset) {
-            $adapterFieldset->setName('adapter');
-            $adapterFieldset->setLabel('Adapter settings'); // @translate
+            $adapterFieldset
+                ->setOption('search_index_id', $id)
+                ->setName('adapter')
+                ->setLabel('Adapter settings') // @translate
+                ->init();
             $form->add($adapterFieldset);
         }
-        $form->setData($searchIndex->getSettings() ?: []);
+        $data = $searchIndex->getSettings() ?: [];
+        $data['o:name'] = $searchIndex->getName();
+        $form->setData($data);
 
-        $view = new ViewModel;
-        $view->setVariable('form', $form);
+        $view = new ViewModel([
+            'form' => $form,
+        ]);
 
         if ($this->getRequest()->isPost()) {
             $form->setData($this->params()->fromPost());
@@ -125,13 +129,17 @@ class SearchIndexController extends AbstractActionController
                 return $view;
             }
             $formData = $form->getData();
-            unset($formData['csrf']);
-            $searchIndex->setSettings($formData);
-            $entityManager->flush();
+            $name = $formData['o:name'];
+            unset($formData['csrf'], $formData['o:name']);
+            $searchIndex
+                ->setName($name)
+                ->setSettings($formData);
+            $this->getEntityManager()->flush($searchIndex);
             $this->messenger()->addSuccess(new Message(
                 'Search index "%s" successfully configured.',  // @translate
                 $searchIndex->getName()
             ));
+            $this->messenger()->addWarning('Don’t forget to run the indexation of the core.'); // @translate
             return $this->redirect()->toRoute('admin/search', ['action' => 'browse'], true);
         }
 
@@ -144,13 +152,14 @@ class SearchIndexController extends AbstractActionController
 
         $totalJobs = $this->totalJobs(\Search\Job\Indexing::class, true);
 
-        $view = new ViewModel;
-        $view->setTerminal(true);
-        $view->setTemplate('search/admin/search-index/index-confirm-details');
-        $view->setVariable('resourceLabel', 'search index');
-        $view->setVariable('resource', $index);
-        $view->setVariable('totalJobs', $totalJobs);
-        return $view;
+        $view = new ViewModel([
+            'resourceLabel' => 'search index',
+            'resource' => $index,
+            'totalJobs' => $totalJobs,
+        ]);
+        return $view
+            ->setTerminal(true)
+            ->setTemplate('search/admin/search-index/index-confirm-details');
     }
 
     public function indexAction()
@@ -169,20 +178,15 @@ class SearchIndexController extends AbstractActionController
         $jobArgs['force'] = $force;
         $job = $this->jobDispatcher()->dispatch(\Search\Job\Indexing::class, $jobArgs);
 
-        $jobUrl = $this->url()->fromRoute('admin/id', [
-            'controller' => 'job',
-            'action' => 'show',
-            'id' => $job->getId(),
-        ]);
-
+        $urlHelper = $this->viewHelpers()->get('url');
         $message = new Message(
-            'Indexing of "%s" started in %sjob %s%s', // @translate
+            'Indexing of "%1$s" started in job %2$s#%3$d%4$s (%5$slogs%4$s)', // @translate
             $searchIndex->name(),
-            sprintf('<a href="%s">', htmlspecialchars($jobUrl)),
+            sprintf('<a href="%1$s">', $urlHelper('admin/id', ['controller' => 'job', 'id' => $job->getId()])),
             $job->getId(),
-            '</a>'
+            '</a>',
+            sprintf('<a href="%1$s">', class_exists('Log\Stdlib\PsrMessage') ? $urlHelper('admin/default', ['controller' => 'log'], ['query' => ['job_id' => $job->getId()]]) :  $urlHelper('admin/id', ['controller' => 'job', 'action' => 'log', 'id' => $job->getId()]))
         );
-
         $message->setEscapeHtml(false);
         $this->messenger()->addSuccess($message);
 
@@ -195,12 +199,14 @@ class SearchIndexController extends AbstractActionController
         $index = $response->getContent();
 
         // TODO Add a warning about the related pages, that will be deleted.
-        $view = new ViewModel;
-        $view->setTerminal(true);
-        $view->setTemplate('common/delete-confirm-details');
-        $view->setVariable('resourceLabel', 'search index');
-        $view->setVariable('resource', $index);
-        return $view;
+
+        $view = new ViewModel([
+            'resourceLabel' => 'search index',
+            'resource' => $index,
+        ]);
+        return $view
+            ->setTerminal(true)
+            ->setTemplate('common/delete-confirm-details');
     }
 
     public function deleteAction()
@@ -226,12 +232,12 @@ class SearchIndexController extends AbstractActionController
         return $this->redirect()->toRoute('admin/search');
     }
 
-    protected function getEntityManager()
+    protected function getEntityManager(): EntityManager
     {
         return $this->entityManager;
     }
 
-    protected function getSearchAdapterManager()
+    protected function getSearchAdapterManager(): SearchAdapterManager
     {
         return $this->searchAdapterManager;
     }

@@ -1,6 +1,10 @@
 Archive Repertory (module for Omeka S)
 ======================================
 
+> __New versions of this module and support for Omeka S version 3.0 and above
+> are available on [GitLab], which seems to respect users and privacy better
+> than the previous repository.__
+
 [![Build Status](https://travis-ci.org/Daniel-KM/Omeka-S-module-ArchiveRepertory.svg?branch=master)](https://travis-ci.org/Daniel-KM/Omeka-S-module-ArchiveRepertory)
 
 [Archive Repertory] is a module for [Omeka S] that allows Omeka to keep the
@@ -8,10 +12,7 @@ original names of imported files and to put them into a simple and hierarchical
 structure consisting of: "item set / item / files", in order to get readable
 urls for files and to avoid an overloading of the file server.
 
-See the example of the digitized heritage of the library of [Mines ParisTech].
-
-This [Omeka S] module is a rewrite of the [Archive Repertory plugin] for [Omeka Classic]
-by [BibLibre] with the same features as the original plugin.
+This module is compatible with Amazon buckets via the module [Amazon S3].
 
 
 Notes
@@ -27,9 +28,9 @@ because files of different items or collections will be mixed in the same
 folder.
 
 Currently, when a collection is moved, files are not moved until each item is
-updated. The files are still available. This avoids a long process. To
-update each folder, it’s possible to batch edit items without any operation, so
-a job will be launched and files will be moved automatically.
+updated. The files are still available. This avoids a long process. To update
+each folder, it’s possible to batch edit items without any operation, so a job
+will be launched and files will be moved automatically.
 
 This module can be used with [Clean Url] for an improved user experience and for
 a better search engine optimization.
@@ -46,15 +47,6 @@ Tiles for big images created with the module [IIIF Server] are compatible with
 this module. To enable it, just open and submit the config page of the
 IIIF Server, the integration between the two modules will be registered
 automatically.
-
-For development, PhpUnit 6 is used, unlike Omeka S, that requires PhpUnit 4.8.
-Example:
-
-```
-    cd  test
-    wget https://phar.phpunit.de/phpunit-6.3.phar
-    php phpunit-6.3.phar
-```
 
 
 Unicode filenames
@@ -92,6 +84,14 @@ images or to get mime type from files. After, you have five possibilities:
 For more explanation, try the [test file].
 
 
+TODO
+----
+
+- [x] Manage renaming during background bulk import.
+- [ ] Manage renaming data for module Image Server (if still needed).
+- [ ] Remove code used to bypass mbstrings function, that are default now via composer.
+
+
 Warning
 -------
 
@@ -104,13 +104,13 @@ your archives regularly so you can roll back if needed.
 Troubleshooting
 ---------------
 
-See online issues on the [module issues] page on GitHub.
+See online issues on the [module issues] page on GitLab.
 
 
 License
 -------
 
-This plugin is published under the [CeCILL v2.1] licence, compatible with
+This plugin is published under the [CeCILL v2.1] license, compatible with
 [GNU/GPL] and approved by [FSF] and [OSI].
 
 In consideration of access to the source code and the rights to copy, modify and
@@ -133,22 +133,24 @@ altered, and that no provisions are either added or removed herefrom.
 Copyright
 ---------
 
-* Copyright Daniel Berthereau, 2012-2019 (see [Daniel-KM] on GitHub)
+* Copyright Daniel Berthereau, 2012-2022 (see [Daniel-KM] on GitLab)
 * Copyright BibLibre, 2016-2017
 
 First version of this plugin has been built for [École des Ponts ParisTech].
-The upgrade for Omeka 2.0 has been built for [Mines ParisTech]. The upgrade for
-Omeka S has been built by [BibLibre].
+The upgrade for Omeka 2.0 has been built for [Mines ParisTech]. This module is a
+rewrite of the [Archive Repertory plugin] for [Omeka Classic] by [BibLibre] with
+the same features as the original plugin.
 
 
-[Archive Repertory]: https://github.com/Daniel-KM/Omeka-S-module-ArchiveRepertory
+[Archive Repertory]: https://gitlab.com/Daniel-KM/Omeka-S-module-ArchiveRepertory
 [Omeka S]: https://omeka.org/s
 [Omeka Classic]: https://omeka.org
-[Archive Repertory plugin]: https://github.com/Daniel-KM/Omeka-plugin-ArchiveRepertory
+[Archive Repertory plugin]: https://gitlab.com/Daniel-KM/Omeka-plugin-ArchiveRepertory
+[Amazon S3]: https://github.com/Daniel-KM/Omeka-S-module-AmazonS3
 [test file]: https://gist.github.com/Daniel-KM/9754f18f9632423fb1a08909e9f01c04
-[module issues]: https://github.com/Daniel-KM/Omeka-S-module-ArchiveRepertory/issues
+[module issues]: https://gitlab.com/Daniel-KM/Omeka-S-module-ArchiveRepertory/-/issues
 [Clean Url]: https://github.com/biblibre/Omeka-S-module-CleanUrl
-[IIIF Server]: https://github.com/Daniel-KM/Omeka-S-module-IiifServer
+[IIIF Server]: https://gitlab.com/Daniel-KM/Omeka-S-module-IiifServer
 [CeCILL v2.1]: https://www.cecill.info/licences/Licence_CeCILL_V2.1-en.html
 [GNU/GPL]: https://www.gnu.org/licenses/gpl-3.0.html
 [FSF]: https://www.fsf.org
@@ -156,4 +158,5 @@ Omeka S has been built by [BibLibre].
 [BibLibre]: https://github.com/biblibre
 [École des Ponts ParisTech]: http://bibliotheque.enpc.fr
 [Mines ParisTech]: https://patrimoine.mines-paristech.fr
-[Daniel-KM]: https://github.com/Daniel-KM "Daniel Berthereau"
+[GitLab]: https://gitlab.com/Daniel-KM
+[Daniel-KM]: https://gitlab.com/Daniel-KM "Daniel Berthereau"

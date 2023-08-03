@@ -1,8 +1,8 @@
-<?php
+<?php declare(strict_types=1);
 
 namespace Search\Form\Element;
 
-use Zend\Form\Element\Select;
+use Laminas\Form\Element\Select;
 
 class SearchPageSelect extends Select
 {

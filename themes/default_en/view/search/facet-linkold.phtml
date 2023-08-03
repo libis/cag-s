@@ -1,0 +1,35 @@
+<?php
+/**
+ * @var \Zend\View\Renderer\PhpRenderer $this
+ * @var string $url
+ * @var string $value
+ * @var int $count
+ * @var bool $active
+ */
+$escapeHtml = $this->plugin('escapeHtml');
+?>
+<?php 
+    $beschikbaarheid = array(
+        'not online accessible to public' => 'niet online raadpleegbaar',
+        'online accessible to public' => 'online raadpleegbaar',
+        'online raadpleegbaar' => 'online raadpleegbaar',
+    );
+    $rights = array(
+        'http://rightsstatements.org/vocab/InC-NC/1.0/' => 'Auteursrechtelijk beschermd - niet-commercieel gebruik toegestaan',
+        'http://rightsstatements.org/vocab/InC-RUU/1.0/' => 'Auteursrechtelijk beschermd - rechthebbende(n) niet-lokaliseerbaar of niet-identificeerbaar',
+        'http://rightsstatements.org/vocab/InC/1.0/' => 'Auteursrechtelijk beschermd',
+        'http://rightsstatements.org/vocab/NKC/1.0/' => 'Geen auteursrechtelijke beperkingen bekend',
+        'https://creativecommons.org/publicdomain/mark/1.0/' => 'Geen auteursrecht',
+    );
+?>
+<?php 
+    if(isset($rights[$value])):
+        $value = $rights[$value];
+    endif;
+    if(isset($beschikbaarheid[$value])):
+        $value = $beschikbaarheid[$value];
+    endif;
+?>
+<span class="<?php echo $active ? 'active' : 'inactive'; ?>">
+    <a href="<?php echo $escapeHtml($url); ?>"><?php echo $escapeHtml(str_replace("&amp;","&",$value)); ?> (<?php echo $count; ?>)</a>
+</span>

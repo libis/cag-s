@@ -41,7 +41,6 @@ $this->htmlElement('body')->appendAttribute('class', 'search-page resource brows
 $this->headLink()->appendStylesheet($this->assetUrl('css/search.css', 'Search'));
 $this->headScript()->appendFile($this->assetUrl('js/search.js', 'Search'));
 ?>
-
 <!-- intro + image -->
 <div class="section section--lrg section--light">
    <div class="container">
@@ -52,23 +51,40 @@ $this->headScript()->appendFile($this->assetUrl('js/search.js', 'Search'));
                <a href="/" itemprop="url" class="breadcrumb__item"><span itemprop="title">Home</span></a>
            </span>
            <span itemscope="" itemtype="http://data-vocabulary.org/Breadcrumb" class="breadcrumb__scope">
-             <?php if(htmlspecialchars($query->getQuery())):?>
-               <span itemprop="title"><a href="<?= parse_url($_SERVER["REQUEST_URI"], PHP_URL_PATH).'?q=' ?>"><?php echo $page->name();?></a></span></span>
-               <span itemscope="" itemtype="http://data-vocabulary.org/Breadcrumb" class="breadcrumb__scope">
-               <span itemprop="title"><?= htmlspecialchars($query->getQuery())?></span></span>
-             <?php else:?>
-              <span itemprop="title"><?php echo $page->name();?></span>
-             <?php endif;?>
+              <?php if(htmlspecialchars($query->getQuery())):?>
+                <span itemprop="title"><a href="<?= parse_url($_SERVER["REQUEST_URI"], PHP_URL_PATH).'?q=' ?>"><?php echo $page->name();?></a></span></span>
+                <span itemscope="" itemtype="http://data-vocabulary.org/Breadcrumb" class="breadcrumb__scope">
+                <span itemprop="title"><?= htmlspecialchars($query->getQuery())?></span></span>
+              <?php else:?>
+               <span itemprop="title"><?php echo $page->name();?></span>
+              <?php endif;?>
            </span>
        </div>
        <?php
        $nav = $site->publicNav();
        $container = $nav->getContainer();
        $activePage = $nav->findActive($container);
+       $page = $searchPage;
+       var_dump($searchPage);die();
        ?>
        <h1 class="spacer">
-         <?php echo $page->name();?>
+         <?php echo $page->name()." (".$response->getTotalResults().")";?>
        </h1>
+
+        <?php
+        $intro = array(
+          "Verhalen" => "De verhalen laten je in woord en beeld de geschiedenis en het erfgoed van landbouw, voeding en landelijke leven vanaf 1750 ontdekken. Zes keer per jaar verschijnt een nieuw verhaal.",
+          "Projecten" => "CAG werkt als initiatiefnemer, uitvoerder en deelnemer aan tal van projecten in het themaveld landbouw, voeding en landelijk leven. Sommige projecten hebben een onderzoekskarakter, andere zijn gericht op een breed publiek. Zowel roerend als immaterieel erfgoed komen aan bod.",
+          "Beeldbank" => "De beeldbank van CAG bevat meer dan 12.000 digitale reproducties van agrarisch erfgoed (objecten, foto’s, prenten, boeken ...). Dankzij die rijkdom neemt de beeldbank je mee naar het virtuele land van 1750 tot vandaag.",
+          "Collecties" => "Ben je op zoek naar een publiek toegankelijke collectie met erfgoed van landbouw, voeding en landelijk leven? Hier vind je een overzicht.",
+          "Cinema Rural Filmdatabank" => "De Cinema Rural Filmdatabank biedt een overzicht met uitgebreide inhoudelijke en materiële beschrijvingen van het bewegend beeldmateriaal van landbouw, voeding en landelijk leven dat wordt bewaard in Belgische collecties."
+          );
+        ?>
+        <?php if(isset($intro[$page->name()])):?>
+         <div class="text--lead spacer">
+           <?php echo $intro[$page->name()];?>
+         </div>
+        <?php endif;?>
    </div>
 </div>
 
@@ -81,6 +97,7 @@ $this->headScript()->appendFile($this->assetUrl('js/search.js', 'Search'));
                    'query' => $query,
                    'response' => $response,
                    'sortOptions' => $sortOptions,
+                   'name' => $page->name()
                ]);
            ?>
        <?php endif; ?>
@@ -88,6 +105,7 @@ $this->headScript()->appendFile($this->assetUrl('js/search.js', 'Search'));
     <div class="grid">
 
      <!-- search filter -->
+     
      <?php if($page->name() != 'Verhalen'):?>
        <?php echo $this->partial('search/facets', ['facets' => $facets, 'page' => $page, 'query' => $query]); ?>
      <?php endif;?>
@@ -118,13 +136,7 @@ $this->headScript()->appendFile($this->assetUrl('js/search.js', 'Search'));
               ]);
               ?>
 
-              <?php
-                  /*echo $this->partial('search/results-footer', [
-                      'query' => $query,
-                      'response' => $response,
-                      'sortOptions' => $sortOptions,
-                  ]);*/
-              ?>
+
               <?php echo $this->pagination(); ?>
           <?php else: ?>
               <div class="noresults"><?php echo $translate('Your query returned no results'); ?></div>

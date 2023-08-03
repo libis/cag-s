@@ -1,9 +1,9 @@
-<?php
+<?php declare(strict_types=1);
 namespace Search\Service\ControllerPlugin;
 
 use Interop\Container\ContainerInterface;
+use Laminas\ServiceManager\Factory\FactoryInterface;
 use Search\Mvc\Controller\Plugin\ApiSearchOne;
-use Zend\ServiceManager\Factory\FactoryInterface;
 
 class ApiSearchOneFactory implements FactoryInterface
 {

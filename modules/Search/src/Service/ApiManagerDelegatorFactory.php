@@ -1,9 +1,9 @@
-<?php
+<?php declare(strict_types=1);
 namespace Search\Service;
 
 use Interop\Container\ContainerInterface;
+use Laminas\ServiceManager\Factory\DelegatorFactoryInterface;
 use Search\Api\ManagerDelegator;
-use Zend\ServiceManager\Factory\DelegatorFactoryInterface;
 
 class ApiManagerDelegatorFactory implements DelegatorFactoryInterface
 {
@@ -18,13 +18,22 @@ class ApiManagerDelegatorFactory implements DelegatorFactoryInterface
         $acl = $serviceLocator->get('Omeka\Acl');
         $logger = $serviceLocator->get('Omeka\Logger');
         $translator = $serviceLocator->get('MvcTranslator');
+
         $manager = new ManagerDelegator($adapterManager, $acl, $logger, $translator);
         // The plugin apiSearch cannot be set directly to avoid a loop during
         // the initialization.
         // $apiSearch = $serviceLocator->get('ControllerPluginManager')->get('apiSearch');
         // $manager->setApiSearch($apiSearch);
         $controllerPlugins = $serviceLocator->get('ControllerPluginManager');
-        $manager->setControllerPlugins($controllerPlugins);
-        return $manager;
+
+        /** @var \Omeka\Module\Manager $moduleManager */
+        $moduleManager = $serviceLocator->get('Omeka\ModuleManager');
+        $module = $moduleManager->getModule('AdvancedSearchPlus');
+        $hasAdvancedSearchPlus = $module
+            && $module->getState() === \Omeka\Module\Manager::STATE_ACTIVE;
+
+        return $manager
+            ->setControllerPlugins($controllerPlugins)
+            ->setHasAdvancedSearchPlus($hasAdvancedSearchPlus);
     }
 }

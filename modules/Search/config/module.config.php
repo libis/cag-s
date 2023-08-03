@@ -1,4 +1,5 @@
-<?php
+<?php declare(strict_types=1);
+
 namespace Search;
 
 return [
@@ -20,39 +21,53 @@ return [
         'template_path_stack' => [
             dirname(__DIR__) . '/view',
         ],
+        'strategies' => [
+            'ViewJsonStrategy',
+        ],
     ],
     'view_helpers' => [
         'invokables' => [
+            'facetLabel' => View\Helper\FacetLabel::class,
+            'hiddenInputsFromFilteredQuery' => View\Helper\HiddenInputsFromFilteredQuery::class,
             'searchForm' => View\Helper\SearchForm::class,
             'searchingForm' => View\Helper\SearchingForm::class,
+            'searchingUrl' => View\Helper\SearchingUrl::class,
+            'searchSortSelector' => View\Helper\SearchSortSelector::class,
         ],
         'factories' => [
             'apiSearch' => Service\ViewHelper\ApiSearchFactory::class,
             'apiSearchOne' => Service\ViewHelper\ApiSearchOneFactory::class,
-            'facetLabel' => Service\ViewHelper\FacetLabelFactory::class,
+            'facetActive' => Service\ViewHelper\FacetActiveFactory::class,
             'facetCheckbox' => Service\ViewHelper\FacetCheckboxFactory::class,
             'facetLink' => Service\ViewHelper\FacetLinkFactory::class,
             'searchIndexConfirm' => Service\ViewHelper\SearchIndexConfirmFactory::class,
+            'searchRequestToResponse' => Service\ViewHelper\SearchRequestToResponseFactory::class,
         ],
     ],
     'block_layouts' => [
         'invokables' => [
-            'search' => Site\BlockLayout\Search::class,
+            'searchingForm' => Site\BlockLayout\SearchingForm::class,
         ],
     ],
     'form_elements' => [
         'invokables' => [
+            Form\Element\ArrayText::class => Form\Element\ArrayText::class,
+            Form\Element\DataTextarea::class => Form\Element\DataTextarea::class,
+            Form\Element\OptionalMultiCheckbox::class => Form\Element\OptionalMultiCheckbox::class,
+            Form\Element\OptionalRadio::class => Form\Element\OptionalRadio::class,
             Form\Element\OptionalSelect::class => Form\Element\OptionalSelect::class,
+            Form\Element\OptionalUrl::class => Form\Element\OptionalUrl::class,
         ],
         'factories' => [
             Form\Admin\ApiFormConfigFieldset::class => Service\Form\ApiFormConfigFieldsetFactory::class,
             Form\Admin\SearchIndexConfigureForm::class => Service\Form\SearchIndexConfigureFormFactory::class,
             Form\Admin\SearchIndexForm::class => Service\Form\SearchIndexFormFactory::class,
             Form\Admin\SearchPageConfigureForm::class => Service\Form\SearchPageConfigureFormFactory::class,
-            Form\Admin\SearchPageConfigureSimpleForm::class => Service\Form\SearchPageConfigureSimpleFormFactory::class,
             Form\Admin\SearchPageForm::class => Service\Form\SearchPageFormFactory::class,
-            Form\BasicForm::class => Service\Form\BasicFormFactory::class,
             Form\Element\SearchPageSelect::class => Service\Form\Element\SearchPageSelectFactory::class,
+            Form\FilterFieldset::class => Service\Form\FilterFieldsetFactory::class,
+            Form\MainSearchForm::class => Service\Form\MainSearchFormFactory::class,
+            Form\SearchingFormFieldset::class => Service\Form\SearchingFormFieldsetFactory::class,
             Form\SettingsFieldset::class => Service\Form\SettingsFieldsetFactory::class,
             Form\SiteSettingsFieldset::class => Service\Form\SiteSettingsFieldsetFactory::class,
         ],
@@ -68,6 +83,9 @@ return [
         ],
     ],
     'controller_plugins' => [
+        'invokables' => [
+            'searchRequestToResponse' => Mvc\Controller\Plugin\SearchRequestToResponse::class,
+        ],
         'factories' => [
             'apiSearch' => Service\ControllerPlugin\ApiSearchFactory::class,
             'apiSearchOne' => Service\ControllerPlugin\ApiSearchOneFactory::class,
@@ -75,7 +93,13 @@ return [
             'totalJobs' => Service\ControllerPlugin\TotalJobsFactory::class,
         ],
     ],
+    'listeners' => [
+        Mvc\MvcListeners::class,
+    ],
     'service_manager' => [
+        'invokables' => [
+            Mvc\MvcListeners::class => Mvc\MvcListeners::class,
+        ],
         'delegators' => [
            'Omeka\ApiManager' => [Service\ApiManagerDelegatorFactory::class],
         ],
@@ -105,7 +129,7 @@ return [
             'admin' => [
                 'child_routes' => [
                     'search' => [
-                        'type' => \Zend\Router\Http\Literal::class,
+                        'type' => \Laminas\Router\Http\Literal::class,
                         'options' => [
                             'route' => '/search-manager',
                             'defaults' => [
@@ -117,7 +141,7 @@ return [
                         'may_terminate' => true,
                         'child_routes' => [
                             'index' => [
-                                'type' => \Zend\Router\Http\Segment::class,
+                                'type' => \Laminas\Router\Http\Segment::class,
                                 'options' => [
                                     'route' => '/index/:action',
                                     'constraints' => [
@@ -130,7 +154,7 @@ return [
                                 ],
                             ],
                             'index-id' => [
-                                'type' => \Zend\Router\Http\Segment::class,
+                                'type' => \Laminas\Router\Http\Segment::class,
                                 'options' => [
                                     'route' => '/index/:id[/:action]',
                                     'constraints' => [
@@ -145,7 +169,7 @@ return [
                                 ],
                             ],
                             'page' => [
-                                'type' => \Zend\Router\Http\Segment::class,
+                                'type' => \Laminas\Router\Http\Segment::class,
                                 'options' => [
                                     'route' => '/page/:action',
                                     'constraints' => [
@@ -158,7 +182,7 @@ return [
                                 ],
                             ],
                             'page-id' => [
-                                'type' => \Zend\Router\Http\Segment::class,
+                                'type' => \Laminas\Router\Http\Segment::class,
                                 'options' => [
                                     'route' => '/page/:id[/:action]',
                                     'constraints' => [
@@ -204,7 +228,7 @@ return [
     ],
     'search_form_adapters' => [
         'invokables' => [
-            'basic' => FormAdapter\BasicFormAdapter::class,
+            'main' => FormAdapter\MainFormAdapter::class,
         ],
         'factories' => [
             'api' => Service\FormAdapter\ApiFormAdapterFactory::class,
@@ -212,14 +236,25 @@ return [
     ],
     'search' => [
         'settings' => [
-            'search_main_page' => '',
-            'search_pages' => [],
+            'search_main_page' => 1,
+            'search_pages' => [1],
             'search_api_page' => '',
             'search_batch_size' => 100,
         ],
         'site_settings' => [
-            'search_main_page' => null,
-            'search_pages' => [],
+            'search_main_page' => 1,
+            'search_pages' => [1],
+            'search_redirect_itemset' => true,
+        ],
+        'block_settings' => [
+            'searchingForm' => [
+                'heading' => '',
+                'search_page' => null,
+                'display_results' => false,
+                'query' => '',
+                'query_filter' => '',
+                'template' => '',
+            ],
         ],
     ],
 ];

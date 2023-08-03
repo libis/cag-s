@@ -1,8 +1,8 @@
-<?php
+<?php declare(strict_types=1);
 
 /*
  * Copyright BibLibre, 2016
- * Copyright Daniel Berthereau, 2018
+ * Copyright Daniel Berthereau, 2018-2021
  *
  * This software is governed by the CeCILL license under French law and abiding
  * by the rules of distribution of free software.  You can use, modify and/ or
@@ -30,24 +30,20 @@
 
 namespace Search\Indexer;
 
+use Laminas\Log\LoggerAwareInterface;
+use Laminas\ServiceManager\ServiceLocatorInterface;
 use Omeka\Entity\Resource;
 use Search\Api\Representation\SearchIndexRepresentation;
-use Zend\Log\LoggerAwareInterface;
-use Zend\ServiceManager\ServiceLocatorInterface;
+use Search\Query;
 
+/**
+ * The signature uses "IndexerInterface" instead of "self" for compatibility with php < 7.4.
+ */
 interface IndexerInterface extends LoggerAwareInterface
 {
-    /**
-     * @param ServiceLocatorInterface $serviceLocator
-     * @return self
-     */
-    public function setServiceLocator(ServiceLocatorInterface $serviceLocator);
+    public function setServiceLocator(ServiceLocatorInterface $serviceLocator): IndexerInterface;
 
-    /**
-     * @param SearchIndexRepresentation $index
-     * @return self
-     */
-    public function setSearchIndex(SearchIndexRepresentation $index);
+    public function setSearchIndex(SearchIndexRepresentation $index): IndexerInterface;
 
     /**
      * Inidicate if the resource can be indexed.
@@ -55,32 +51,34 @@ interface IndexerInterface extends LoggerAwareInterface
      * @param string $resourceName The resource type ("items", "item_sets"…).
      * @return bool
      */
-    public function canIndex($resourceName);
+    public function canIndex(string $resourceName): bool;
 
     /**
      * Reset the index.
+     *
+     * @param Query $query Allows to limit clearing to some resources.
+     * @return self
      */
-    public function clearIndex();
+    public function clearIndex(?Query $query = null): IndexerInterface;
 
     /**
      * Index a resource.
-     *
-     * @param Resource $resource
      */
-    public function indexResource(Resource $resource);
+    public function indexResource(Resource $resource): IndexerInterface;
 
     /**
      * Index multiple resources.
      *
      * @param Resource[] $resources
      */
-    public function indexResources(array $resources);
+    public function indexResources(array $resources): IndexerInterface;
 
     /**
      * Unindex a deleted resource.
      *
      * @param string $resourceName The resource type ("items", "item_sets"…).
      * @param int $id
+     * @return self
      */
-    public function deleteResource($resourceName, $id);
+    public function deleteResource(string $resourceName, $id): IndexerInterface;
 }

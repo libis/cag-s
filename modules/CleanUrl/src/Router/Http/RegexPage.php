@@ -1,9 +1,10 @@
-<?php
+<?php declare(strict_types=1);
+
 namespace CleanUrl\Router\Http;
 
-use Zend\Router\Http\Regex;
-use Zend\Router\Http\RouteMatch;
-use Zend\Stdlib\RequestInterface as Request;
+use Laminas\Router\Http\Regex;
+use Laminas\Router\Http\RouteMatch;
+use Laminas\Stdlib\RequestInterface as Request;
 
 /**
  * Regex route with a check for reserved words.

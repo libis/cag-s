@@ -1,8 +1,8 @@
-<?php
+<?php declare(strict_types=1);
 
 /*
  * Copyright BibLibre, 2016
- * Copyright Daniel Berthereau, 2017-2019
+ * Copyright Daniel Berthereau, 2017-2020
  *
  * This software is governed by the CeCILL license under French law and abiding
  * by the rules of distribution of free software.  You can use, modify and/ or
@@ -60,27 +60,19 @@ class SearchIndexAdapter extends AbstractEntityAdapter
         return \Search\Entity\SearchIndex::class;
     }
 
-    public function buildQuery(QueryBuilder $qb, array $query)
+    public function buildQuery(QueryBuilder $qb, array $query): void
     {
-        $isOldOmeka = \Omeka\Module::VERSION < 2;
-        $alias = $isOldOmeka ? $this->getEntityClass() : 'omeka_root';
         $expr = $qb->expr();
 
-        if (isset($query['id'])) {
-            $qb->andWhere($expr->eq(
-                $alias . '.id',
-                $this->createNamedParameter($qb, $query['id']))
-            );
-        }
         if (isset($query['name'])) {
             $qb->andWhere($expr->eq(
-                $alias . '.name',
+                'omeka_root.name',
                 $this->createNamedParameter($qb, $query['name']))
             );
         }
         if (isset($query['adapter'])) {
             $qb->andWhere($expr->eq(
-                $alias . '.adapter',
+                'omeka_root.adapter',
                 $this->createNamedParameter($qb, $query['adapter']))
             );
         }
@@ -88,7 +80,7 @@ class SearchIndexAdapter extends AbstractEntityAdapter
 
     public function hydrate(Request $request, EntityInterface $entity,
         ErrorStore $errorStore
-    ) {
+    ): void {
         if ($this->shouldHydrate($request, 'o:name')) {
             $entity->setName($request->getValue('o:name'));
         }
@@ -96,11 +88,11 @@ class SearchIndexAdapter extends AbstractEntityAdapter
             $entity->setAdapter($request->getValue('o:adapter'));
         }
         if ($this->shouldHydrate($request, 'o:settings')) {
-            $entity->setSettings($request->getValue('o:settings'));
+            $entity->setSettings($request->getValue('o:settings') ?: []);
         }
     }
 
-    public function validateEntity(EntityInterface $entity, ErrorStore $errorStore)
+    public function validateEntity(EntityInterface $entity, ErrorStore $errorStore): void
     {
         if (false == $entity->getName()) {
             $errorStore->addError('o:name', 'The name cannot be empty.');

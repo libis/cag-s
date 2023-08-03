@@ -11,29 +11,7 @@ $showPagePagination = $this->siteSetting('show_page_pagination', true);
 <?php $this->trigger('view.show.after'); ?>
 
 <?php
-  //only show pagination on pages under Themaverhalen
-  $flat = filter_bc_show(flattenArray_show($site->navigation()));
-  $key = array_search($page->id(), $flat);
-
-  $crumbs = "";
-
-  while(strlen($key) >= 4){
-    $key = explode('|',$key);
-
-    array_pop($key);
-    array_pop($key);
-    $key = implode('|',$key)."|";
-
-    if(isset($flat[$key])):
-      $id = $flat[$key];
-      $page = $this->api()->read('site_pages', $id)->getContent();
-      $link = '<a href="'.$page->url().'">'.$page->title().'</a>';
-      $crumbs = $link.'</span>
-        <span itemscope="" itemtype="https://data-vocabulary.org/Breadcrumb" class="breadcrumb__scope">'.$crumbs;
-    endif;
-  }
-
-  if (strpos($crumbs, 'Verhalen') !== false && $showPagePagination) {
+  if ($page->title() != "Home" && $showPagePagination) {
     echo $this->sitePagePagination();
   }
 ?>

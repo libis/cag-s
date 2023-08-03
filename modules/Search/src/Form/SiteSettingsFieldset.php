@@ -1,9 +1,12 @@
-<?php
+<?php declare(strict_types=1);
+
 namespace Search\Form;
 
+use Laminas\Form\Element;
+use Laminas\Form\Fieldset;
 use Omeka\View\Helper\Api;
-use Zend\Form\Element;
-use Zend\Form\Fieldset;
+use Search\Form\Element\OptionalMultiCheckbox;
+use Search\Form\Element\OptionalSelect;
 
 class SiteSettingsFieldset extends Fieldset
 {
@@ -14,62 +17,64 @@ class SiteSettingsFieldset extends Fieldset
 
     /**
      * Warning: there is a core fieldset "Search".
+     *
      * @var string
      */
     protected $label = 'Search module'; // @translate
 
-    public function init()
+    public function init(): void
     {
-        $api = $this->getApi();
-
         /** @var \Search\Api\Representation\SearchPageRepresentation[] $pages */
-        $pages = $api->search('search_pages')->getContent();
+        $pages = $this->api->search('search_pages')->getContent();
 
         $valueOptions = [];
         foreach ($pages as $page) {
             $valueOptions[$page->id()] = sprintf('%s (/%s)', $page->name(), $page->path());
         }
 
-        $this->add([
-            'name' => 'search_main_page',
-            'type' => Element\Select::class,
-            'options' => [
-                'label' => 'Default search page', // @translate
-                'value_options' => $valueOptions,
-                'empty_option' => 'Select the default search engine for the site…', // @translate
-            ],
-            'attributes' => [
-                'id' => 'search_main_page',
-            ],
-        ]);
-
-        $this->add([
-            'name' => 'search_pages',
-            'type' => Element\MultiCheckbox::class,
-            'options' => [
-                'label' => 'Available search pages', // @translate
-                'value_options' => $valueOptions,
-            ],
-            'attributes' => [
-                'id' => 'search_pages',
-            ],
-        ]);
+        $this
+            ->add([
+                'name' => 'search_main_page',
+                'type' => OptionalSelect::class,
+                'options' => [
+                    'label' => 'Default search page', // @translate
+                    'value_options' => $valueOptions,
+                    'empty_option' => 'Select the default search engine for the site…', // @translate
+                ],
+                'attributes' => [
+                    'id' => 'search_main_page',
+                ],
+            ])
+            ->add([
+                'name' => 'search_pages',
+                'type' => OptionalMultiCheckbox::class,
+                'options' => [
+                    'label' => 'Available search pages', // @translate
+                    'value_options' => $valueOptions,
+                ],
+                'attributes' => [
+                    'id' => 'search_pages',
+                ],
+            ])
+            // TODO Move the option to redirect item set to search page or a search page setting?
+            ->add([
+                'name' => 'search_redirect_itemset',
+                'type' => Element\Checkbox::class,
+                'options' => [
+                    'label' => 'Redirect item set page to search', // @translate
+                    'info' => 'By default, item-set/show is redirected to item/browse. This option redirects it to the search page.', // @translate
+                ],
+                'attributes' => [
+                    'id' => 'search_redirect_itemset',
+                    'value' => true,
+                ],
+            ])
+        ;
     }
 
-    /**
-     * @param Api $api
-     */
-    public function setApi(Api $api)
+    public function setApi(Api $api): Fieldset
     {
         $this->api = $api;
         return $this;
-    }
-
-    /**
-     * @return \Omeka\View\Helper\Api
-     */
-    public function getApi()
-    {
-        return $this->api;
     }
 }

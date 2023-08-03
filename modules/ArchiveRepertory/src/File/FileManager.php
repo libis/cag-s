@@ -1,12 +1,13 @@
-<?php
+<?php declare(strict_types=1);
+
 namespace ArchiveRepertory\File;
 
+use Laminas\ServiceManager\ServiceLocatorInterface;
 use Omeka\Entity\Media;
 use Omeka\Entity\Resource;
 use Omeka\File\Exception\RuntimeException;
 use Omeka\Mvc\Controller\Plugin\Messenger;
 use Omeka\Stdlib\Message;
-use Zend\ServiceManager\ServiceLocatorInterface;
 
 class FileManager
 {
@@ -67,7 +68,7 @@ class FileManager
      * @param string $name
      * @return string
      */
-    public function getBaseName($name)
+    public function getBaseName($name): string
     {
         $positionExtension = strrpos($name, '.');
         return $positionExtension ? substr($name, 0, $positionExtension) : $name;
@@ -83,7 +84,7 @@ class FileManager
      * @param Media $media
      * @return string
      */
-    public function getStorageId(Media $media)
+    public function getStorageId(Media $media): string
     {
         $storageId = $media->getStorageId();
         $currentFilename = $media->getFilename();
@@ -96,11 +97,11 @@ class FileManager
             . ($itemFolderName ? $itemFolderName . '/' : '');
 
         $mediaConvert = $this->getSetting('archiverepertory_media_convert');
-        $extension = $media->getExtension();
-        if ($mediaConvert == 'hash' || $extension != 'pdf') {
+        if ($mediaConvert == 'hash') {
             $storageName = $this->hashStorageName($media);
             $storageId = $storageName;
         } else {
+            $extension = $media->getExtension();
             $storageName = \ArchiveRepertory\Helpers::pathinfo($media->getSource(), PATHINFO_BASENAME);
             $storageName = $this->sanitizeName($storageName);
             $storageName = \ArchiveRepertory\Helpers::pathinfo($storageName, PATHINFO_FILENAME);
@@ -119,7 +120,7 @@ class FileManager
         if ($folderName) {
             $newStorageId = $folderName . $newStorageId;
         }
-        if (strlen($newStorageId) > 190) {
+        if (mb_strlen($newStorageId) > 190) {
             if ($folderName) {
                 $msg = new Message('Cannot move file "%s" inside archive directory ("%s"): filepath longer than 190 characters.', // @translate
                     pathinfo($media->getSource(), PATHINFO_BASENAME), $folderName
@@ -144,10 +145,10 @@ class FileManager
      * @param string $type
      * @return string Full archive path, or empty if none.
      */
-    public function getFullArchivePath($type)
+    public function getFullArchivePath($type): string
     {
-        $derivatives = $this->getDerivatives();
-        return isset($derivatives[$type]) ? $derivatives[$type]['path'] : '';
+        $deriv = $this->getDerivatives();
+        return isset($deriv[$type]) ? $deriv[$type]['path'] : '';
     }
 
     /**
@@ -162,10 +163,12 @@ class FileManager
      * archive folder if any (usually "collection/dc:identifier/").
      * @return bool True if files are moved, else set a message error.
      */
-    public function moveFilesInArchiveFolders($currentArchiveFilename, $newArchiveFilename)
+    public function moveFilesInArchiveFolders($currentArchiveFilename, $newArchiveFilename): bool
     {
         // A quick check to avoid some errors.
-        if (trim($currentArchiveFilename) == '' || trim($newArchiveFilename) == '') {
+        $currentArchiveFilename = (string) $currentArchiveFilename;
+        $newArchiveFilename = (string) $newArchiveFilename;
+        if (trim($currentArchiveFilename) === '' || trim($newArchiveFilename) === '') {
             $msg = $this->translate('Cannot move file inside archive directory: no filename.'); // @translate
             $this->addError($msg);
             return false;
@@ -196,6 +199,11 @@ class FileManager
                 if (is_null($extension)) {
                     $currentDerivativeFilename = $currentArchiveFilename;
                     $newDerivativeFilename = $newArchiveFilename;
+                } elseif ($extension === '') {
+                    $extension = pathinfo($currentArchiveFilename, PATHINFO_EXTENSION);
+                    $extension = strlen($extension) ? '.' . $extension : '';
+                    $currentDerivativeFilename = $currentBase . $extension;
+                    $newDerivativeFilename = $newBase . $extension;
                 } else {
                     $currentDerivativeFilename = $currentBase . $extension;
                     $newDerivativeFilename = $newBase . $extension;
@@ -225,7 +233,7 @@ class FileManager
      *
      * @param string $archiveFolder Name of folder to delete, without files dir.
      */
-    public function removeArchiveFolders($archiveFolder)
+    public function removeArchiveFolders($archiveFolder): void
     {
         if (in_array($archiveFolder, ['.', '..', '/', '\\', ''])) {
             return;
@@ -246,7 +254,7 @@ class FileManager
         }
     }
 
-    public function concatWithSeparator($firstDir, $secondDir)
+    public function concatWithSeparator($firstDir, $secondDir): string
     {
         if (empty($firstDir)) {
             return $secondDir;
@@ -264,7 +272,7 @@ class FileManager
      *
      * @return array
      */
-    protected function getDerivatives()
+    protected function getDerivatives(): array
     {
         if (is_null($this->derivatives)) {
             $this->derivatives = [];
@@ -294,7 +302,7 @@ class FileManager
      *
      * @return array
      */
-    protected function getConfiguredTypes()
+    protected function getConfiguredTypes(): array
     {
         // No need to be static, it is called only from getDerivatives().
         $storagePath = $this->getLocalStoragePath();
@@ -323,7 +331,7 @@ class FileManager
      * @param string $currentFilename It avoids to change when it is single.
      * @return string The unique filename, that can be the same as input name.
      */
-    protected function getSingleFilename($filename, $currentFilename)
+    protected function getSingleFilename($filename, $currentFilename): string
     {
         // Get the partial path.
         $dirname = pathinfo($filename, PATHINFO_DIRNAME);
@@ -339,7 +347,10 @@ class FileManager
         // Check the name.
         $checkName = $name;
         $fileWriter = $this->getFileWriter();
-        $existingFilepaths = $fileWriter->glob($folder . DIRECTORY_SEPARATOR . $checkName . '{.*,.,\,,}', GLOB_BRACE);
+        // The name should already be sanitized, but escape all glob patterns
+        // anyway, starting with "\".
+        $existingFilepaths = $fileWriter->glob(str_replace(['\\', '[', ']', '{', '}', '?', '*'], ['\\\\', '\[', '\]', '\{', '\}', '\?', '\*'], $folder . DIRECTORY_SEPARATOR . $checkName) . '{.*,.,\,,}', GLOB_BRACE);
+
         // Check if the filename exists.
         if (empty($existingFilepaths)) {
             // Nothing to do.
@@ -355,7 +366,7 @@ class FileManager
         // Check folder for file with any extension or without any extension.
         else {
             $i = 0;
-            while ($fileWriter->glob($folder . DIRECTORY_SEPARATOR . $checkName . '{.*,.,\,,}', GLOB_BRACE)) {
+            while ($fileWriter->glob(str_replace(['\\', '[', ']', '{', '}', '?', '*'], ['\\\\', '\[', '\]', '\{', '\}', '\?', '\*'], $folder . DIRECTORY_SEPARATOR . $checkName) . '{.*,.,\,,}', GLOB_BRACE)) {
                 $checkName = $name . '.' . ++$i;
             }
         }
@@ -372,7 +383,7 @@ class FileManager
      * @param Resource $resource
      * @return string Unique sanitized name of the resource.
      */
-    protected function getResourceFolderName(Resource $resource = null)
+    protected function getResourceFolderName(Resource $resource = null): string
     {
         // This check may allow to make Archive Repertory more compatible.
         if (is_null($resource)) {
@@ -421,7 +432,7 @@ class FileManager
      * @param string $prefix
      * @return string
      */
-    protected function getResourceIdentifier(Resource $resource, $termId, $prefix)
+    protected function getResourceIdentifier(Resource $resource, $termId, $prefix): string
     {
         foreach ($resource->getValues() as $value) {
             if ($value->getProperty()->getId() != $termId) {
@@ -450,10 +461,9 @@ class FileManager
      * @param Media $media
      * @return string
      */
-    protected function hashStorageName(Media $media)
+    protected function hashStorageName(Media $media): string
     {
-        $storageName = substr(hash('sha256', $media->getId() . '/' . $media->getSource()), 0, 40);
-        return $storageName;
+        return substr(hash('sha256', $media->getId() . '/' . $media->getSource()), 0, 40);
     }
 
     /**
@@ -465,9 +475,9 @@ class FileManager
      * @param string $string The string to sanitize.
      * @return string The sanitized string.
      */
-    protected function sanitizeName($string)
+    protected function sanitizeName($string): string
     {
-        $string = strip_tags($string);
+        $string = strip_tags((string) $string);
         // The first character is a space and the last one is a no-break space.
         $string = trim($string, ' /\\?<>:*%|"\'`&; ');
         $string = str_replace(['(', '{'], '[', $string);
@@ -489,7 +499,7 @@ class FileManager
      * @param string $format The format to convert to.
      * @return string The sanitized string.
      */
-    protected function convertFilenameTo($string, $format)
+    protected function convertFilenameTo($string, $format): string
     {
         switch ($format) {
             case 'keep':
@@ -517,7 +527,7 @@ class FileManager
      * @param string $string The string to convert to ascii.
      * @return string The converted string to use as a folder or a file name.
      */
-    protected function convertNameToAscii($string)
+    protected function convertNameToAscii($string): string
     {
         $string = htmlentities($string, ENT_NOQUOTES, 'utf-8');
         $string = preg_replace('#\&([A-Za-z])(?:acute|cedil|circ|grave|lig|orn|ring|slash|th|tilde|uml|caron)\;#', '\1', $string);
@@ -537,7 +547,7 @@ class FileManager
      * @param string $string The string to sanitize.
      * @return string The sanitized string.
      */
-    protected function convertFirstLetterToAscii($string)
+    protected function convertFirstLetterToAscii($string): string
     {
         $first = $this->convertNameToAscii($string);
         if (empty($first)) {
@@ -554,7 +564,7 @@ class FileManager
      * @param string $string The string to sanitize.
      * @return string The sanitized string.
      */
-    protected function convertSpacesToUnderscore($string)
+    protected function convertSpacesToUnderscore($string): string
     {
         return preg_replace('/\s+/', '_', $string);
     }
@@ -569,7 +579,7 @@ class FileManager
      * @param int $length (optional)
      * @return string
      */
-    protected function substr_unicode($string, $start, $length = null)
+    protected function substr_unicode($string, $start, $length = null): string
     {
         return join(
             '',
@@ -586,7 +596,7 @@ class FileManager
      *
      * @return string
      */
-    protected function getLocalStoragePath()
+    protected function getLocalStoragePath(): string
     {
         return $this->basePath;
     }
@@ -601,7 +611,7 @@ class FileManager
      *   the archive folder will be created in all derivative paths.
      * @return bool True if each path is created, Exception if an error occurs.
      */
-    protected function createArchiveFolders($archiveFolder, $pathFolder = '')
+    protected function createArchiveFolders($archiveFolder, $pathFolder = ''): bool
     {
         if ($archiveFolder != '') {
             $folders = empty($pathFolder)
@@ -624,7 +634,7 @@ class FileManager
      * @return bool True if the path is created
      * @throws \Omeka\File\Exception\RuntimeException
      */
-    protected function createFolder($path)
+    protected function createFolder($path): bool
     {
         if ($path == '') {
             return true;
@@ -661,7 +671,7 @@ class FileManager
      * @param string $path
      * @return bool True if success, else set a message error.
      */
-    protected function moveFile($source, $destination, $path = '')
+    protected function moveFile($source, $destination, $path = ''): bool
     {
         $fileWriter = $this->getFileWriter();
         $realSource = $this->concatWithSeparator($path, $source);
@@ -669,6 +679,7 @@ class FileManager
         if ($fileWriter->fileExists($realDestination)) {
             return true;
         }
+
         if (!$fileWriter->fileExists($realSource)) {
             $msg = sprintf(
                 $this->translate('Error during move of a file from "%s" to "%s" (local dir: "%s"): source does not exist.'),
@@ -697,18 +708,23 @@ class FileManager
         return $result;
     }
 
-    protected function translate($string)
+    /**
+     * @param string $string
+     * @return string
+     */
+    protected function translate($string): string
     {
         return $this->services->get('MvcTranslator')->translate($string);
     }
 
-    protected function getFileWriter()
+    /**
+     * @return \ArchiveRepertory\File\FileWriter
+     */
+    protected function getFileWriter(): FileWriter
     {
         static $fileWriter;
-        if (is_null($fileWriter)) {
-            $fileWriter = $this->services->get('ArchiveRepertory\FileWriter');
-        }
-        return $fileWriter;
+        return $fileWriter
+            ?? $fileWriter = $this->services->get('ArchiveRepertory\FileWriter');
     }
 
     protected function getSetting($name)
@@ -722,7 +738,7 @@ class FileManager
         return $this->services->get('Omeka\Settings')->get($name);
     }
 
-    protected function addError($msg)
+    protected function addError($msg): void
     {
         $messenger = new Messenger();
         $messenger->addError($msg);

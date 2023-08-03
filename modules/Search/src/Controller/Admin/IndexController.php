@@ -1,7 +1,8 @@
-<?php
+<?php declare(strict_types=1);
 
 /*
  * Copyright BibLibre, 2016
+ * Copyright Daniel Berthereau, 2020
  *
  * This software is governed by the CeCILL license under French law and abiding
  * by the rules of distribution of free software.  You can use, modify and/ or
@@ -29,19 +30,20 @@
 
 namespace Search\Controller\Admin;
 
-use Zend\Mvc\Controller\AbstractActionController;
-use Zend\View\Model\ViewModel;
+use Laminas\Mvc\Controller\AbstractActionController;
+use Laminas\View\Model\ViewModel;
 
 class IndexController extends AbstractActionController
 {
     public function browseAction()
     {
-        $search_indexes = $this->api()->search('search_indexes')->getContent();
-        $search_pages = $this->api()->search('search_pages')->getContent();
+        $api = $this->api();
+        $search_indexes = $api->search('search_indexes', ['sort_by' => 'name'])->getContent();
+        $search_pages = $api->search('search_pages', ['sort_by' => 'name'])->getContent();
 
-        $view = new ViewModel;
-        $view->setVariable('search_indexes', $search_indexes);
-        $view->setVariable('search_pages', $search_pages);
-        return $view;
+        return new ViewModel([
+            'search_indexes' => $search_indexes,
+            'search_pages' => $search_pages,
+        ]);
     }
 }

@@ -97,23 +97,24 @@ endforeach;
                       $ent = $entval->asHtml();
                       if (strpos($ent, $text) !== false) {
                         $links = explode('||', $ent);
+                        
                         //array_shift($array);
-                        if($links[1] != ''):
+                        if(!empty($links[1])):
                           $string .= ' <a target="_blank" href="'.$links[1].'"><span class="entity">Website</span></a>';
                         endif;  
-                        if($links[2] != ''):
+                        if(!empty($links[2])):
                           $string .= ' <a target="_blank" href="'.$links[2].'"><img style="height:18px;" src="/themes/default/asset/img/wiki.png" /></a>';
                         endif;  
-                        if($links[3] != ''):
+                        if(!empty($links[3] )):
                           $string .= ' <a target="_blank" href="'.$links[3].'"><img style="height:18px;" src="/themes/default/asset/img/viaf.png" /></a>';
                         endif; 
-                        if($links[4] != ''):
+                        if(!empty($links[4])):
                           $string .= ' <a target="_blank" href="'.$links[4].'"><span class="entity">ULAN</span></a>';
                         endif; 
-                        if($links[5] != ''):
+                        if(!empty($links[5])):
                           $string .= ' <a target="_blank" href="'.$links[5].'"><span class="entity">RKDartists&</span></a>';
                         endif;
-                        if($links[6] != ''):
+                        if(!empty($links[6])):
                           $string .= ' <a target="_blank" href="'.$links[6].'"><span class="entity">Biografie</span></a>';
                         endif;
                       }

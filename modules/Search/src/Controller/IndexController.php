@@ -1,8 +1,8 @@
-<?php
+<?php declare(strict_types=1);
 
 /*
  * Copyright BibLibre, 2016-2017
- * Copyright Daniel Berthereau, 2017-2018
+ * Copyright Daniel Berthereau, 2017-2021
  *
  * This software is governed by the CeCILL license under French law and abiding
  * by the rules of distribution of free software.  You can use, modify and/ or
@@ -30,30 +30,22 @@
 
 namespace Search\Controller;
 
-use Omeka\Stdlib\Paginator;
-use Search\Api\Representation\SearchIndexRepresentation;
+use Laminas\Mvc\Controller\AbstractActionController;
+use Laminas\View\Model\JsonModel;
+use Laminas\View\Model\ViewModel;
+use Omeka\Api\Representation\SiteRepresentation;
+use Omeka\Stdlib\Message;
 use Search\Api\Representation\SearchPageRepresentation;
 use Search\Querier\Exception\QuerierException;
-use Zend\EventManager\Event;
-use Zend\Mvc\Controller\AbstractActionController;
-use Zend\View\Model\JsonModel;
-use Zend\View\Model\ViewModel;
+use Search\Query;
+use Search\Response;
 
 class IndexController extends AbstractActionController
 {
-    /**
-     * @var SearchPageRepresentation
-     */
-    protected $page;
-
-    /**
-     * @var SearchIndexRepresentation
-     */
-    protected $index;
-
     public function searchAction()
     {
         $pageId = (int) $this->params('id');
+
         $isPublic = $this->status()->isSiteRequest();
         if ($isPublic) {
             $site = $this->currentSite();
@@ -62,37 +54,83 @@ class IndexController extends AbstractActionController
             if (!in_array($pageId, $siteSearchPages)) {
                 return $this->notFoundAction();
             }
+            // Check if it is an item set redirection.
+            $itemSetId = (int) $this->params('item-set-id');
+            // This is just a check: if set, mvc listeners add itemSet['ids'][].
+            // @see \Search\Mvc\MvcListeners::redirectItemSetToSearch()
+            if ($itemSetId) {
+                // May throw a not found exception.
+                $this->api()->read('item_sets', $itemSetId);
+            }
         } else {
             $site = null;
         }
 
-        $view = new ViewModel;
-        $view->setVariable('isPartial', !$isPublic);
-        $api = $this->api();
-        $response = $api->read('search_pages', $pageId);
-        $this->page = $response->getContent();
-        $page = $this->page;
+        // The page is required, else there is no form.
+        /** @var \Search\Api\Representation\SearchPageRepresentation $searchPage */
+        $searchPage = $this->api()->read('search_pages', $pageId)->getContent();
 
-        /** @var \Search\FormAdapter\FormAdapterInterface $formAdapter */
-        $formAdapter = $page->formAdapter();
-        if (!$formAdapter) {
-            $formAdapterName = $page->formAdapterName();
-            $message = sprintf('Form adapter "%s" not found.', $formAdapterName); // @translate
-            $this->messenger()->addError($message);
-            $this->logger()->err($message);
-            return $view;
-        }
+        $view = new ViewModel([
+            // The form is not set in the view, but via helper searchingForm()
+            // or via searchPage.
+            'searchPage' => $searchPage,
+            'site' => $site,
+            // Set a default empty query and response to simplify view.
+            'query' => new Query,
+            'response' => new Response,
+        ]);
 
         $request = $this->params()->fromQuery();
+        $form = $this->searchForm($searchPage);
+        // The form may be empty for a direct query.
+        $isJsonQuery = !$form;
 
-        // If the page is empty (json api request), there is no form.
-        /** @var \Zend\Form\Form $form */
-        $form = $this->searchForm($page);
-        $jsonQuery = empty($form);
+        if ($form) {
+            // Check csrf issue.
+            $request = $this->validateSearchRequest($searchPage, $form, $request);
+            if ($request === false) {
+                return $view;
+            }
+        }
 
-        // Here, an empty query is not allowed. To allow it, add a useless arg.
-        if (empty($request)) {
-            if ($jsonQuery) {
+        // Check if the query is empty and use the default query in that case.
+        // So the default query is used only on the search page.
+        list($request, $isEmptyRequest) = $this->cleanRequest($request);
+        if ($isEmptyRequest) {
+            $defaultResults = $searchPage->subSetting('search', 'default_results') ?: 'default';
+            switch ($defaultResults) {
+                case 'none':
+                    $defaultQuery = '';
+                    break;
+                case 'query':
+                    $defaultQuery = $searchPage->subSetting('search', 'default_query') ?: '';
+                    break;
+                case 'default':
+                default:
+                    // "*" means the default query managed by the search engine.
+                    $defaultQuery = '*';
+                    break;
+            }
+            if ($defaultQuery === '') {
+                if ($isJsonQuery) {
+                    return new JsonModel([
+                        'status' => 'error',
+                        'message' => 'No query.', // @translate
+                    ]);
+                }
+                return $view;
+            }
+            $parsedQuery = [];
+            parse_str($defaultQuery, $parsedQuery);
+            // Keep the other arguments of the request (mainly pagination, sort,
+            // and facets).
+            $request = $parsedQuery + $request;
+        }
+
+        $result = $this->searchRequestToResponse($request, $searchPage, $site);
+        if ($result['status'] === 'fail') {
+            // Currently only "no query".
+            if ($isJsonQuery) {
                 return new JsonModel([
                     'status' => 'error',
                     'message' => 'No query.', // @translate
@@ -101,150 +139,34 @@ class IndexController extends AbstractActionController
             return $view;
         }
 
-        // TODO Validate api query too.
-        if (!$jsonQuery) {
-            $form->setData($request);
-            if (!$form->isValid()) {
-                $messages = $form->getMessages();
-                if (isset($messages['csrf'])) {
-                    // The search engine is used to display item sets too via
-                    // the mvc redirection. In that case, there is no csrf
-                    // element, so no check to do.
-                    // TODO Add a csrf check in the mvc redirection of item sets to search page.
-                    if (array_key_exists('csrf', $request)) {
-                        $this->messenger()->addError('Invalid or missing CSRF token'); // @translate
-                        return $view;
-                    }
-                } else {
-                    $this->messenger()->addError('There was an error during validation'); // @translate
-                    return $view;
-                }
+        if ($result['status'] === 'error') {
+            if ($isJsonQuery) {
+                return new JsonModel($result);
             }
-            // Get the filtered request, but keep the pagination and sort params,
-            // that are not managed by the form.
-            $request = $form->getData() + $this->filterExtraParams($request);
-        }
-
-        $searchPageSettings = $page->settings();
-        $searchFormSettings = isset($searchPageSettings['form'])
-            ? $searchPageSettings['form']
-            : [];
-
-        /** @var \Search\Query $query */
-        $query = $formAdapter->toQuery($request, $searchFormSettings);
-
-        // Add global parameters.
-
-        $index = $this->index = $page->index();
-        $indexSettings = $index->settings();
-
-        if (!$this->identity()) {
-            $query->setIsPublic(true);
-        }
-
-        if ($site) {
-            $query->setSiteId($site->id());
-        }
-
-        if (array_key_exists('resource-type', $request)) {
-            $resourceType = $request['resource-type'];
-            if (!is_array($resourceType)) {
-                $resourceType = [$resourceType];
-            }
-            $query->setResources($resourceType);
-        } else {
-            $query->setResources($indexSettings['resources']);
-        }
-
-        // Don't sort if it's already managed by the form, like the api form.
-        $sortOptions = $this->getSortOptions();
-        $sort = $query->getSort();
-        if (!is_null($sort)) {
-            if (isset($request['sort']) && isset($sortOptions[$request['sort']])) {
-                $sort = $request['sort'];
-            } else {
-                reset($sortOptions);
-                $sort = key($sortOptions);
-                //LIBIS sort on created by default
-                $sort = "created desc";
-                //var_dump($sort);
-
-            }
-            $query->setSort($sort);
-        }
-
-        // Note: the global limit is managed via the pagination.
-        $pageNumber = isset($request['page']) && $request['page'] > 0 ? (int) $request['page'] : 1;
-        if (isset($request['per_page']) && $request['per_page'] > 0) {
-            $perPage = (int) $request['per_page'];
-        } elseif ($isPublic) {
-            $perPage = $siteSettings->get('pagination_per_page') ?: $this->settings()->get('pagination_per_page', Paginator::PER_PAGE);
-        } else {
-            $perPage = $this->settings()->get('pagination_per_page', Paginator::PER_PAGE);
-        }
-        $query->setLimitPage($pageNumber, $perPage);
-
-        $hasFacets = !empty($searchPageSettings['facets']);
-        if ($hasFacets) {
-            foreach ($searchPageSettings['facets'] as $name => $facet) {
-                if ($facet['enabled']) {
-                    $query->addFacetField($name);
-                }
-            }
-            if (isset($searchPageSettings['facet_limit'])) {
-                $query->setFacetLimit($searchPageSettings['facet_limit']);
-            }
-
-            if (isset($searchPageSettings['facet_languages'])) {
-              if(is_array($searchPageSettings['facet_languages'])):
-                $query->setFacetLanguages($searchPageSettings['facet_languages']);
-              endif;
-            }
-            if (!empty($request['limit']) && is_array($request['limit'])) {
-                foreach ($request['limit'] as $name => $values) {
-                    foreach ($values as $value) {
-                        $query->addFilter($name, $value);
-                    }
-                }
-            }
-        }
-
-        // TODO Use a generic querier as target for the event?
-        $eventManager = $this->getEventManager();
-        $eventArgs = $eventManager->prepareArgs([
-            'search_page' => $page,
-            'request' => $request,
-            'query' => $query,
-        ]);
-        $eventManager->triggerEvent(new Event('search.query.pre', $this, $eventArgs));
-        $query = $eventArgs['query'];
-
-        // Send the query to the search engine.
-        $querier = $index->querier();
-        try {
-            $response = $querier->query($query);
-        } catch (QuerierException $e) {
-            $message = sprintf('Query error: %s', $e->getMessage()); // @translate
-            if ($jsonQuery) {
-                return new JsonModel(['status' => 'error', 'message' => $message]);
-            }
-            $this->messenger()->addError($message);
+            $this->messenger()->addError($result['message']);
             return $view;
         }
 
-        if ($hasFacets) {
-            $facets = $response->getFacetCounts();
-            $facets = $this->sortFieldsByWeight($facets, 'facets');
-        } else {
-            $facets = [];
-        }
+        if ($isJsonQuery) {
+            /** @var \Search\Response $response */
+            $response = $result['data']['response'];
+            if (!$response) {
+                $this->getResponse()->setStatusCode(\Laminas\Http\Response::STATUS_CODE_500);
+                return new JsonModel([
+                    'status' => 'error',
+                    'message' => 'An error occurred.', // @translate
+                ]);
+            }
 
-        $totalResults = array_map(function ($resource) use ($response) {
-            return $response->getResourceTotalResults($resource);
-        }, $indexSettings['resources']);
-        $this->paginator(max($totalResults), $pageNumber);
+            if (!$response->isSuccess()) {
+                $this->getResponse()->setStatusCode(\Laminas\Http\Response::STATUS_CODE_500);
+                return new JsonModel([
+                    'status' => 'error',
+                    'message' => $response->getMessage(),
+                ]);
+            }
 
-        if ($jsonQuery) {
+            $indexSettings = $searchPage->index()->settings();
             $result = [];
             foreach ($indexSettings['resources'] as $resource) {
                 $result[$resource] = $response->getResults($resource);
@@ -252,110 +174,238 @@ class IndexController extends AbstractActionController
             return new JsonModel($result);
         }
 
-        // Form is not set in the view.
-        // $view->setVariable('form', $form);
-        //LIBIS added page
-        $view
-            ->setVariable('query', $query)
-            ->setVariable('site', $site)
-            ->setVariable('response', $response)
-            ->setVariable('facets', $facets)
-            ->setVariable('sortOptions', $sortOptions)
-            ->setVariable('page', $page);
-        return $view;
+        return $view
+            ->setVariables($result['data'], true)
+            ->setVariable('searchPage', $searchPage);
+    }
+
+    public function suggestAction()
+    {
+        if (!$this->getRequest()->isXmlHttpRequest()) {
+            return new JsonModel([
+                'status' => 'error',
+                'message' => 'This action requires an ajax request.', // @translate
+            ]);
+        }
+
+        $pageId = (int) $this->params('id');
+
+        $isPublic = $this->status()->isSiteRequest();
+        if ($isPublic) {
+            $site = $this->currentSite();
+            $siteSettings = $this->siteSettings();
+            $siteSearchPages = $siteSettings->get('search_pages', []);
+            if (!in_array($pageId, $siteSearchPages)) {
+                return new JsonModel([
+                    'status' => 'error',
+                    'message' => 'Not a search page for this site.', // @translate
+                ]);
+            }
+            // TODO Manage item set redirection.
+        } else {
+            $site = null;
+        }
+
+        /** @var \Search\Api\Representation\SearchPageRepresentation $searchPage */
+        $searchPage = $this->api()->read('search_pages', $pageId)->getContent();
+
+        /** @var \Search\FormAdapter\FormAdapterInterface $formAdapter */
+        $formAdapter = $searchPage->formAdapter();
+        if (!$formAdapter) {
+            return new JsonModel([
+                'status' => 'error',
+                'message' => 'The search page has no querier.', // @translate
+            ]);
+        }
+
+        if (!$searchPage->subSetting('autosuggest', 'enable')) {
+            return new JsonModel([
+                'status' => 'error',
+                'message' => 'Auto-suggestion is not enabled on this server.', // @translate
+            ]);
+        }
+
+        $q = (string) $this->params()->fromQuery('q');
+        if (!strlen($q)) {
+            return new JsonModel([
+                'status' => 'success',
+                'data' => [
+                    'query' => '',
+                    'suggestions' => [],
+                ],
+            ]);
+        }
+
+        $response = $this->processQuerySuggestions($searchPage, $q, $site);
+        if (!$response) {
+            $this->getResponse()->setStatusCode(\Laminas\Http\Response::STATUS_CODE_500);
+            return new JsonModel([
+                'status' => 'error',
+                'message' => 'An error occurred.', // @translate
+            ]);
+        }
+
+        if (!$response->isSuccess()) {
+            $this->getResponse()->setStatusCode(\Laminas\Http\Response::STATUS_CODE_500);
+            return new JsonModel([
+                'status' => 'error',
+                'message' => $response->getMessage(),
+            ]);
+        }
+
+        /** @var \Search\Response $response */
+        return new JsonModel([
+            'status' => 'success',
+            'data' => [
+                'query' => $q,
+                'suggestions' => $response->getSuggestions(),
+            ],
+        ]);
+    }
+
+    protected function processQuerySuggestions(
+        SearchPageRepresentation $searchPage,
+        string $q,
+        ?SiteRepresentation $site
+    ): Response {
+        /** @var \Search\FormAdapter\FormAdapterInterface $formAdapter */
+        $formAdapter = $searchPage->formAdapter();
+        $searchPageSettings = $searchPage->settings();
+        $searchFormSettings = $searchPageSettings['form'] ?? [];
+
+        $autosuggestSettings = $searchPage->setting('autosuggest', []);
+
+        // TODO Add a default query to manage any suggestion on any field and suggestions on item set page.
+
+        /** @var \Search\Query $query */
+        $query = $formAdapter->toQuery(['q' => $q], $searchFormSettings);
+
+        $searchIndex = $searchPage->index();
+        $indexSettings = $searchIndex->settings();
+
+        $user = $this->identity();
+        // TODO Manage roles from modules and visibility from modules (access resources).
+        $omekaRoles = [
+            \Omeka\Permissions\Acl::ROLE_GLOBAL_ADMIN,
+            \Omeka\Permissions\Acl::ROLE_SITE_ADMIN,
+            \Omeka\Permissions\Acl::ROLE_EDITOR,
+            \Omeka\Permissions\Acl::ROLE_REVIEWER,
+            \Omeka\Permissions\Acl::ROLE_AUTHOR,
+            \Omeka\Permissions\Acl::ROLE_RESEARCHER,
+        ];
+        if ($user && in_array($user->getRole(), $omekaRoles)) {
+            $query->setIsPublic(false);
+        }
+
+        if ($site) {
+            $query->setSiteId($site->id());
+        }
+
+        $query
+            ->setResources($indexSettings['resources'])
+            ->setLimitPage(1, empty($autosuggestSettings['limit']) ? \Omeka\Stdlib\Paginator::PER_PAGE : (int) $autosuggestSettings['limit'])
+            ->setSuggestMode($autosuggestSettings['mode'] ?? 'start')
+            ->setSuggestFields($autosuggestSettings['fields'] ?? []);
+
+        /** @var \Search\Querier\QuerierInterface $querier */
+        $querier = $searchIndex
+            ->querier()
+            ->setQuery($query);
+        try {
+            return $querier->querySuggestions();
+        } catch (QuerierException $e) {
+            $message = new Message("Query error: %s\nQuery:%s", $e->getMessage(), json_encode($query->jsonSerialize(), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT)); // @translate
+            $this->logger()->err($message);
+            return (new Response)
+                ->setMessage($message);
+        }
     }
 
     /**
-     * Filter the pagination and sort params from the request.
+     * Get the request from the query and check it according to the search page.
      *
-     * @todo Warning: "limit" is used as limit (int) of results and as filter for facets (array).
+     * @todo Factorize with \Search\Site\BlockLayout\SearchingForm::getSearchRequest()
      *
-     * @param array $request
-     * @return array
+     * @return array|bool
      */
-    protected function filterExtraParams(array $request)
-    {
-        $limitFacetRequest = [];
-        if (!empty($request['limit']) && is_array($request['limit'])) {
-            $limitFacetRequest['limit'] = $request['limit'];
+    protected function validateSearchRequest(
+        SearchPageRepresentation $searchPage,
+        \Laminas\Form\Form $form,
+        array $request
+    ) {
+        // Only validate the csrf.
+        // Note: The search engine is used to display item sets too via the mvc
+        // redirection. In that case, there is no csrf element, so no check to
+        // do.
+        if (array_key_exists('csrf', $request)) {
+            $form->setData($request);
+            if (!$form->isValid()) {
+                $messages = $form->getMessages();
+                if (isset($messages['csrf'])) {
+                    $this->messenger()->addError('Invalid or missing CSRF token'); // @translate
+                    return false;
+                }
+            }
         }
+        return $request;
+    }
 
-        $paginationRequest = array_map('intval', array_filter(array_intersect_key(
-            $request,
-            // @see \Omeka\Api\Adapter\AbstractEntityAdapter::limitQuery().
-            ['page' => null, 'per_page' => null, 'limit' => null, 'offset' => null]
-        )));
+    /**
+     * Remove all empty values (zero length strings) and check empty request.
+     *
+     * @todo Factorize with \Search\Mvc\Controller\Plugin\SearchRequestToResponse::cleanRequest()
+     * @see \Search\Mvc\Controller\Plugin\SearchRequestToResponse::cleanRequest()
+     *
+     * @return array First key is the cleaned request, the second a bool to
+     * indicate if it is empty.
+     */
+    protected function cleanRequest(array $request): array
+    {
+        // They should be already removed.
+        unset($request['csrf'], $request['submit']);
 
-        // No filter neither cast here, but checked after.
-        $sortRequest = array_intersect_key(
+        $this->arrayFilterRecursive($request);
+
+        $checkRequest = array_diff_key(
             $request,
             [
+                // @see \Omeka\Api\Adapter\AbstractEntityAdapter::limitQuery().
+                'page' => null,
+                'per_page' => null,
+                'limit' => null,
+                'offset' => null,
                 // @see \Omeka\Api\Adapter\AbstractEntityAdapter::search().
-                'sort_by' => null, 'sort_order' => null,
+                'sort_by' => null,
+                'sort_order' => null,
                 // Used by Search.
-                'resource-type' => null, 'sort' => null,
+                'resource-type' => null,
+                'sort' => null,
             ]
         );
 
-        return $limitFacetRequest + $paginationRequest + $sortRequest;
+        return [
+            $request,
+            !count($checkRequest),
+        ];
     }
 
     /**
-     * Normalize the sort options of the index.
+     * Remove zero-length values or an array, recursively.
      *
-     * @todo Normalize the sort options when the index or page is hydrated.
-     *
-     * @return array
+     * @todo Factorize with \Search\Mvc\Controller\Plugin\SearchRequestToResponse::arrayFilterRecursive()
      */
-    protected function getSortOptions()
+    protected function arrayFilterRecursive(array &$array): array
     {
-        $sortOptions = [];
-
-        $settings = $this->page->settings();
-        if (empty($settings['sort_fields'])) {
-            return [];
-        }
-
-        $indexAdapter = $this->index->adapter();
-        if (empty($indexAdapter)) {
-            return [];
-        }
-        $sortFields = $this->index->adapter()->getAvailableSortFields($this->index);
-        foreach ($settings['sort_fields'] as $name => $sortField) {
-            if (!$sortField['enabled']) {
-                // A break is possible, because now, the sort fields are ordered
-                // when they are saved.
-                break;
+        foreach ($array as $key => $value) {
+            if (is_array($value)) {
+                $array[$key] = $this->arrayFilterRecursive($value);
+                if (!count($array[$key])) {
+                    unset($array[$key]);
+                }
+            } elseif (!strlen(trim((string) $array[$key]))) {
+                unset($array[$key]);
             }
-            if (!empty($sortField['display']['label'])) {
-                $label = $sortField['display']['label'];
-            } elseif (!empty($sortFields[$name]['label'])) {
-                $label = $sortFields[$name]['label'];
-            } else {
-                $label = $name;
-            }
-            $sortOptions[$name] = $label;
         }
-        // The sort options are sorted one time only, when saved.
-
-        return $sortOptions;
-    }
-
-    /**
-     * Order the field by weigth.
-     *
-     * @param array $fields
-     * @param string $settingName
-     * @return array
-     */
-    protected function sortFieldsByWeight(array $fields, $settingName)
-    {
-        $settings = $this->page->settings()[$settingName];
-        uksort($fields, function ($a, $b) use ($settings) {
-            $aWeight = $settings[$a]['weight'];
-            $bWeight = $settings[$b]['weight'];
-            return $aWeight - $bWeight;
-        });
-        return $fields;
+        return $array;
     }
 }

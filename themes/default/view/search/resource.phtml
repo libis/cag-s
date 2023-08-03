@@ -41,7 +41,7 @@ else:
   $type= "Object";
 endif;
 
-if($type == 'Verhaal' || $type == 'Project' || $type == 'Agendapunt'):
+if($type == 'Verhaal' || $type == 'Project' || $type == 'Agendapunt' || $type == 'Nieuws'):
   if($resource->value('dcterms:relation')):
     $url = '/page/'.$resource->value('dcterms:relation');
   else:
@@ -52,18 +52,28 @@ else:
 endif;
 ?>
 <div class="grid__item">
-   <div class="card card--gray card--clickable card--link card--variant2">
+   <div class="card card--clickable card--link card--variant2">
      <a href="<?php echo $url;?>" style="display:block;">
         <?php echo sprintf('<%s class="%s resource">', $tag, $resource->resourceName()); ?>
         <?php $media = $resource->primaryMedia(); ?>
         <?php if ($media): ?>
           <?php
             $file_url = str_replace('http:', '', $media->thumbnailUrl('medium'));
+            //$file_url = $media->originalUrl();
+            if($file_url == "/application/asset/thumbnails/default.png?v=3.2.3"){
+              $media = $resource->thumbnail();
+              if($media){                
+                if($media->getControllerName() == "asset"):
+                $file_url= $media->assetUrl('medium');
+                endif;
+              }                
+            }
           ?>
           <div class="card__img card__img_3"
             style="background:url(<?php echo $file_url;?>) no-repeat center 20%;background-size: cover;"
           ></div>
         <?php endif; ?>
+        
 
         <div class="card__body panel panel--light">
 

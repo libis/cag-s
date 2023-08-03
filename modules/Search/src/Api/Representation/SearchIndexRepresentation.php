@@ -1,7 +1,8 @@
-<?php
+<?php declare(strict_types=1);
 
 /*
  * Copyright BibLibre, 2016
+ * Copyright Daniel Berthereau, 2020-2021
  *
  * This software is governed by the CeCILL license under French law and abiding
  * by the rules of distribution of free software.  You can use, modify and/ or
@@ -30,6 +31,8 @@
 namespace Search\Api\Representation;
 
 use Omeka\Api\Representation\AbstractEntityRepresentation;
+use Search\Indexer\NoopIndexer;
+use Search\Querier\NoopQuerier;
 
 class SearchIndexRepresentation extends AbstractEntityRepresentation
 {
@@ -40,16 +43,15 @@ class SearchIndexRepresentation extends AbstractEntityRepresentation
 
     public function getJsonLd()
     {
-        $entity = $this->resource;
         return [
-            'o:name' => $entity->getName(),
-            'o:adapter' => $entity->getAdapter(),
-            'o:settings' => $entity->getSettings(),
-            'o:created' => $this->getDateTime($entity->getCreated()),
+            'o:name' => $this->resource->getName(),
+            'o:adapter' => $this->resource->getAdapter(),
+            'o:settings' => $this->resource->getSettings(),
+            'o:created' => $this->getDateTime($this->resource->getCreated()),
         ];
     }
 
-    public function adminUrl($action = null, $canonical = false)
+    public function adminUrl($action = null, $canonical = false): string
     {
         $url = $this->getViewHelper('Url');
         $params = [
@@ -63,18 +65,31 @@ class SearchIndexRepresentation extends AbstractEntityRepresentation
         return $url('admin/search/index-id', $params, $options);
     }
 
-    /**
-     * @return string
-     */
-    public function name()
+    public function name(): string
     {
         return $this->resource->getName();
     }
 
+    public function cleanName(): string
+    {
+        return strtolower(str_replace('__', '_',
+            preg_replace('/[^a-zA-Z0-9]/', '_', $this->resource->getName())
+        ));
+    }
+
     /**
-     * @return \Search\Adapter\AdapterInterface|null
+     * Get unique short name of this index.
+     *
+     * The short name is used in Solr module to create a unique id, that should
+     * be 32 letters max in order to be sorted (39rhjw-Z-item_sets/7654321:fr_FR),
+     * it should be less than two letters, so don't create too much indexes.
      */
-    public function adapter()
+    public function shortName(): string
+    {
+        return base_convert((string) $this->id(), 10, 36);
+    }
+
+    public function adapter(): ?\Search\Adapter\AdapterInterface
     {
         $name = $this->resource->getAdapter();
         $adapterManager = $this->getServiceLocator()->get('Search\AdapterManager');
@@ -83,34 +98,40 @@ class SearchIndexRepresentation extends AbstractEntityRepresentation
             : null;
     }
 
-    /**
-     * @return array
-     */
-    public function settings()
+    public function settings(): array
     {
-        return $this->resource->getSettings();
+        return $this->resource->getSettings() ?? [];
     }
 
-    /**
-     * @return \DateTime
-     */
-    public function created()
+    public function setting(string $name, $default = null)
+    {
+        $settings = $this->resource->getSettings();
+        return $settings[$name] ?? $default;
+    }
+
+    public function subSetting(string $mainName, string $name, $default = null)
+    {
+        $settings = $this->resource->getSettings();
+        return $settings[$mainName][$name] ?? $default;
+    }
+
+    public function settingAdapter(string $name, $default = null)
+    {
+        $settings = $this->resource->getSettings();
+        return $settings['adapter'][$name] ?? $default;
+    }
+
+    public function created(): \DateTime
     {
         return $this->resource->getCreated();
     }
 
-    /**
-     * @return \Search\Entity\SearchIndex
-     */
-    public function getEntity()
+    public function getEntity(): \Search\Entity\SearchIndex
     {
         return $this->resource;
     }
 
-    /**
-     * @return string
-     */
-    public function adapterLabel()
+    public function adapterLabel(): string
     {
         $adapter = $this->adapter();
         if (!$adapter) {
@@ -123,42 +144,44 @@ class SearchIndexRepresentation extends AbstractEntityRepresentation
     }
 
     /**
-     * @return \Search\Indexer\IndexerInterface NoopIndexer is returned when
-     * the indexer is not available.
+     * @return NoopIndexer is returned when the indexer is not available.
      */
-    public function indexer()
+    public function indexer(): \Search\Indexer\IndexerInterface
     {
-        $serviceLocator = $this->getServiceLocator();
+        $services = $this->getServiceLocator();
         $adapter = $this->adapter();
         if ($adapter) {
-            $indexerClass = $adapter->getIndexerClass()?: \Search\Indexer\NoopIndexer::class;
+            $indexerClass = $adapter->getIndexerClass() ?: NoopIndexer::class;
         } else {
-            $indexerClass = \Search\Indexer\NoopIndexer::class;
+            $indexerClass = NoopIndexer::class;
         }
+
+        /** @var \Search\Indexer\IndexerInterface $indexer */
         $indexer = new $indexerClass;
-        $indexer->setServiceLocator($serviceLocator);
-        $indexer->setSearchIndex($this);
-        $indexer->setLogger($serviceLocator->get('Omeka\Logger'));
-        return $indexer;
+        return $indexer
+            ->setServiceLocator($services)
+            ->setSearchIndex($this)
+            ->setLogger($services->get('Omeka\Logger'));
     }
 
     /**
-     * @return \Search\Querier\QuerierInterface NoopQuerier is returned when
-     * the indexer is not available.
+     * @return NoopQuerier is returned when the querier is not available.
      */
-    public function querier()
+    public function querier(): \Search\Querier\QuerierInterface
     {
-        $serviceLocator = $this->getServiceLocator();
+        $services = $this->getServiceLocator();
         $adapter = $this->adapter();
         if ($adapter) {
-            $querierClass = $adapter->getQuerierClass()?: \Search\Querier\NoopQuerier::class;
+            $querierClass = $adapter->getQuerierClass() ?: \Search\Querier\NoopQuerier::class;
         } else {
             $querierClass = \Search\Querier\NoopQuerier::class;
         }
+
+        /** @var \Search\Querier\QuerierInterface $querier */
         $querier = new $querierClass;
-        $querier->setServiceLocator($serviceLocator);
-        $querier->setSearchIndex($this);
-        $querier->setLogger($serviceLocator->get('Omeka\Logger'));
-        return $querier;
+        return $querier
+            ->setServiceLocator($services)
+            ->setSearchIndex($this)
+            ->setLogger($services->get('Omeka\Logger'));
     }
 }

@@ -1,8 +1,8 @@
-<?php
+<?php declare(strict_types=1);
 
 /*
  * Copyright BibLibre, 2016
- * Copyright Daniel Berthereau, 2017-2018
+ * Copyright Daniel Berthereau, 2017-2020
  *
  * This software is governed by the CeCILL license under French law and abiding
  * by the rules of distribution of free software.  You can use, modify and/ or
@@ -30,11 +30,10 @@
 
 namespace Search\Form\Admin;
 
-use Zend\Form\Element;
-use Zend\Form\Form;
-use Zend\Form\Element\Text;
-use Zend\I18n\Translator\TranslatorAwareInterface;
-use Zend\I18n\Translator\TranslatorAwareTrait;
+use Laminas\Form\Element;
+use Laminas\Form\Form;
+use Laminas\I18n\Translator\TranslatorAwareInterface;
+use Laminas\I18n\Translator\TranslatorAwareTrait;
 
 class SearchIndexConfigureForm extends Form implements TranslatorAwareInterface
 {
@@ -42,44 +41,32 @@ class SearchIndexConfigureForm extends Form implements TranslatorAwareInterface
 
     protected $apiManager;
 
-    public function init()
+    public function init(): void
     {
-        $this->add([
-            'name' => 'resources',
-            'type' => Element\MultiCheckbox::class,
-            'options' => [
-                'label' => 'Resources indexed', // @translate
-                'value_options' => $this->getResourcesOptions(),
-            ],
-            'attributes' => [
-                'value' => ['items'],
-            ],
-        ]);
-
-        //LIBIS
-        $this->add([
-            'name' => 'template',
-            'type' => Text::class,
-            'options' => [
-                'label' => 'Resource template ID', // @translate
-            ],
-            'attributes' => [
-                'id' => 'resource',
-                'required' => false,
-            ],
-        ]);
-        //LIBIS - END
-    }
-
-    public function setApiManager($apiManager)
-    {
-        $this->apiManager = $apiManager;
-        return $this;
-    }
-
-    public function getApiManager()
-    {
-        return $this->apiManager;
+        $this
+            ->add([
+                'name' => 'o:name',
+                'type' => Element\Text::class,
+                'options' => [
+                    'label' => 'Name', // @translate
+                ],
+                'attributes' => [
+                    'id' => 'o-name',
+                    'required' => true,
+                ],
+            ])
+            ->add([
+                'name' => 'resources',
+                'type' => Element\MultiCheckbox::class,
+                'options' => [
+                    'label' => 'Resources indexed', // @translate
+                    'value_options' => $this->getResourcesOptions(),
+                ],
+                'attributes' => [
+                    'id' => 'resources',
+                    'value' => ['items'],
+                ],
+            ]);
     }
 
     /**
@@ -89,15 +76,22 @@ class SearchIndexConfigureForm extends Form implements TranslatorAwareInterface
      *
      * @return array
      */
-    protected function getResourcesOptions()
+    protected function getResourcesOptions(): array
     {
-        $translator = $this->getTranslator();
-
-        $options = [
-            'items' => $translator->translate('Items'),
-            'item_sets' => $translator->translate('Item sets'),
+        return [
+            'items' => 'Items',
+            'item_sets' => 'Item sets',
         ];
+    }
 
-        return $options;
+    public function setApiManager($apiManager): self
+    {
+        $this->apiManager = $apiManager;
+        return $this;
+    }
+
+    public function getApiManager(): \Omeka\Api\Manager
+    {
+        return $this->apiManager;
     }
 }
