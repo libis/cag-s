@@ -142,31 +142,27 @@ $thumb = $item->primaryMedia();
   <?php endif; ?>
   
   <?php $frames = $item->value('dcterms:hasVersion',array('all'=>true));?>
-  <?php if($frames):?>
-       
-      <!--<div class="slick-embed">
-        <?php foreach($frames as $frame):?>
-          <div class="embed-video">
-            <?php $frame = str_replace('http:', '', $frame);?>       
-            <iframe src="<?php echo $frame;?>"></iframe>
-          </div>
-        <?php endforeach;?> 
-      </div>-->
-        
-        <?php foreach($frames as $frame):?>
-          <?php if (filter_var($frame, FILTER_VALIDATE_URL)) { ?>
-            <div class="section section--default">   
-              <div class="container" style="margin-top:2rem;">    
-                <a target="_blank" href="<?php echo $frame;?>" class="btn btn--ext">
-                  Bekijk de film
-                </a>
-              </div>
-            </div>      
-          <?php } ?>  
-        <?php endforeach;?>   
-     
-  <?php endif;?>     
-   
+  <?php if($frames || $item->value('dcterms:accrualPeriodicity')):?>   
+    <div class="section section--default">   
+      <div class="container" style="margin-top:2rem;">   
+        <?php if($frames):?>            
+          <?php foreach($frames as $frame):?>
+            <?php if (filter_var($frame, FILTER_VALIDATE_URL)) { ?>                
+              <a target="_blank" href="<?php echo $frame;?>" class="btn btn--ext" style="margin-right:5px;">
+                Bekijk de film
+              </a>                    
+            <?php } ?>  
+          <?php endforeach;?>
+        <?php endif;?>     
+
+        <?php if($item->value('dcterms:accrualPeriodicity')):?>
+          <a target="_blank" href="<?php echo $item->value('dcterms:accrualPeriodicity');?>" class="btn btn--ext">     
+        Raadpleeg het archief</a>
+        <?php endif;?>            
+      </div>
+    </div>  
+  <?php endif;?>  
+    
   <?php if($item->displayDescription()):?>
     <div class="section section--default">
       <div class="container">
