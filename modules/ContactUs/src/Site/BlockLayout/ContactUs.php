@@ -370,6 +370,7 @@ class ContactUs extends AbstractBlockLayout
         $message = $mailer->createMessage();
         $body = new MimeMessage();
         $body->setParts(array($html));
+        $dontsend = false;
         $message
             ->setTo($params['to'], $params['toName'])
             ->setSubject($params['subject'])
@@ -377,16 +378,23 @@ class ContactUs extends AbstractBlockLayout
         if ($params['from']) {
             $message
                 ->setFrom($params['from'], $params['fromName']);
+            if($params['from']):                
+                if(str_contains($params['from'],"myemail")){
+                    $dontsend = true;
+                }
+            endif;    
         }
-
-        try {
-            $mailer->send($message);
-        } catch (\Exception $e) {
-            $this->logger->err(new Message(
-                "Error when sending email. Arguments:\n%s",
-                json_encode($params, 448)
-            ));
-            return false;
+        
+        if(!$dontsend){
+            try {
+                $mailer->send($message);
+            } catch (\Exception $e) {
+                $this->logger->err(new Message(
+                    "Error when sending email. Arguments:\n%s",
+                    json_encode($params, 448)
+                ));
+                return false;
+            }
         }
 
         return true;

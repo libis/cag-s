@@ -70,8 +70,13 @@ $translate = $this->plugin('translate');
                   $url = $resource->url();
                 endif;
               elseif($type == 'Event' || $type == 'News'):
-                $url = '/s/en'.$resource->url();
+                
                 $date = '';
+                if($resource->value('dcterms:relation')):
+                  $url = "/s/en/page/".$resource->value('dcterms:relation');
+                else:
+                  $url = $resource->url();
+                endif;
               else:
                 $url = $resource->url();
               endif;

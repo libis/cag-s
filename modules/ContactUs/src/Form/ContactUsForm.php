@@ -14,6 +14,8 @@ class ContactUsForm extends Form
         $question = $this->getOption('question');
         $checkAnswer = $this->getOption('checkAnswer');
 
+        $_GET   = filter_input_array(INPUT_GET, FILTER_SANITIZE_FULL_SPECIAL_CHARS);
+
         // "To" is used instead of "email" to avoid some basic spammers.
         $this->add([
             'name' => 'from',

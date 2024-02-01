@@ -388,10 +388,10 @@ class Harvest extends AbstractJob
             //add media if Beeld or Collectie
             if($localName == 'relation' && ($args['resource_template'] == 7 || $args['resource_template'] == 6)){
                 foreach ($dcMetadata->$localName as $imageUrl) {
-                    $media['https://resolver.libis.be/'.$imageUrl.'/stream?quality=LOW']= [
+                    $media['https://resolver.libis.be/'.$imageUrl.'/stream']= [
                         'o:ingester' => 'url',
-                        'o:source' => 'https://resolver.libis.be/'.$imageUrl.'/stream?quality=LOW',
-                        'ingest_url' => 'https://resolver.libis.be/'.$imageUrl.'/stream?quality=LOW',
+                        'o:source' => 'https://resolver.libis.be/'.$imageUrl.'/stream',
+                        'ingest_url' => 'https://resolver.libis.be/'.$imageUrl.'/stream',
                         'dcterms:title' => [
                             [
                                 'type' => 'literal',
