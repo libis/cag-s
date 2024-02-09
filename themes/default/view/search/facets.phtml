@@ -45,6 +45,7 @@ $options = $searchPage->setting('facet', []);
 <div class="grid__12 grid__4@med">
    <div class="panel panel--light">
     <h2>Filter <?php echo lcfirst($searchPage->name());?></h2>
+    <?= $this->searchForm($searchPage, null,true) ?>
         <?php if($query->getQuery()):?>
             <div class="current-query">
                 Zoekopdracht: <a title="verwijder zoekopdracht" href="<?= parse_url($_SERVER["REQUEST_URI"], PHP_URL_PATH).'?q=' ?>"><?= htmlspecialchars($query->getQuery());?> <span class="icon icon--clear"></span></a></button>

@@ -65,15 +65,13 @@ endif;
 $this->htmlElement('body')->appendAttribute('class', 'search-page resource browse');
 $this->headScript()->appendFile($this->assetUrl('jquery-ui.min.js', 'jQueryUI'));
 $this->headLink()->appendStylesheet($this->assetUrl('jquery-ui.min.css', 'jQueryUI'));
-$this->headLink()->appendStylesheet($this->assetUrl('css/search.css', 'Search'));
-$this->headScript()->appendFile($this->assetUrl('js/search.js', 'Search'));
+$this->headLink()->appendStylesheet($assetUrl('css/search.css', 'AdvancedSearch'));
+$this->headScript()->appendFile($assetUrl('js/search.js', 'AdvancedSearch'), 'text/javascript', ['defer' => 'defer']);
 ?>
 <!-- intro + image -->
 <div class="section section--lrg section--light">
    <div class="container">
-      <?php 
-       $page = $searchPage;
-      ?>
+      <?php $page = $searchPage;?>
 
        <!-- breadcrumbs -->
        <div class="breadcrumb spacer">
