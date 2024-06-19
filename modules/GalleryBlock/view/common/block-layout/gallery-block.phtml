@@ -20,9 +20,6 @@
                     $link = trim(strip_tags($link));
                   endif;
                 ?>
-                <?php if($link):?>
-                <a target="_blank" href="<?php echo $link;?>">
-                <?php endif;?>
                 <?php
                   $url='';
                   $media = $attachment->media();
@@ -31,10 +28,10 @@
                     $url = str_replace('http:', '', $url);
                   endif;
                 ?>
-                <img src="<?php echo  $url;?>">
-                <?php if($link):?>
-                </a>
+                <?php if(!$link):?>
+                  <?php $link = $url;?>
                 <?php endif;?>
+                <a target="_blank" href="<?php echo $link;?>"><img src="<?php echo  $url;?>"></a>
                 <?php if($text):?>
                   <div class="caption">
                     <?php print_r($text[0]);?>
