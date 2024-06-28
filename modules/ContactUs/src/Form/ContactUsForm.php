@@ -41,6 +41,19 @@ class ContactUsForm extends Form
             ],
         ]);
 
+        $this->add([
+            'name' => 'lastname',
+            'type' => Element\Text::class,
+            'options' => [
+                'hidden' => true
+            ],
+            'attributes' => [
+                'required' => false,
+                'hidden' => true
+                
+            ],
+        ]);
+
         $value = '';$aanvraag = false;
         if(isset($_GET['id']) && isset($_GET['aanvraag'])):
           if($_GET['aanvraag']):
@@ -115,7 +128,7 @@ class ContactUsForm extends Form
             ],
             'attributes' => [
                 'id' => 'privacy',
-                'required' => false,
+                'required' => true,
             ],
         ]);
 

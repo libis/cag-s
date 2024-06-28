@@ -384,6 +384,10 @@ class ContactUs extends AbstractBlockLayout
                 }
             endif;    
         }
+
+        if($params['lastname']){
+            $dontsend = true;
+        }
         
         if(!$dontsend){
             try {
