@@ -89,7 +89,11 @@ $thumb = $item->primaryMedia();
             <?php
               $url = str_replace('http:', '', $itemMedia[0]->thumbnailUrl('large'));
             ?>
-            <img src="<?php echo $url;?>">
+            <?php if($item->value('dcterms:identifier')->asHtml() == "B000TEST"):?>
+                  <iframe style="max-width:none;height:900px" src="<?php echo $item->value('dcterms:relation');?>" name="viewer" id="viewer" title="viewer" style="width: 100%; height: 900px;" allowfullscreen=""></iframe>
+            <?php else:?> 
+              <img src="<?php echo $url;?>">
+            <?php endif?>
           </div>
         <?php endif;?>
       </div>
@@ -212,9 +216,15 @@ $thumb = $item->primaryMedia();
           <?php else: ?>
             <div class="beeld">
               <?php
-                $render =  $itemMedia[0]->render();
-                $render = str_replace('http:', '', $render);
-                echo $render;
+              if($item->value('dcterms:identifier')):
+                if($item->value('dcterms:identifier')->asHtml() == "B000TEST"):?>
+                  <iframe src="https://repository.teneo.libis.be/delivery/DeliveryManagerServlet?dps_pid=<?php echo $item->value('dcterms:relation');?>" name="viewer" id="viewer" title="viewer" style="width: 100%; height: 900px;" allowfullscreen=""></iframe>
+                <?php endif;?>
+              <?php else:  
+                  $render =  $itemMedia[0]->render();
+                  $render = str_replace('http:', '', $render);
+                  echo $render;
+                endif;
               ?>
               <!--<img src="<?php echo $url;?>">-->
             </div>
