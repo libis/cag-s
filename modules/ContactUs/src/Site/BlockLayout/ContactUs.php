@@ -377,9 +377,9 @@ class ContactUs extends AbstractBlockLayout
             ->setBody($body);
         if ($params['from']) {
             $message->setFrom($params['from'], $params['fromName']);
-            //$message->setReplyTo("contact@cagnet.be", "CAG");
+            $message->setReplyTo("contact@cagnet.be", "CAG");
             if($params['from']):                
-                if(str_contains($params['from'],"myemail")){
+                if(str_contains($params['from'],"myemail") || str_contains($params['from'],"godaddy")){
                     $dontsend = true;
                 }
             endif;    

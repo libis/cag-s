@@ -36,7 +36,7 @@
 <?php $results = $response->getResults($resourceName); ?>
 <?php if (count($results)): ?>
   <div class="grid__12 <?php echo ($pagename != 'Verhalen' ? 'grid__8@med' : '');?>">
-    <div class="grid grid--2-col@med spacer--xsm  resource-list">
+    <div class="grid <?php echo ($pagename != 'Ledenbladen' ? 'grid--2-col@med' : 'ledenbox grid--3-col@med');?> spacer--xsm  resource-list">
         <?php foreach ($results as $result): ?>
             <?php $resource = $this->api()->read($resourceName, $result['id'])->getContent(); ?>
             <?php echo $this->partial('search/resource', [

@@ -246,5 +246,52 @@ $this->headScript()->appendFile($assetUrl('js/search.js', 'AdvancedSearch'), 'te
 
     dateFrom.parents('.field').hide();
     dateTo.parents('.field').hide();
+
+    <?php if($searchPage->name() == "Ledenbladen"):?>   
+      var filter_i = 0;
+      $('#search-filters').find('.filter').each(function (index) {
+          if(index > 0){
+            var button = "<a href='#' class='removefilter'><i class='fas fa-trash-alt'></i></a>";
+            $(this).append(button);
+          }        
+      });
+
+      $('#search-form').on('submit',function(e){
+        e.preventDefault();
+        const params = new URLSearchParams(window.location.search)
+        
+        params.set('q',$('[name="q"]').val());     
+        window.location.href = location.protocol + '//' + location.host + location.pathname+'?'+params.toString();
+    
+      });
+    
+      /*$('#form-search').find('.inputs').each(function (index) {
+          if (index === 1) {
+            var button2 = "<a href='https://services3.libis.be/veb/s/start/objects' style='display:inline-block' class='button is-outlined is-primary is-small'>Reset</a>";
+            $(this).append(button2);
+            
+          }        
+      });*/
+
+      var wrapper = $("#search-filters span");
+      var add_button = $(".add_field_button");
+
+      $(document).on('click',".removefilter",function(e) {
+        e.preventDefault();
+        $(this).parent().remove();
+        filter_i--;
+      });
+
+      $(add_button).click(function (e) {
+          e.preventDefault();
+          filter_i++;
+          $(wrapper).before('<fieldset class="filter"><select name="filter['+filter_i+'][field]"><option value="dcterms_title_txt">Titel</option><option value="media_txt2">Inhoud</option></select><input type="text" name="filter['+filter_i+'][value]" value=""><a class="removefilter"><i class="fas fa-trash-alt"></i></a></fieldset>'); //add input box
+      });
+
+    
+    
+      $("#search-filters").append(add_button);
+    <?php endif;?>
+
   });
 </script>

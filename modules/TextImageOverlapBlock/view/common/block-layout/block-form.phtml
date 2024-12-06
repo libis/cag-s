@@ -1,7 +1,13 @@
 <?php
 use Zend\Form\Element\Textarea;
 
-echo $this->blockAttachmentsForm($block);
+try{
+  $html = $this->blockAttachmentsForm($block);
+}catch(Exception $e){
+  $html = $this->blockAttachmentsForm();
+}
+
+echo $html;
 ?>
 <h4>Title</h4>
 <div class="field">

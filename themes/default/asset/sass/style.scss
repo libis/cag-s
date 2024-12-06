@@ -702,3 +702,139 @@ input[type=checkbox]{
     font-size: 1rem;
   }
 }
+
+@media (min-width: 980px) {
+  
+  
+}
+
+.ledenbox{
+  .panel, .card--variant .card__body {
+    padding: 21px 18px;
+  }
+
+  .card__title{
+    font-size: 1.1rem;
+  }
+}
+
+#advanced-search-form{
+  h4{
+    margin-bottom: 0.5rem;
+  }
+
+  .field-meta{
+    display: none;
+  }
+
+  [data-field-type="daterange"]{    
+    margin-bottom: 0.5rem;
+
+    .field-meta{
+      display: inline;
+    }
+
+    legend{
+      color: #006B65;
+      font-weight: bold;
+      margin-bottom: 0.5rem;
+    }
+
+    > div {
+      display: inline-block;
+      font-size: 0.9rem;
+      
+      > div{
+        display: inline-block;
+      }
+    }
+
+    input{
+      width: 80px;
+      margin: 0 5px;
+    }
+  }
+
+  #search-filters{
+    margin:0.8rem 0;
+
+    legend{
+      display: none;
+    }
+
+    .filter{
+      padding:0;
+      margin-bottom: 0.3rem;
+      position: relative;
+    }
+
+    .removefilter{
+      position: absolute;
+      font-size: 0.9rem;
+      right:-1.5rem;
+      padding:0.2rem;
+      line-height: 2;
+      display: block;
+      height: 100%;
+      cursor: pointer;
+      z-index: 10;
+    }
+
+    .add_field_button{
+      border: none;
+      background-color: inherit;
+      padding: 0.5rem 0;
+      font-size: 16px;
+      cursor: pointer;
+      display: inline-block;
+
+      i{
+        color: #006B65;
+        font-size: 0.8rem;;
+      }
+    }
+
+    #search-filters .filter select:nth-of-type(1) {
+      min-width: 80px;
+      margin-left: 0;
+    }
+
+    input{
+      width: calc(100% - 70px);
+    }
+  
+  }
+
+  #submit{
+    min-width: 160px;
+    transition: background 100ms ease-in-out, border 100ms ease-in-out, color 100ms ease-in-out;
+    display: inline-block;
+    padding: 0.5em 1em;
+    border-style: solid;
+    border-width: 2px;
+    font-weight: 600;
+    line-height: 1.5;
+    text-decoration: none;
+    color: #006B65;
+    background-color: transparent;
+    border-color: #006B65;
+    -webkit-transition: background 100ms ease-in-out, border 100ms ease-in-out, color 100ms ease-in-out;
+    float: none;
+    margin:10px 0;
+
+    &:hover, .btn:focus {
+      color: #fff;
+      background-color: #006B65;
+      border-color: #00605b;
+    }
+  }  
+}
+
+.snippet{
+  font-size:0.9rem;
+  margin-bottom:1rem;
+
+  .hit{
+    background: rgba(#006b65,.2);
+  }
+}

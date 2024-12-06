@@ -10,8 +10,12 @@
                   $media = $attachments[0]->media();
                   $url = '';
                   if($media):
-                    $url = $media->thumbnailUrl('large');
-                    $url = str_replace('http:', '', $url);
+                    try{
+                      $url = $media->thumbnailUrl('large');
+                      $url = str_replace('http:', '', $url);
+                    }catch(Exception $e){
+                      $url = "";
+                    }                   
                   endif;
                 endif; ?>
                 <div class="grid__img" style="background:url(<?php echo $url;?>) no-repeat center center;background-size: cover;">

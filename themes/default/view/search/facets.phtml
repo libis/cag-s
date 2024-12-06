@@ -45,25 +45,31 @@ $options = $searchPage->setting('facet', []);
 <div class="grid__12 grid__4@med">
    <div class="panel panel--light">
     <h2>Filter <?php echo lcfirst($searchPage->name());?></h2>
-    <?= $this->searchForm($searchPage, null,true) ?>
+    <?php //echo $this->searchForm($searchPage, null,true); ?>
         <?php if($query->getQuery()):?>
             <div class="current-query">
                 Zoekopdracht: <a title="verwijder zoekopdracht" href="<?= parse_url($_SERVER["REQUEST_URI"], PHP_URL_PATH).'?q=' ?>"><?= htmlspecialchars($query->getQuery());?> <span class="icon icon--clear"></span></a></button>
             </div>
+            <hr>
         <?php endif;?>
-        <hr>
-        <h4>Tekstueel zoeken</h4>
+        
+        <h4 style="margin-bottom: 0.5rem;">Tekstueel zoeken</h4>
         <div class="spacer">
-            <form>
-            <?php //echo $this->searchForm(); ?>
+        <?php if($searchPage->name() == "Ledenbladen"):?>    
+            <?php echo $this->searchForm(); ?>
+            <button class="add_field_button"><i class='fas fa-plus'></i> Een extra veld toevoegen</button>
+        <?php else:?>    
+           <form>            
             <div class="form__item">
-                <input type="text" name="q" class="form__text" value="<?= htmlspecialchars($query->getQuery());?>">
+                    <input type="text" name="q" class="form__text" value="<?= htmlspecialchars($query->getQuery());?>">
             </div>
             <div class="form__actions">
-                <button type="submit" class="btn form__btn">zoeken <span class="icon icon--search"></span></button>
+                    <button type="submit" class="btn form__btn">zoeken <span class="icon icon--search"></span></button>
             </div>
-            </form>
+           </form>
+        <?php endif; ?>
         </div>    
+
         <hr>          
     <?php if(!empty($searchPage->name('facet', 'facets'))):?>    
 

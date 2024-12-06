@@ -102,7 +102,7 @@ class Harvest extends AbstractJob
                 break;
             case 'oai_dc':
             case 'dc':
-                $method = '_anyDctermsToJson';
+                $method = '_oaidcToJson';
                 break;
             case 'oai_dcterms':
             case 'oai_adlib':
@@ -199,19 +199,24 @@ class Harvest extends AbstractJob
                     }
                 }
                 $pre_record = $this->{$method}($record, $args['item_set_id'],$args);
-                $id_exists = $this->itemExists($pre_record, $pre_record['dcterms:isVersionOf'][0]['@value'],$args['resource_type']);
-                
-                if(!$id_exists){
-                  try{
-                      $response_c = $this->api->create($args['resource_type'], $pre_record, [], []);
-                      $response_c = null;
-                      ++$stats['imported'];
-                    }catch(\Throwable $t){
-                      $this->logger->info($pre_record['dcterms:isVersionOf'][0]['@value']." error");
+               
+                    if($args['endpoint'] != "https://repository.teneo.libis.be/oaiprovider/request"):
+                        $id_exists = $this->itemExists($pre_record, $pre_record['dcterms:isVersionOf'][0]['@value'],$args);
+                    else:
+                        $id_exists = $this->itemExists($pre_record, $pre_record['dcterms:title'][0]['@value'],$args);
+                    endif;    
+                    if(!$id_exists){
+                    try{
+                        $response_c = $this->api->create($args['resource_type'], $pre_record, [], []);
+                        $response_c = null;
+                        ++$stats['imported'];
+                        }catch(\Throwable $t){
+                        $this->logger->info($pre_record['dcterms:isVersionOf'][0]['@value']." error");
+                        }
+                    }else{
+                    ++$stats['updated'];
                     }
-                }else{
-                  ++$stats['updated'];
-                }
+                
             }
 
             /*if ($toInsert) {
@@ -258,15 +263,29 @@ class Harvest extends AbstractJob
         ));
     }
 
-    protected function itemExists($item, $id_version, $resource_type){
+    protected function itemExists($item, $id_version, $args){
+        
         $query = [];
+        $endpoint = $args['endpoint'];
+        $resource_type = $args['resource_type'];
 
-        $query['property'][0] = array(
-            'property' => 27,
-            'text' => $id_version,
-            'type' => 'eq',
-            'joiner' => 'and'
-        );
+
+        if($endpoint != "https://repository.teneo.libis.be/oaiprovider/request"):
+            $query['property'][0] = array(
+                'property' => 27,
+                'text' => $id_version,
+                'type' => 'eq',
+                'joiner' => 'and'
+            );
+        else:            
+            //$this->logger->info("id: ".$id_version);
+            $query['property'][0] = array(
+                'property' => 1,
+                'text' => $id_version,
+                'type' => 'eq',
+                'joiner' => 'and'
+            );
+        endif; 
 
         $results = '';
         $response = $this->api->search('items',$query);
@@ -274,16 +293,17 @@ class Harvest extends AbstractJob
 
         foreach($results as $result):
             if($result):
-                //$this->logger->info($result->id());
+                
                 try{
                     //don't update files for now to avoid redownload
                     if(isset($item['o:media'])):
                         unset($item['o:media']);
                     endif;
+                    
                     $response = $this->api->update($resource_type, $result->id() ,$item, [], ['isPartial' => true, 'flushEntityManager' => true]);
                     $response = null;
                 }catch(\Throwable $t){
-                    $this->logger->info($resultitem['dcterms:isVersionOf'][0]['@value']." error");
+                    $this->logger->info($result->id()." update error");
                 }
                 return true;
             endif;
@@ -337,29 +357,83 @@ class Harvest extends AbstractJob
 
     private function _oaidcToJson(SimpleXMLElement $record, $itemSetId, $args)
     {
+        $dcMetadata = $record->metadata;
+        if(!$dcMetadata):
+            return false;
+          endif;
+        
+        $elementTexts = [];
         $dcMetadata = $record
             ->metadata
             ->children(self::OAI_DC_NAMESPACE)
             ->children(self::DUBLIN_CORE_NAMESPACE);
-
-            //$this->logger->info('Metadata:');
-            //$this->logger->info(print_r( $record, true ));
-
-        $elementTexts = [];
+       
         foreach ($this->dcProperties as $propertyId => $localName) {
-
             if (isset($dcMetadata->$localName)) {
-
+                
                 $elementTexts["dcterms:$localName"] = $this->extractValues($dcMetadata, $propertyId);
             }
         }
 
-        $meta = $elementTexts;
-        $meta['o:item_set'] = ["o:id" => $setId];
+        $dcMetadata = $record
+            ->metadata
+            ->children(self::OAI_DC_NAMESPACE)
+            ->children(self::DCTERMS_NAMESPACE);
 
+        foreach ($this->dcProperties as $propertyId => $localName) {
+            if (isset($dcMetadata->$localName)) {
+                $elementTexts["dcterms:$localName"] = $this->extractValues($dcMetadata, $propertyId);
+            }
+        }    
+
+        $meta = $elementTexts;
+        //$meta['o:item_set'] = ["o:id" => $setId];
+
+        if($args['endpoint'] == "https://repository.teneo.libis.be/oaiprovider/request"):
+            $dcHeader = $record->header->identifier;
+            $ie = explode(":",$dcHeader);
+            $ie = $ie[2];
+
+            $media['https://lib.is/'.$ie.'/thumbnail']= [
+                'o:ingester' => 'url',
+                'o:source' => 'https://lib.is/'.$ie.'/thumbnail',
+                'ingest_url' => 'https://lib.is/'.$ie.'/thumbnail',
+                'dcterms:title' => [
+                    [
+                        'type' => 'literal',
+                        '@language' => '',
+                        '@value' => $ie,
+                        'property_id' => 1,
+                    ],
+                ],
+            ];
+
+            $html = file_get_contents("https://lib.is/_/".$ie."/stream?file_label=ocr-full-text");
+            //$html = utf8_encode($html);
+            $html = mb_convert_encoding($html, 'UTF-8', 'Windows-1252');  
+
+            $media[$ie.'-ocr']= [
+                'o:ingester' => 'html',
+                'html' => $html."test",
+                'dcterms:title' => [
+                    [
+                        'type' => 'literal',
+                        '@language' => '',
+                        '@value' => $ie." OCR",
+                        'property_id' => 1,
+                    ],
+                ],
+            ];
+
+            foreach($media as $img):
+                $imgs[] = $img;
+            endforeach;
+
+            $meta['o:media'] = $imgs;
+        endif;    
         //resource template?
-        if($resource_template):
-          $meta['o:resource_template'] = ["o:id" => $resource_template];
+        if($args['resource_template']):
+          $meta['o:resource_template'] = ["o:id" => $args['resource_template']];
         endif;
 
         return $meta;
@@ -388,10 +462,10 @@ class Harvest extends AbstractJob
             //add media if Beeld or Collectie
             if($localName == 'relation' && ($args['resource_template'] == 7 || $args['resource_template'] == 6)){
                 foreach ($dcMetadata->$localName as $imageUrl) {
-                    $media['https://resolver.libis.be/'.$imageUrl.'/stream']= [
+                    $media['https://lib.is/'.$imageUrl.'/stream']= [
                         'o:ingester' => 'url',
-                        'o:source' => 'https://resolver.libis.be/'.$imageUrl.'/stream',
-                        'ingest_url' => 'https://resolver.libis.be/'.$imageUrl.'/stream',
+                        'o:source' => 'https://lib.is/'.$imageUrl.'/stream',
+                        'ingest_url' => 'https://lib.is/'.$imageUrl.'/stream',
                         'dcterms:title' => [
                             [
                                 'type' => 'literal',

@@ -47,6 +47,8 @@ if($type == 'Verhaal' || $type == 'Project' || $type == 'Agendapunt' || $type ==
   else:
     $url = $resource->url();
   endif;  
+elseif($type == 'Ledenblad'):
+  $url = "/s/test/item/".$resource->id();  
 else:
   $url = $resource->url();
 endif;
@@ -81,6 +83,29 @@ endif;
             <?php if($type == 'Beeld'):?>
                 <p class="datering"><?php echo $resource->value('dcterms:date');?></p>
             <?php endif;?>
+
+            <?php
+              if($type == 'Ledenblad' && $_GET["q"]):  
+                $media = $resource->media();
+                $q = htmlspecialchars($_GET["q"]);
+                if(isset($media[1])):
+                  $text = $media[1]->render();
+                  $text = str_replace(array("\r", "\n"), ' ', $text);
+                  $text = str_replace("  ", ' ', $text);
+
+                  $texts = preg_split("/".$q."/", $text);
+                  $texts = explode($q,$text);
+                  //echo sizeof($texts);
+                  
+                  if(sizeof($texts)>1):
+                    echo "<div class='snippet'>";
+                    echo "...".substr($texts[0], -30)." <span class='hit'>".$q."</span> ".substr($texts[1], 0, 30).'...';
+                    echo "</div>";
+                  endif;
+                endif;
+              endif;
+            ?>
+
             <?php if($type == 'Film' && $resource->value('dcterms:source')):?>
                 <?php
                   $codes = array(
@@ -147,3 +172,4 @@ endif;
 <?php echo sprintf('</%s>', $tag); ?>
 
 </div></div>
+
