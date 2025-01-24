@@ -218,11 +218,8 @@ $thumb = $item->primaryMedia();
           <?php else: ?>
             <div class="beeld">
               <?php
-              if($item->value('dcterms:identifier')):
-                if($item->value('dcterms:identifier')->asHtml() == "B000TEST"):?>
-                  <iframe src="https://repository.teneo.libis.be/delivery/DeliveryManagerServlet?dps_pid=<?php echo $item->value('dcterms:relation');?>" name="viewer" id="viewer" title="viewer" style="width: 100%; height: 900px;" allowfullscreen=""></iframe>
-                <?php endif;?>
-              <?php else:  
+                if($item->value('dcterms:identifier')):
+                else:  
                   $render =  $itemMedia[0]->render();
                   $render = str_replace('http:', '', $render);
                   echo $render;
@@ -241,12 +238,13 @@ $thumb = $item->primaryMedia();
 <div class="section section--default">
     <?php if(sizeof($itemMedia) > 1):?>
       <?php
-        $web_query;
-        if(isset($_GET["q"])):
-          $web_query = htmlspecialchars($_GET["q"]);
+        $web_query="";        
+        if(isset($_GET["q"])):  
+          $web_query = htmlspecialchars(strip_tags($_GET["q"]));          
+          $count = str_word_count($web_query);
         endif;
       ?>
-      <iframe style="width:100%;overflow:visible;height:700px;border:none" src="https://lib.is/<?php echo $itemMedia[0]->value("dcterms:title");?>/representation"></iframe>      
+      <iframe style="width:100%;overflow:visible;height:700px;border:none" src="https://repository.teneo.libis.be/delivery/DeliveryManagerServlet?dps_pid=<?php echo $itemMedia[0]->value("dcterms:title");?>&searchText=<?php echo $web_query;?>"></iframe>      
     <?php endif;?>  
 </div>
 <?php endif;?>  

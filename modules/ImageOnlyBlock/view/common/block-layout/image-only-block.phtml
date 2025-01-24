@@ -5,7 +5,8 @@
             $url = $media->thumbnailUrl('large');
             $url = str_replace('http:', '', $url);
           ?>
-          <img src="<?php echo $url;?>">
+          
+          <?php echo $media->render();?>
           <figcaption><?php echo $attachments[0]->caption();?></figcaption>
         <?php endif;?>
     </div>

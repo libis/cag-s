@@ -203,6 +203,9 @@ $this->headScript()->appendFile($assetUrl('js/search.js', 'AdvancedSearch'), 'te
             $(this).parent().parent().hide();
             $(this).parent().parent().prev( ".more-link" ).show();
         });
+        $('#q').change(function(e) {
+          $('input[type=submit].search-submit').focus();
+        });
     });
 </script>
 <script>

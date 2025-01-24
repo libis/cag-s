@@ -55,6 +55,12 @@ endif;
 ?>
 <div class="grid__item">
    <div class="card card--clickable card--link card--variant2">
+      <?php 
+        $q = htmlspecialchars(strip_tags($_GET["q"]));
+        if($type == 'Ledenblad'):
+          $url = $url."?q=".$q;
+        endif;
+     ?>
      <a href="<?php echo $url;?>" style="display:block;">
         <?php echo sprintf('<%s class="%s resource">', $tag, $resource->resourceName()); ?>
         <?php $media = $resource->primaryMedia(); ?>
@@ -78,28 +84,33 @@ endif;
         
 
         <div class="card__body panel panel--light">
-
+            
             <h2 class="heading--3 card__title"><a href="<?php echo $url;?>"><?php echo $resource->displayTitle(); ?></a></h2>
             <?php if($type == 'Beeld'):?>
                 <p class="datering"><?php echo $resource->value('dcterms:date');?></p>
             <?php endif;?>
 
             <?php
-              if($type == 'Ledenblad' && $_GET["q"]):  
+              if($type == 'Ledenblad' && $q):  
                 $media = $resource->media();
-                $q = htmlspecialchars($_GET["q"]);
+                
                 if(isset($media[1])):
                   $text = $media[1]->render();
+                  //echo $text;
                   $text = str_replace(array("\r", "\n"), ' ', $text);
                   $text = str_replace("  ", ' ', $text);
 
-                  $texts = preg_split("/".$q."/", $text);
+                  //$texts = preg_split("/".$q."/", $text);
                   $texts = explode($q,$text);
                   //echo sizeof($texts);
                   
                   if(sizeof($texts)>1):
+                    $first = explode(" ",$texts[0]);
+                    $first = implode(' ',array_splice($first,-4));
+                    $last = explode(" ",$texts[1]);
+                    $last = implode(' ',array_splice($last,0,4));
                     echo "<div class='snippet'>";
-                    echo "...".substr($texts[0], -30)." <span class='hit'>".$q."</span> ".substr($texts[1], 0, 30).'...';
+                    echo "...".$first." <span class='hit'>".$q."</span> ".$last.'...';
                     echo "</div>";
                   endif;
                 endif;

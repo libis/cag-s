@@ -51,6 +51,8 @@ class Harvest extends AbstractJob
         $entityManager = $this->getServiceLocator()->get('Omeka\EntityManager');
         $originalIdentityMap = $entityManager->getUnitOfWork()->getIdentityMap();
 
+        $this->logger->info("starting");
+
         // Set Dc Properties for mapping
         $dcProperties = $this->api->search('properties', ['vocabulary_id' => 1], ['responseContent' => 'resource'])->getContent();
         $elements = [];
@@ -199,23 +201,25 @@ class Harvest extends AbstractJob
                     }
                 }
                 $pre_record = $this->{$method}($record, $args['item_set_id'],$args);
-               
-                    if($args['endpoint'] != "https://repository.teneo.libis.be/oaiprovider/request"):
-                        $id_exists = $this->itemExists($pre_record, $pre_record['dcterms:isVersionOf'][0]['@value'],$args);
-                    else:
-                        $id_exists = $this->itemExists($pre_record, $pre_record['dcterms:title'][0]['@value'],$args);
-                    endif;    
-                    if(!$id_exists){
+                if(!$pre_record['dcterms:isVersionOf'][0]['@value'] && !$pre_record['dcterms:title'][0]['@value']):
+                    continue;
+                endif;    
+                if($args['endpoint'] != "https://repository.teneo.libis.be/oaiprovider/request"):
+                    $id_exists = $this->itemExists($pre_record, $pre_record['dcterms:isVersionOf'][0]['@value'],$args);    
+                else:
+                    $id_exists = $this->itemExists($pre_record, $pre_record['dcterms:title'][0]['@value'],$args);
+                endif;    
+                if(!$id_exists){
                     try{
                         $response_c = $this->api->create($args['resource_type'], $pre_record, [], []);
                         $response_c = null;
                         ++$stats['imported'];
                         }catch(\Throwable $t){
                         $this->logger->info($pre_record['dcterms:isVersionOf'][0]['@value']." error");
-                        }
-                    }else{
-                    ++$stats['updated'];
                     }
+                }else{
+                    ++$stats['updated'];
+                }
                 
             }
 
@@ -408,13 +412,15 @@ class Harvest extends AbstractJob
                 ],
             ];
 
+            $this->logger->info($ie);
             $html = file_get_contents("https://lib.is/_/".$ie."/stream?file_label=ocr-full-text");
             //$html = utf8_encode($html);
+
             $html = mb_convert_encoding($html, 'UTF-8', 'Windows-1252');  
 
             $media[$ie.'-ocr']= [
                 'o:ingester' => 'html',
-                'html' => $html."test",
+                'html' => $html."",
                 'dcterms:title' => [
                     [
                         'type' => 'literal',
