@@ -1,0 +1,100 @@
+<div class="section section--default ledenbladen" style="padding:52px 0 0 0">
+  <div class="container">
+    <div class="panel panel--light ledenbladen-advanced">
+      <span class="search-loop"><i class="fas fa-search"></i></span>
+      <?php $searchConfig = $this->api()->searchOne('search_configs', ['id' => 49])->getContent(); ?>
+      <?php echo $this->searchForm($searchConfig); ?>
+      <button class="add_field_button" type="button"><i class='fas fa-plus'></i> Een extra veld toevoegen</button>
+      <a id="advanced-toggle" class="active">Uitgebreid zoeken <i class="fas fa-chevron-down"></i></a>
+      <fieldset class="titel">
+        <legend>Titel</legend>
+        <div class="field">
+          <select class="selectize" placeholder="Titel" name="facet[dcterms_alternative_ss][0]">
+            <option value=""></option>
+            <?php foreach ($titels as $key => $value): ?>
+              <option value="<?php echo $value['val']; ?>">
+                <?php echo $value['val']; ?>
+              </option>
+            <?php endforeach; ?>
+          </select>
+        </div>
+      </fieldset>
+    </div>
+  </div>
+</div>
+<script>
+  $(document).ready(function() {
+    var filter_i = 0;
+    $('#search-filters').find('.filter').each(function(index) {
+      if (index > 1) {
+        var button = "<a href='#' class='removefilter'><i class='fas fa-trash-alt'></i></a>";
+        $(this).append(button);
+      }
+    });
+
+    $('#search-form').on('submit', function(e) {
+      e.preventDefault();
+      const params = new URLSearchParams(window.location.search)
+
+      params.set('q', '"' + $('[name="q"]').val() + '"');
+      window.location.href = location.protocol + '//' + location.host + location.pathname + '?' + params.toString();
+
+    });
+
+
+    var wrapper = $("#search-filters span");
+    var filter = $(".filter").first();
+    var add_button = $(".add_field_button");
+    var adv_button = $("#advanced-toggle");
+    var submit_button = $("#submit");
+    var search_loop = $(".search-loop");
+    var titel = $(".titel");
+
+    $("#search-filters").append(add_button);
+    add_button.hide()
+
+    filter.prepend(search_loop);
+    filter.append(submit_button);
+    filter.append(adv_button);
+    $("#form-search fieldset").last().after(titel);
+
+    $(document).on('click', ".removefilter", function(e) {
+      e.preventDefault();
+      $(this).parent().remove();
+      filter_i--;
+    });
+
+    $(add_button).click(function(e) {
+      e.preventDefault();
+      filter_i++;
+      //$(wrapper).before('<fieldset class="filter"><select name="filter['+filter_i+'][field]"><option value="dcterms_title_txt">Titel</option><option value="media_txt2">Inhoud</option></select><input type="text" name="filter['+filter_i+'][value]" value=""><a class="removefilter"><i class="fas fa-trash-alt"></i></a></fieldset>'); //add input box
+      wrapper.before('<fieldset class="filter show"><select name="filter[' + filter_i + '][join]"><option value="and" selected="selected">and</option><option value="or">or</option><option value="not">not</option></select><select name="filter[' + filter_i + '][field]"><option value="dcterms:title" selected="selected">Titel</option></select><input type="text" name="filter[' + filter_i + '][value]" value=""><a class="removefilter"><i class="fas fa-trash-alt"></i></a></fieldset>');
+    });
+
+    //$(".ledenbladen-advanced #form-search fieldset").hide();     
+
+    $("#advanced-toggle").click(function(e) {
+      e.preventDefault();
+      add_button.toggle();
+      //$(".ledenbladen-advanced #form-search fieldset").toggle();
+      $('.ledenbladen-advanced #form-search').find('fieldset').each(function(index) {
+        if (index > 0) {
+          $(this).toggleClass("show");
+        }
+      });
+
+      $("#advanced-search-form").toggleClass('active');
+      $("#advanced-toggle").toggleClass('active');
+
+      if ($("#advanced-toggle").hasClass('active')) {
+        $("#advanced-toggle").html('Uitgebreid zoeken <i class="fas fa-chevron-down"></i>');
+        $(adv_button).before(submit_button);
+      } else {
+        $("#advanced-toggle").html('Uitgebreid zoeken <i class="fas fa-chevron-up"></i>');
+        $(".ledenbladen-advanced #form-search div").last().append(submit_button);
+      }
+    });
+
+
+  });
+</script>

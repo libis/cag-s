@@ -46,9 +46,9 @@ if($type == 'Verhaal' || $type == 'Project' || $type == 'Agendapunt' || $type ==
     $url = '/page/'.$resource->value('dcterms:relation');
   else:
     $url = $resource->url();
-  endif;  
-elseif($type == 'Ledenblad'):
-  $url = "/s/test/item/".$resource->id();  
+  endif; 
+elseif($type == 'Ledenblad'):  
+  $url = '/item/'.$resource->id();
 else:
   $url = $resource->url();
 endif;
@@ -56,9 +56,16 @@ endif;
 <div class="grid__item">
    <div class="card card--clickable card--link card--variant2">
       <?php 
-        $q = htmlspecialchars(strip_tags($_GET["q"]));
-        if($type == 'Ledenblad'):
-          $url = $url."?q=".$q;
+        
+        //var_dump($_GET["filter"]);
+        if($type == 'Ledenblad' && isset($_GET["filter"])):
+          $q = "";
+          foreach($_GET["filter"] as $key => $value):
+            if($value["join"] != "not"):
+              $q = $q." ".htmlspecialchars(strip_tags($value["value"]));
+            endif;  
+          endforeach;
+          $url = $url."?q=".trim($q);
         endif;
      ?>
      <a href="<?php echo $url;?>" style="display:block;">
@@ -83,38 +90,70 @@ endif;
         <?php endif; ?>
         
 
-        <div class="card__body panel panel--light">
-            
-            <h2 class="heading--3 card__title"><a href="<?php echo $url;?>"><?php echo $resource->displayTitle(); ?></a></h2>
+        <div class="card__body panel panel--light">             
+          <?php 
+            if($type == 'Ledenblad'):
+              $title = $resource->displayTitle();
+              $title = explode(", ",$title);
+              $date = $title[1];
+              $title = explode(":",$title[2]);
+              $nr = $title[0];
+              $title = $title[1];
+              $title = trim($title).", ".$date.", ".$nr;
+            else:
+              $title = $resource->displayTitle();
+            endif;  
+          ?>
+            <h2 class="heading--3 card__title"><a href="<?php echo $url;?>"><?php echo $title; ?></a></h2>
             <?php if($type == 'Beeld'):?>
                 <p class="datering"><?php echo $resource->value('dcterms:date');?></p>
             <?php endif;?>
 
             <?php
-              if($type == 'Ledenblad' && $q):  
+              if($type == 'Ledenblad' && isset($_GET["filter"])): 
                 $media = $resource->media();
                 
                 if(isset($media[1])):
                   $text = $media[1]->render();
                   //echo $text;
+                  $text = str_replace(array("-\r", "-\n"), '', $text);
                   $text = str_replace(array("\r", "\n"), ' ', $text);
                   $text = str_replace("  ", ' ', $text);
+                endif;  
 
-                  //$texts = preg_split("/".$q."/", $text);
-                  $texts = explode($q,$text);
-                  //echo sizeof($texts);
-                  
-                  if(sizeof($texts)>1):
-                    $first = explode(" ",$texts[0]);
-                    $first = implode(' ',array_splice($first,-4));
-                    $last = explode(" ",$texts[1]);
-                    $last = implode(' ',array_splice($last,0,4));
-                    echo "<div class='snippet'>";
-                    echo "...".$first." <span class='hit'>".$q."</span> ".$last.'...';
-                    echo "</div>";
-                  endif;
+                if($text):
+                  foreach($_GET["filter"] as $key => $value):
+                    if($value["join"] != "not" && $value["value"]):
+                      $search_text = htmlspecialchars(strip_tags($value["value"]));
+                      //$texts = explode($search_text,str_ireplace($search_text,$search_text,$text));
+                      $search_text = str_replace("-"," ",$search_text);
+                      $texts= preg_split("/".$search_text."/i", $text);
+                      if(sizeof($texts)>1):
+                        //$first = explode(" ",$texts[0]);
+                        $first = substr($texts[0],-45);
+                        //$last = explode(" ",$texts[1]);
+                        $last = substr($texts[1],0,45);
+                        echo "<div class='snippet'>";
+                        echo "...".$first."<span class='hit'>".$search_text."</span>".$last.'...';
+                        echo "</div>";
+                        break;
+                      endif;  
+                      $search_text = str_replace(" ","-",$search_text);
+                      $texts= preg_split("/".$search_text."/i", $text);
+                      if(sizeof($texts)>1):
+                        //$first = explode(" ",$texts[0]);
+                        $first = substr($texts[0], -45);
+                        //$last = explode(" ",$texts[1]);
+                        $last = substr($texts[1],0,45);
+                        echo "<div class='snippet'>";
+                        echo "...".$first."<span class='hit'>".$search_text."</span>".$last.'...';
+                        echo "</div>";
+                        break;
+                      endif;
+                    endif;  
+                  endforeach;
                 endif;
-              endif;
+              endif;  
             ?>
 
             <?php if($type == 'Film' && $resource->value('dcterms:source')):?>

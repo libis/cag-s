@@ -13,6 +13,18 @@ else:
 endif;
 
 $thumb = $item->primaryMedia();
+
+if($type == 'Ledenblad'):
+  $title = $resource->displayTitle();
+  $title = explode(", ",$title);
+  $date = $title[1];
+  $title = explode(":",$title[2]);
+  $nr = $title[0];
+  $title = $title[1];
+  $title = trim($title).", ".$date.", ".$nr;
+else:
+  $title = $resource->displayTitle();
+endif;  
 ?>
 
 <!-- beeldbank: image / table -->
@@ -36,14 +48,14 @@ $thumb = $item->primaryMedia();
           <?php elseif($type == "Filmkopie"):?>
             <a href="/filmkopies?q=" itemprop="url" class="breadcrumb__item"><span itemprop="title">Filmkopies</span></a>
           <?php elseif($type == "Ledenblad"):?>
-            <a href="/s/test/ledenbladen?q=" itemprop="url" class="breadcrumb__item"><span itemprop="title">Ledenbladen</span></a>
+            <a href="/s/start/ledenbladen?q=" itemprop="url" class="breadcrumb__item"><span itemprop="title">Ledenbladen</span></a>
           <?php endif;?>
         </span>
         <span itemscope="" itemtype="http://data-vocabulary.org/Breadcrumb" class="breadcrumb__scope">
-            <span itemprop="title"><?php echo $item->displayTitle();?></span>
+            <span itemprop="title"><?php echo $title;?></span>
         </span>
     </div>
-    <h1><?php echo $this->pageTitle($item->displayTitle(), 2); ?></h1>
+    <h1><?php echo $this->pageTitle($title, 2); ?></h1>
     <?php if($item->value('dcterms:date') && ($type == 'Nieuws' || $type == 'Agendapunt')):?>
         <?php
           $date = $item->value('dcterms:date');
@@ -242,9 +254,10 @@ $thumb = $item->primaryMedia();
         if(isset($_GET["q"])):  
           $web_query = htmlspecialchars(strip_tags($_GET["q"]));          
           $count = str_word_count($web_query);
+          //echo $web_query;
         endif;
       ?>
-      <iframe style="width:100%;overflow:visible;height:700px;border:none" src="https://repository.teneo.libis.be/delivery/DeliveryManagerServlet?dps_pid=<?php echo $itemMedia[0]->value("dcterms:title");?>&searchText=<?php echo $web_query;?>"></iframe>      
+      <iframe style="width:100%;overflow:visible;height:800px;border:none" src="https://repository.teneo.libis.be/delivery/DeliveryManagerServlet?dps_pid=<?php echo $itemMedia[0]->value("dcterms:title");?>&searchText=<?php echo $web_query;?>"></iframe>      
     <?php endif;?>  
 </div>
 <?php endif;?>  
@@ -370,6 +383,19 @@ if($type != 'Nieuws' && $type != 'Agendapunt'):
 
         <div class="grid grid--3-col@med spacer--xsm">
           <?php foreach($resources as $resource):?>
+            <?php            
+              if($type == 'Ledenblad'):
+                $title = $resource->displayTitle();
+                $title = explode(", ",$title);
+                $date = $title[1];
+                $title = explode(":",$title[2]);
+                $nr = $title[0];
+                $title = $title[1];
+                $title = trim($title).", ".$date.", ".$nr;
+              else:
+                $title = $resource->displayTitle();
+              endif;    
+            ?>
           <div class="grid__item">
             <div class="card card--gray card--clickable card--link card-variant2">
                <?php $media = $resource->primaryMedia(); ?>
@@ -383,7 +409,7 @@ if($type != 'Nieuws' && $type != 'Agendapunt'):
                <?php endif; ?>
 
                <div class="card__body panel panel--light">
-                   <h2 class="heading--3 card__title"><?php echo $resource->link($resource->displayTitle()); ?></h2>
+                   <h2 class="heading--3 card__title"><?php echo $resource->link($title); ?></h2>
                    <?php if ($description = $resource->displayDescription()): ?>
                       <?php $description = strip_tags($description);?>
                        <p class="description">

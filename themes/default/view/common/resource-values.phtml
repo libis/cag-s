@@ -75,6 +75,9 @@ endforeach;
                     $string = preg_replace("/<a(.*?)>/", "<a$1 target=\"_blank\">", html_entity_decode($text));
                   elseif($property->alternateLabel() == 'Bewaarplaats'):
                     $string = $text;
+                  elseif($property->alternateLabel() == 'ODIS'):  
+                   
+                    $string = '<a target="_blank" href="'.$value->uri().'">'.urldecode(str_replace("http://www.odis.be/lnk/","",$value->uri())).'</a>';
                   else:
                     $string = preg_replace('@(https?://([-\w\.]+)+(:\d+)?(/([\w/_\.%-=#]*(\?\S+)?)?)?)@', '<a target="_blank" href="$1">$1</a>', $text);
                   endif;

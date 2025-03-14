@@ -108,9 +108,34 @@ $this->headScript()->appendFile($assetUrl('js/search.js', 'AdvancedSearch'), 'te
         <?php endif;?>
    </div>
 </div>
-
-<div class="section section--default">
+<?php if($searchPage->name() == "Ledenbladen"):?>  
+  <div class="section section--default ledenbladen">
+<?php else:?>  
+  <div class="section section--default">
+<?php endif;?>    
   <div class="container">
+      
+    <?php if($searchPage->name() == "Ledenbladen"):?>  
+      
+      <div class="panel panel--light ledenbladen-advanced">
+        <?php //echo $this->searchForm($searchPage, null,true); ?>
+            <?php if($query->getQuery()):?>
+            
+            <?php endif;?>
+            
+           
+            
+            <div class="spacer">
+            <span class="search-loop"><i class="fas fa-search"></i></span>  
+            
+            <?php echo $this->searchForm(); ?>
+            <button class="add_field_button" type="button"><i class='fas fa-plus'></i> Een extra veld toevoegen</button>
+            <a id="advanced-toggle" class="active">Uitgebreid zoeken <i class="fas fa-chevron-down"></i></a>
+          
+            
+          </div>    
+      </div>    
+    <?php endif; ?>
     <?php if (isset($response)): ?>
         <?php if ($response->getTotalResults() > 0): ?>
            <?php
@@ -181,16 +206,16 @@ $this->headScript()->appendFile($assetUrl('js/search.js', 'AdvancedSearch'), 'te
   </div>
 </div>
 <?php 
-                $dates = $query->getDateRangeFilters();
-                //var_dump($dates);
-                $to = date("Y");$from = '1500';
-                if($dates):
-                  $from = $dates["dcterms_temporal_drm"][0]["from"];                  
-                  $to = $dates["dcterms_temporal_drm"][0]["to"];
-                endif;         
-                if(!$from){$from = "1500";}       
-                if(!$to){$from = date("Y");}   
-              ?>
+  $dates = $query->getDateRangeFilters();
+  //var_dump($dates);
+  $to = date("Y");$from = '1500';
+  if($dates && isset($dates["dcterms_temporal_drm"])):
+    $from = $dates["dcterms_temporal_drm"][0]["from"];                  
+    $to = $dates["dcterms_temporal_drm"][0]["to"];
+  endif;         
+  if(!$from){$from = "1500";}       
+  if(!$to){$from = date("Y");}   
+?>
 <script>
     $(document).ready(function(){
         $( ".more-link a" ).click(function(e) {
@@ -253,7 +278,7 @@ $this->headScript()->appendFile($assetUrl('js/search.js', 'AdvancedSearch'), 'te
     <?php if($searchPage->name() == "Ledenbladen"):?>   
       var filter_i = 0;
       $('#search-filters').find('.filter').each(function (index) {
-          if(index > 0){
+          if(index > 1){
             var button = "<a href='#' class='removefilter'><i class='fas fa-trash-alt'></i></a>";
             $(this).append(button);
           }        
@@ -263,7 +288,7 @@ $this->headScript()->appendFile($assetUrl('js/search.js', 'AdvancedSearch'), 'te
         e.preventDefault();
         const params = new URLSearchParams(window.location.search)
         
-        params.set('q',$('[name="q"]').val());     
+        params.set('q','"' + $('[name="q"]').val() + '"');     
         window.location.href = location.protocol + '//' + location.host + location.pathname+'?'+params.toString();
     
       });
@@ -277,7 +302,18 @@ $this->headScript()->appendFile($assetUrl('js/search.js', 'AdvancedSearch'), 'te
       });*/
 
       var wrapper = $("#search-filters span");
+      var filter = $(".filter").first();
       var add_button = $(".add_field_button");
+      var adv_button = $("#advanced-toggle");
+      var submit_button = $("#submit");
+      var search_loop = $(".search-loop");
+
+      $("#search-filters").append(add_button);
+      add_button.hide()
+
+      filter.prepend(search_loop);
+      filter.append(submit_button);
+      filter.append(adv_button);     
 
       $(document).on('click',".removefilter",function(e) {
         e.preventDefault();
@@ -288,12 +324,34 @@ $this->headScript()->appendFile($assetUrl('js/search.js', 'AdvancedSearch'), 'te
       $(add_button).click(function (e) {
           e.preventDefault();
           filter_i++;
-          $(wrapper).before('<fieldset class="filter"><select name="filter['+filter_i+'][field]"><option value="dcterms_title_txt">Titel</option><option value="media_txt2">Inhoud</option></select><input type="text" name="filter['+filter_i+'][value]" value=""><a class="removefilter"><i class="fas fa-trash-alt"></i></a></fieldset>'); //add input box
+          //$(wrapper).before('<fieldset class="filter"><select name="filter['+filter_i+'][field]"><option value="dcterms_title_txt">Titel</option><option value="media_txt2">Inhoud</option></select><input type="text" name="filter['+filter_i+'][value]" value=""><a class="removefilter"><i class="fas fa-trash-alt"></i></a></fieldset>'); //add input box
+          wrapper.before('<fieldset class="filter show"><select name="filter['+filter_i+'][join]"><option value="and" selected="selected">and</option><option value="or">or</option><option value="not">not</option></select><select name="filter['+filter_i+'][field]"><option value="dcterms:title" selected="selected">Titel</option></select><input type="text" name="filter['+filter_i+'][value]" value=""><a class="removefilter"><i class="fas fa-trash-alt"></i></a></fieldset>');
       });
+      
+      //$(".ledenbladen-advanced #form-search fieldset").hide();     
 
-    
-    
-      $("#search-filters").append(add_button);
+      $("#advanced-toggle").click(function(e) {
+        e.preventDefault();
+        add_button.toggle();
+        //$(".ledenbladen-advanced #form-search fieldset").toggle();
+        $('.ledenbladen-advanced #form-search').find('fieldset').each(function (index) {
+          if (index > 0) {
+            $(this).toggleClass("show");
+          }
+        });
+
+        $("#advanced-search-form").toggleClass('active');
+        $("#advanced-toggle").toggleClass('active');
+
+        if($("#advanced-toggle").hasClass('active')){
+          $("#advanced-toggle").html('Uitgebreid zoeken <i class="fas fa-chevron-down"></i>');
+          $(adv_button).before(submit_button);
+        }else{        
+          $("#advanced-toggle").html('Uitgebreid zoeken <i class="fas fa-chevron-up"></i>');
+          $(".ledenbladen-advanced #form-search div").last().append(submit_button);
+        }
+      });
+      
     <?php endif;?>
 
   });

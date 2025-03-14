@@ -296,8 +296,7 @@ class Harvest extends AbstractJob
         $results = $response->getContent();      
 
         foreach($results as $result):
-            if($result):
-                
+            if($result):                
                 try{
                     //don't update files for now to avoid redownload
                     if(isset($item['o:media'])):
@@ -370,25 +369,46 @@ class Harvest extends AbstractJob
         $dcMetadata = $record
             ->metadata
             ->children(self::OAI_DC_NAMESPACE)
-            ->children(self::DUBLIN_CORE_NAMESPACE);
-       
-        foreach ($this->dcProperties as $propertyId => $localName) {
-            if (isset($dcMetadata->$localName)) {
-                
-                $elementTexts["dcterms:$localName"] = $this->extractValues($dcMetadata, $propertyId);
-            }
-        }
-
-        $dcMetadata = $record
-            ->metadata
-            ->children(self::OAI_DC_NAMESPACE)
             ->children(self::DCTERMS_NAMESPACE);
 
         foreach ($this->dcProperties as $propertyId => $localName) {
             if (isset($dcMetadata->$localName)) {
                 $elementTexts["dcterms:$localName"] = $this->extractValues($dcMetadata, $propertyId);
             }
-        }    
+
+        }  
+
+        $dcMetadata = $record
+            ->metadata
+            ->children(self::OAI_DC_NAMESPACE)
+            ->children(self::DUBLIN_CORE_NAMESPACE);
+       
+        foreach ($this->dcProperties as $propertyId => $localName) {
+            if (isset($dcMetadata->$localName)) {                
+                $elementTexts["dcterms:$localName"] = $this->extractValues($dcMetadata, $propertyId);
+            }
+
+            if($args['endpoint'] == "https://repository.teneo.libis.be/oaiprovider/request"):
+                if($localName == 'replaces'){
+                    $i=0;
+                    foreach ($dcMetadata->$localName as $title) {
+                    
+                    $title = explode("(",$title.'');
+                    $title = trim($title[0]);
+                    $elementTexts['dcterms:alternative'][] = [
+                            'property_id' => 17,
+                            'type' => 'literal',
+                            '@language' => '',
+                            '@value' => $title.''
+                        ];
+                    
+                        $i++;
+                    }                    
+                }
+            endif;
+        }
+
+         
 
         $meta = $elementTexts;
         //$meta['o:item_set'] = ["o:id" => $setId];
@@ -412,7 +432,7 @@ class Harvest extends AbstractJob
                 ],
             ];
 
-            $this->logger->info($ie);
+            //$this->logger->info($ie);
             $html = file_get_contents("https://lib.is/_/".$ie."/stream?file_label=ocr-full-text");
             //$html = utf8_encode($html);
 

@@ -44,33 +44,35 @@ $options = $searchPage->setting('facet', []);
 
 <div class="grid__12 grid__4@med">
    <div class="panel panel--light">
-    <h2>Filter <?php echo lcfirst($searchPage->name());?></h2>
-    <?php //echo $this->searchForm($searchPage, null,true); ?>
-        <?php if($query->getQuery()):?>
-            <div class="current-query">
-                Zoekopdracht: <a title="verwijder zoekopdracht" href="<?= parse_url($_SERVER["REQUEST_URI"], PHP_URL_PATH).'?q=' ?>"><?= htmlspecialchars($query->getQuery());?> <span class="icon icon--clear"></span></a></button>
-            </div>
-            <hr>
-        <?php endif;?>
-        
-        <h4 style="margin-bottom: 0.5rem;">Tekstueel zoeken</h4>
-        <div class="spacer">
-        <?php if($searchPage->name() == "Ledenbladen"):?>    
-            <?php echo $this->searchForm(); ?>
-            <button class="add_field_button" type="button"><i class='fas fa-plus'></i> Een extra veld toevoegen</button>
-        <?php else:?>    
-           <form>            
-            <div class="form__item">
-                    <input type="text" name="q" class="form__text" value="<?= htmlspecialchars($query->getQuery());?>">
-            </div>
-            <div class="form__actions">
-                    <button type="submit" class="btn form__btn">zoeken <span class="icon icon--search"></span></button>
-            </div>
-           </form>
-        <?php endif; ?>
-        </div>    
+    <?php if($searchPage->name() != "Ledenbladen"):?>
+        <h2>Filter <?php echo lcfirst($searchPage->name());?></h2>
+        <?php //echo $this->searchForm($searchPage, null,true); ?>
+            <?php if($query->getQuery()):?>
+                <div class="current-query">
+                    Zoekopdracht: <a title="verwijder zoekopdracht" href="<?= parse_url($_SERVER["REQUEST_URI"], PHP_URL_PATH).'?q=' ?>"><?= htmlspecialchars($query->getQuery());?> <span class="icon icon--clear"></span></a></button>
+                </div>
+                <hr>
+            <?php endif;?>
+            
+            <h4 style="margin-bottom: 0.5rem;">Tekstueel zoeken</h4>
+            <div class="spacer">
+            <?php if($searchPage->name() == "Ledenbladen"):?>    
+                <?php echo $this->searchForm(); ?>
+                <button class="add_field_button" type="button"><i class='fas fa-plus'></i> Een extra veld toevoegen</button>
+            <?php else:?>    
+            <form>            
+                <div class="form__item">
+                        <input type="text" name="q" class="form__text" value="<?= htmlspecialchars($query->getQuery());?>">
+                </div>
+                <div class="form__actions">
+                        <button type="submit" class="btn form__btn">zoeken <span class="icon icon--search"></span></button>
+                </div>
+            </form>
+            <?php endif; ?>
+            </div>    
 
-        <hr>          
+            <hr>
+     <?php endif;?>                 
     <?php if(!empty($searchPage->name('facet', 'facets'))):?>    
 
         <h3><?= $translate('Filters') ?></h3>
@@ -121,7 +123,7 @@ $options = $searchPage->setting('facet', []);
           </form>
         <?php endif;?>            
         <div class="spacer">    
-            <?php if ($displayActive && count($activeFacets)): ?>
+            <!--<?php if ($displayActive && count($activeFacets)): ?>
                 <h4><?= $translate('Actieve filters') ?></h4>
             
                 <div class="search-facets-active">
@@ -129,7 +131,7 @@ $options = $searchPage->setting('facet', []);
                     <div><?= $facetActive($name, ['value' => $facetValue, 'count' => null, 'key' => $facetKey], $options) ?></div>
                     <?php endforeach; ?>
                 </div>
-            <?php endif; ?>
+            <?php endif; ?>-->
 
             <form id="form-facets">
 

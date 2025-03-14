@@ -1,0 +1,30 @@
+<?php
+/**
+ * @var \Laminas\View\Renderer\PhpRenderer $this
+ * @var array $filters
+ */
+
+if (!count($filters)) return;
+
+$plugins = $this->getHelperPluginManager();
+$escape = $plugins->get('escapeHtml');
+$escapeAttr = $this->plugin('escapeHtmlAttr');
+?>
+
+<div class="search-filters">
+    <span>Zoekopdracht: </span> 
+    <?php foreach ($filters as $filterLabel => $filterValues): ?>
+    <div class="filterx">
+        <?php 
+        $filterLabel = str_replace('Inhoud','',$filterLabel);
+        $filterLabel = str_replace('EXCEPT','NIET',$filterLabel);
+        ?>
+        <span class="filter-label"><?= $escape($filterLabel) ?></span>
+        <?php foreach ($filterValues as $urlQuery => $filterValue): ?>
+        <a href="<?= $escapeAttr($urlQuery) ?>" class="filter-value"><?= $escape($filterValue) ?></a>
+        <?php endforeach; ?>
+    </div>
+    <?php endforeach; ?>
+    <?php $closeurl = explode("?",$urlQuery);?>
+    <a title="verwijder alle zoekfilters" href="<?= $closeurl[0] ?>" class="filter-value"><i class="fas fa-times"></i></a>
+</div>
