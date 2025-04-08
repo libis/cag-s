@@ -355,7 +355,8 @@ if($type != 'Nieuws' && $type != 'Agendapunt'):
 
   //pick random items
   if(sizeof($items) > 1):
-    $keys = array_rand($items,3);
+    $count = sizeof($items) < 3 ? sizeof($items) : 3;
+    $keys = array_rand($items,$count);
     $resources = array();
     foreach($keys as $key):
       $resources[] = $items[$key];
