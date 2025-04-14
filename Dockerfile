@@ -1,4 +1,4 @@
-FROM php:7.4.28-apache
+FROM php:8.0.25-apache
 
 RUN a2enmod rewrite
 
@@ -41,7 +41,10 @@ RUN unzip -q /var/www/omeka-s.zip -d /var/www/ \
 &&  mv /var/www/omeka-s /var/www/html/ \
 &&  chown -R www-data:www-data /var/www/html/
 
-VOLUME /var/www/html/
+# Content
+COPY themes /var/www/html/themes
+COPY modules /var/www/html/modules  
+COPY OEmbed.php /var/www/html/application/src/Media/Ingester/OEmbed.php
 
 COPY extra.ini /usr/local/etc/php/conf.d/
 COPY opcache.ini /usr/local/etc/php/conf.d/opcache.ini
