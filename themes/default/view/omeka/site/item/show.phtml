@@ -100,14 +100,8 @@ endif;
           </div>
         <?php else: ?>
           <div class="beeld">
-            <?php
-              $url = str_replace('http:', '', $itemMedia[0]->thumbnailUrl('large'));
-            ?>
-            <?php if($item->value('dcterms:identifier')->asHtml() == "B000TEST"):?>
-                  <iframe style="max-width:none;height:900px" src="<?php echo $item->value('dcterms:relation');?>" name="viewer" id="viewer" title="viewer" style="width: 100%; height: 900px;" allowfullscreen=""></iframe>
-            <?php else:?> 
-              <img src="<?php echo $url;?>">
-            <?php endif?>
+            <?php $url = str_replace('http:', '', $itemMedia[0]->thumbnailUrl('large'));?>
+            <img src="<?php echo $url;?>">
           </div>
         <?php endif;?>
       </div>
@@ -271,6 +265,25 @@ endif;
             <table class="">
                 <tbody>
                   <?php echo $item->displayValues(); ?>
+                  <?php if($type == 'Ledenblad'):?>
+                    <tr>
+                      <td><strong>Bewaarplaats</strong></td>
+                      <td>
+                        <div class="value">Boerenbond (eigenaar)</div>
+                        <div class="value">KADOC - KU Leuven (bewaarinstelling)</div>
+                      </td>
+                    </tr>
+                    <tr>
+                      <td><strong>Rechtenstatus</strong></td>
+                      <td>
+                        <div class="value">
+                          <a href="http://rightsstatements.org/vocab/InC-NC/1.0/"><img class="right-img" src="https://rightsstatements.org/files/buttons/InC-NC.white.svg"></a>                          
+                          <br>
+                          Voorwaarden voor hergebruik worden bepaald door de rechthebbenden. Gebruik <a href="https://cagnet.be/page/aanvraag?aanvraag=1&amp;id=<?= $item->id();?>">het aanvraagformulier</a> voor meer informatie. 
+                        </div>
+                      </td>
+                    </tr>
+                  <?php endif;?>
                   <?php if($type == 'Film'):
                     $copies = $item->value('dcterms:isReferencedBy',array('all'=>true));
                     if($copies):
@@ -309,6 +322,13 @@ endif;
           <ul class="list--arrow">
             <li>Klik <a class="hr" href="/page/aanvraag?aanvraag=1&id=<?php echo$item->value('dcterms:identifier');?>">hier</a> om een hogeresolutieversie van bovenstaande afbeelding aan te vragen.</li>
             <li>Klik <a href="/page/copyright-gebruiksvoorwaarden">hier</a> voor de voorwaarden voor beeldaanvragen.</li>
+          </ul>
+        <?php endif?>
+        <?php if($type == "Ledenblad"):?>
+          <br />
+          <ul class="list--arrow">
+            <li>Klik <a class="hr" href="/page/aanvraag?aanvraag=1&id=<?php echo$item->id();?>">hier</a> om een hogeresolutieversie van bovenstaande afbeelding aan te vragen.</li>
+            <li>Klik <a href="/page/copyright-gebruiksvoorwaarden">hier</a> voor de voorwaarden voor deze aanvragen.</li>
           </ul>
         <?php endif?>
         <?php if($type == "Film"):?>
