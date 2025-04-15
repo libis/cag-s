@@ -1097,3 +1097,24 @@ input[type=checkbox] {
 video {
   max-width: 100%;
 }
+
+.search-facets-active{
+  margin-bottom: 1rem;
+}
+.search-facets-active span.tag{  
+  background: rgba(#006b65,0.8);
+  padding:0 0.2rem;
+  margin:0.2rem 0;
+  margin-right: 3px;
+  margin-bottom: 3px;
+  white-space:nowrap;
+  border-radius: 2px;
+  padding:4px 4px 2px 4px;
+  font-size: 0.9rem;
+
+  a{
+    text-decoration: none;
+    color: white;
+  }
+}
+

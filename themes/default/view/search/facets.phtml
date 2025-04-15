@@ -170,18 +170,25 @@ $options = $searchPage->setting('facet', []);
         <?php endif;?> 
 
         <div class="spacer">    
-            <!--<?php if ($displayActive && count($activeFacets)): ?>
-                <h4><?= $translate('Actieve filters') ?></h4>
-            
+            <?php if ($displayActive && count($activeFacets)): ?>
+                <h4 class="active-title" style="margin-bottom:0.5rem;">
+                    <?= $translate('Actieve filters') ?>
+                    <!--<span class="reset">
+                    (<a href="<?= parse_url($_SERVER["REQUEST_URI"], PHP_URL_PATH).'?q=' ?>" title="<?= $translate('Verwijder alle filters') ?>">Reset<span class="icon icon--clear"></span></a>)
+                    </span>-->
+                </h4>
+                
                 <div class="search-facets-active">
                     <?php foreach ($activeFacets as $name => $facetValues) foreach ($facetValues as $facetKey => $facetValue): ?>
-                    <div><?= $facetActive($name, ['value' => $facetValue, 'count' => null, 'key' => $facetKey], $options) ?></div>
+                        <span class="tag">
+                            <?= $facetActive($name, ['value' => $facetValue, 'count' => null, 'key' => $facetKey], $options) ?>
+                        </span>
                     <?php endforeach; ?>
-                </div>
-            <?php endif; ?>-->
+                    <span class="tag reset"><a class="facet-active" href="<?= parse_url($_SERVER["REQUEST_URI"], PHP_URL_PATH).'?q=' ?>" title="<?= $translate('Verwijder alle filters') ?>">Verwijder alle filters<span class="icon icon--clear"></span></a></span>
+                </div>                
+            <?php endif; ?>
 
             <form id="form-facets">
-
                 <?php if ($displayFacetButton): ?>
                 <?= $this->hiddenInputsFromFilteredQuery(null, ['facet', 'page', 'limit', 'offset', 'per_page']) ?>
                 <?php endif; ?>

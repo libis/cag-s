@@ -179,33 +179,7 @@ $(document).ready(function() {
 
     /* Facets. */
 
-    $('.search-facets-active a').on('click', function(e) {
-        // Reload with the link when there is no button to apply facets.
-        if (!$('.apply-facets').length) {
-            return true;
-        }
-        e.preventDefault();
-        $(this).closest('li').hide();
-        var facetName = $(this).data('facetName');
-        var facetValue = $(this).data('facetValue');
-        $('.search-facet-item input:checked').each(function() {
-            if ($(this).prop('name') === facetName
-                && $(this).prop('value') === String(facetValue)
-            ) {
-                $(this).prop('checked', false);
-            }
-        });
-        $('select.search-facet-items option:selected').each(function() {
-            if ($(this).closest('select').prop('name') === facetName
-                && $(this).prop('value') === String(facetValue)
-            ) {
-                $(this).prop('selected', false);
-                if ($.isFunction($.fn.chosen)) {
-                    $(this).closest('select').trigger('chosen:updated');
-                }
-            }
-        });
-    });
+    
 
     $('.search-facets').on('change', 'input[type=checkbox]', function() {
         if (!$('.apply-facets').length && $(this).data('url')) {

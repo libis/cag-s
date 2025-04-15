@@ -35,4 +35,4 @@ $replace = [
 ?>
 
 <?= str_replace(array_keys($replace), array_values($replace),
-    '<a class="facet-active" href="{url}" data-facet-name="facet[{facet_field}][]" data-facet-value="{facet_value}">{facet_label}</a><span class="icon icon--clear">') ?>
+    '<a class="facet-active" href="{url}" data-facet-name="facet[{facet_field}][]" data-facet-value="{facet_value}">{facet_label}<span class="icon icon--clear"></span></a>') ?>
