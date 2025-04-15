@@ -123,51 +123,7 @@ $options = $searchPage->setting('facet', []);
           </form>
         <?php endif;?>   
         
-        <?php if($searchPage->name() == "Ledenbladen"):?>  
-        <form method="GET" id="psl-search-form">
-            <div id="psl-search-form-date">
-              <?php 
-                $dates = $query->getDateRangeFilters();
-                //var_dump($dates);
-                $to = date("Y");$from = '1890';
-                if($dates):
-                  $from = $dates["dcterms_date_drm"][0]["from"];                  
-                  $to = $dates["dcterms_date_drm"][0]["to"];
-                endif;         
-                if(!$from){$from = "1890";}       
-                if(!$to){$from = date("Y");}   
-              ?>
-              <label><?php echo $this->translate('Jaargang'); ?> 
-              <span class="currentDate">
-                <?php if($from && $to):?>
-                  <?php echo $from." - ".$to;?>
-                <?php endif;?>  
-              </span>
-              </label>
-              <?php //echo $this->formCollection($form->get('date'), false); ?>
-              <div class="field" style="display: none;">
-              <div class="field-meta">
-                  <label for="dcterms_date_drm[from]">From year</label>            </div>
-              <div class="inputs">                
-                  <input type="text" name="dcterms_date_drm[from]" placeholder="YYYY" value="<?php echo $from;?>">    </div>
-              </div>
-              <div class="field" style="display: none;">
-              <div class="field-meta">
-                  <label for="dcterms_date_drm[to]">To year</label>            </div>
-              <div class="inputs">
-                  <input type="text" name="dcterms_date_drm[to]" placeholder="YYYY" value="<?php echo $to;?>">    </div>
-              </div>
-              <div id="psl-search-form-date-slider"></div>
-              <div id="psl-search-form-date-graduations">
-                  <div><?php echo $this->translate('1900'); ?></div>
-                  
-                  <div><?php echo $this->translate('1955'); ?></div>
-                  <div><?php echo $this->translate('2010'); ?></div>
-              </div>
-            </div>  
-            <div class="psl-tab-submit"><input type="submit" value="OK"/></div>      
-          </form>
-        <?php endif;?> 
+       
 
         <div class="spacer">    
             <?php if ($displayActive && count($activeFacets)): ?>
@@ -187,6 +143,8 @@ $options = $searchPage->setting('facet', []);
                     <br><span class="tag reset"><a class="facet-active" href="<?= parse_url($_SERVER["REQUEST_URI"], PHP_URL_PATH).'?q=' ?>" title="<?= $translate('Verwijder alle filters') ?>">Verwijder alle filters<span class="icon icon--clear"></span></a></span>
                 </div>                
             <?php endif; ?>
+
+        
 
             <form id="form-facets">
                 <?php if ($displayFacetButton): ?>
@@ -233,6 +191,52 @@ $options = $searchPage->setting('facet', []);
                 </div>
                 <?php endif; ?>
             </form>
+
+            <?php if($searchPage->name() == "Ledenbladen"):?>  
+        <form method="GET" id="psl-search-form">
+            <div id="psl-search-form-date">
+              <?php 
+                $dates = $query->getDateRangeFilters();
+                //var_dump($dates);
+                $to = date("Y");$from = '1890';
+                if($dates):
+                  $from = $dates["dcterms_date_drm"][0]["from"];                  
+                  $to = $dates["dcterms_date_drm"][0]["to"];
+                endif;         
+                if(!$from){$from = "1890";}       
+                if(!$to){$from = date("Y");}   
+              ?>
+              <label><?php echo $this->translate('Jaargang'); ?> 
+              <span class="currentDate">
+                <?php if($from && $to):?>
+                  <?php echo $from." - ".$to;?>
+                <?php endif;?>  
+              </span>
+              </label>
+              <?php //echo $this->formCollection($form->get('date'), false); ?>
+              <div class="field" style="display: none;">
+              <div class="field-meta">
+                  <label for="dcterms_date_drm[from]">From year</label>            </div>
+              <div class="inputs">                
+                  <input type="text" name="dcterms_date_drm[from]" placeholder="YYYY" value="<?php echo $from;?>">    </div>
+              </div>
+              <div class="field" style="display: none;">
+              <div class="field-meta">
+                  <label for="dcterms_date_drm[to]">To year</label>            </div>
+              <div class="inputs">
+                  <input type="text" name="dcterms_date_drm[to]" placeholder="YYYY" value="<?php echo $to;?>">    </div>
+              </div>
+              <div id="psl-search-form-date-slider"></div>
+              <div id="psl-search-form-date-graduations">
+                  <div><?php echo $this->translate('1900'); ?></div>
+                  
+                  <div><?php echo $this->translate('1955'); ?></div>
+                  <div><?php echo $this->translate('2010'); ?></div>
+              </div>
+            </div>  
+            <div class="psl-tab-submit"><input type="submit" value="OK"/></div>      
+          </form>
+        <?php endif;?> 
         </div>
     <?php endif;?>
 </div>
