@@ -1102,19 +1102,20 @@ video {
   margin-bottom: 1rem;
 }
 .search-facets-active span.tag{  
-  background: rgba(#006b65,0.8);
-  padding:0 0.2rem;
+  background: rgba(#006b65, .1);
   margin:0.2rem 0;
-  margin-right: 3px;
+  margin-right: 5px;
   margin-bottom: 3px;
-  white-space:nowrap;
-  border-radius: 2px;
-  padding:4px 4px 2px 4px;
+  padding:1px 0;
   font-size: 0.9rem;
+  border-bottom: 1px solid #006b65;
 
   a{
     text-decoration: none;
-    color: white;
   }
+}
+
+.search-facets-active span.reset{
+  background: rgba(#006b65, .3);
 }
 

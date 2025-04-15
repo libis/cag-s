@@ -184,7 +184,7 @@ $options = $searchPage->setting('facet', []);
                             <?= $facetActive($name, ['value' => $facetValue, 'count' => null, 'key' => $facetKey], $options) ?>
                         </span>
                     <?php endforeach; ?>
-                    <span class="tag reset"><a class="facet-active" href="<?= parse_url($_SERVER["REQUEST_URI"], PHP_URL_PATH).'?q=' ?>" title="<?= $translate('Verwijder alle filters') ?>">Verwijder alle filters<span class="icon icon--clear"></span></a></span>
+                    <br><span class="tag reset"><a class="facet-active" href="<?= parse_url($_SERVER["REQUEST_URI"], PHP_URL_PATH).'?q=' ?>" title="<?= $translate('Verwijder alle filters') ?>">Verwijder alle filters<span class="icon icon--clear"></span></a></span>
                 </div>                
             <?php endif; ?>
 
