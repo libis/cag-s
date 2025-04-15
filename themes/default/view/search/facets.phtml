@@ -123,18 +123,18 @@ $options = $searchPage->setting('facet', []);
           </form>
         <?php endif;?>   
         
-        <?php if($searchPage->name() == "Ledenblad"):?>  
+        <?php if($searchPage->name() == "Ledenbladen"):?>  
         <form method="GET" id="psl-search-form">
             <div id="psl-search-form-date">
               <?php 
                 $dates = $query->getDateRangeFilters();
                 //var_dump($dates);
-                $to = date("Y");$from = '1500';
+                $to = date("Y");$from = '1890';
                 if($dates):
                   $from = $dates["dcterms_date_drm"][0]["from"];                  
                   $to = $dates["dcterms_date_drm"][0]["to"];
                 endif;         
-                if(!$from){$from = "1900";}       
+                if(!$from){$from = "1890";}       
                 if(!$to){$from = date("Y");}   
               ?>
               <label><?php echo $this->translate('Jaargang'); ?> 

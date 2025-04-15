@@ -212,9 +212,16 @@ $this->headScript()->appendFile($assetUrl('js/search.js', 'AdvancedSearch'), 'te
   if($dates && isset($dates["dcterms_temporal_drm"])):
     $from = $dates["dcterms_temporal_drm"][0]["from"];                  
     $to = $dates["dcterms_temporal_drm"][0]["to"];
-  endif;         
-  if(!$from){$from = "1500";}       
-  if(!$to){$from = date("Y");}   
+    if(!$from){$from = "1500";}       
+    if(!$to){$from = date("Y");}   
+  endif;        
+  if($dates && isset($dates["dcterms_date_drm"])):
+    $from = $dates["dcterms_date_drm"][0]["from"];                  
+    $to = $dates["dcterms_date_drm"][0]["to"];
+    if(!$from){$from = "1890";}       
+    if(!$to){$from = date("Y");}   
+  endif;    
+  
 ?>
 <script>
     $(document).ready(function(){
@@ -244,8 +251,8 @@ $this->headScript()->appendFile($assetUrl('js/search.js', 'AdvancedSearch'), 'te
       <?php if($searchPage->name() == "Ledenbladen"):?>   
         var dateFrom = $('#psl-search-form input[name="dcterms_date_drm[from]"]');
         var dateTo = $('#psl-search-form input[name="dcterms_date_drm[to]"]');
-        var dateMin =1900;
-        var dateMax = 2005;
+        var dateMin =1890;
+        var dateMax = 2025;
 
         var filter_i = 0;
         $('#search-filters').find('.filter').each(function (index) {
