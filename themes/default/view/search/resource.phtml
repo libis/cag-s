@@ -99,6 +99,15 @@ endif;
               $title = explode(":",$title[2]);
               $nr = $title[0];
               $title = $title[1];
+               //check if title is correct
+              $old_titles = $resource->value('dcterms:replaces',array('all'=>true));
+              foreach($old_titles as $old_title):
+                preg_match('#\((.*?)\)#', $old_title.'', $match);
+                $dates = explode("-",$match[1]);
+                if($date >= $dates[0] && $date <= $dates[1]):
+                  $title = $old_title.'';
+                endif;  
+              endforeach;  
               $title = trim($title).", ".$date.", ".$nr;
             else:
               $title = $resource->displayTitle();
