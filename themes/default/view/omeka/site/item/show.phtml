@@ -246,12 +246,12 @@ endif;
       <?php
         $web_query="";        
         if(isset($_GET["q"])):  
-          $web_query = htmlspecialchars(strip_tags($_GET["q"]));          
+          $web_query = "&searchText=".htmlspecialchars(strip_tags($_GET["q"]));          
           $count = str_word_count($web_query);
           //echo $web_query;
         endif;
       ?>
-      <iframe style="width:100%;overflow:visible;height:800px;border:none" src="https://repository.teneo.libis.be/delivery/DeliveryManagerServlet?dps_pid=<?php echo $itemMedia[0]->value("dcterms:title");?>&searchText=<?php echo $web_query;?>"></iframe>      
+      <iframe style="width:100%;overflow:visible;height:800px;border:none" src="https://repository.teneo.libis.be/delivery/DeliveryManagerServlet?dps_pid=<?php echo $itemMedia[0]->value("dcterms:title").$web_query;?>"></iframe>      
     <?php endif;?>  
 </div>
 <?php endif;?>  
