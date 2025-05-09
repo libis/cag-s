@@ -405,6 +405,21 @@ class Harvest extends AbstractJob
                         $i++;
                     }                    
                 }
+                //use identifier to limit to one
+                if($localName == 'identifier'){
+                    //put manifest link in the hasFormat field
+                    $dcHeader = $record->header->identifier;
+                    $ie = explode(":",$dcHeader);
+                    $ie = $ie[2];
+                    $manifest= "https://lib.is/".$ie."/manifest";
+                    
+                    $elementTexts['dcterms:hasFormat'][] = [
+                            'property_id' => 38,
+                            'type' => 'literal',
+                            '@language' => '',
+                            '@value' => $manifest.''
+                    ];                         
+                }
             endif;
         }
 
