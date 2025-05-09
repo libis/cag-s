@@ -87,6 +87,8 @@ endif;
   </div>
 </div>
 
+<?php $this->trigger('view.show.before'); ?>
+
 <!-- Beeld centered -->
 <?php if($type == "Beeld"): ?>
   <?php if ($embedMedia && $itemMedia): ?>
@@ -267,7 +269,8 @@ endif;
           //echo $web_query;
         endif;
       ?>
-      <iframe style="width:100%;overflow:visible;height:800px;border:none" src="https://repository.teneo.libis.be/delivery/DeliveryManagerServlet?dps_pid=<?php echo $itemMedia[0]->value("dcterms:title").$web_query;?>"></iframe>      
+      <?php $this->trigger('view.show.after'); ?>
+      <!--<iframe style="width:100%;overflow:visible;height:800px;border:none" src="https://repository.teneo.libis.be/delivery/DeliveryManagerServlet?dps_pid=<?php echo $itemMedia[0]->value("dcterms:title").$web_query;?>"></iframe> -->     
     <?php endif;?>  
 </div>
 <?php endif;?>  
@@ -478,9 +481,9 @@ if($type != 'Nieuws' && $type != 'Agendapunt'):
     </div>
   <?php endif; ?>
 <?php endif; ?>
-<?php $this->trigger('view.show.after'); ?>
+
 <script>
-  $(document).ready(function(){
+  /*$(document).ready(function(){
     $('.slider-for').slick({
       slidesToShow: 1,
       slidesToScroll: 1,
@@ -512,5 +515,5 @@ if($type != 'Nieuws' && $type != 'Agendapunt'):
         $(this).next("span").fadeToggle("slow");
         $(this).toggleClass('toggled untoggled');
     });
-  });
+  });*/
 </script>

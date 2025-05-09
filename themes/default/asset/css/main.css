@@ -3619,7 +3619,7 @@ a.card:hover .card__link, a.card:focus .card__link,
   display: block;
 }
 
-.search {
+.search-main {
   -webkit-transition: opacity 250ms ease-out, height 250ms ease-out, margin-top 250ms ease-out, width 250ms ease-out;
   transition: opacity 250ms ease-out, height 250ms ease-out, margin-top 250ms ease-out, width 250ms ease-out;
   position: absolute;
@@ -3632,7 +3632,7 @@ a.card:hover .card__link, a.card:focus .card__link,
   visibility: hidden;
   z-index: 100;
 }
-.search .btn {
+.search-main .btn {
   position: absolute;
   font-size: 30px;
   font-size: 1.875rem;
@@ -3645,12 +3645,12 @@ a.card:hover .card__link, a.card:focus .card__link,
   color: #006B65;
   background: none;
 }
-.search .btn:after {
+.search-main .btn:after {
   content: "";
   left: -10000px;
   top: -10000px;
 }
-.search.active {
+.search-main.active {
   display: -webkit-box;
   display: -ms-flexbox;
   display: flex;

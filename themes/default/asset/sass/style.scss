@@ -357,7 +357,7 @@ img {
   position: relative;
 }
 
-.search {
+.search-main {
   -webkit-transition: opacity 250ms ease-out, height 250ms ease-out, margin-top 250ms ease-out, width 250ms ease-out;
   transition: opacity 250ms ease-out, height 250ms ease-out, margin-top 250ms ease-out, width 250ms ease-out;
   position: absolute;
@@ -1119,3 +1119,33 @@ video {
   background: rgba(#006b65, .3);
 }
 
+.universal-viewer {
+  label, .label{
+    
+    color: #fff;
+  font-weight: bold;
+  padding: 0 10px 0 0;
+  margin: 4px 0 0 0;
+  background: transparent;
+  color:white;
+  border:none;
+  border-radius: 0;
+  line-height: 1.42857143;
+  }
+
+  .tabs{
+    font-size:12px;
+  }
+
+  .searchOptions .label{
+    font-size:12px;
+    letter-spacing: 0;
+    line-height: 1.42857143;
+  }
+
+  h2{
+    color: white;
+  }
+
+ 
+}
