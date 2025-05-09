@@ -65,7 +65,7 @@ endif;
               $q = $q." ".htmlspecialchars(strip_tags($value["value"]));
             endif;  
           endforeach;
-          $url = $url."?searchText=".trim($q);
+          $url = $url."#?searchText=".trim($q);
         endif;
      ?>
      <a href="<?php echo $url;?>" style="display:block;">
