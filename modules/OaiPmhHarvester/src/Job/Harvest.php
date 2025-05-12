@@ -383,28 +383,19 @@ class Harvest extends AbstractJob
             ->children(self::OAI_DC_NAMESPACE)
             ->children(self::DUBLIN_CORE_NAMESPACE);
        
+        $org_title = ""; 
         foreach ($this->dcProperties as $propertyId => $localName) {
             if (isset($dcMetadata->$localName)) {                
                 $elementTexts["dcterms:$localName"] = $this->extractValues($dcMetadata, $propertyId);
             }
-
+            
+            if($localName == 'title'){
+                foreach ($dcMetadata->$localName as $title) {                    
+                    $org_title = $title.'';
+                }    
+            }
             if($args['endpoint'] == "https://repository.teneo.libis.be/oaiprovider/request"):
-                if($localName == 'replaces'){
-                    $i=0;
-                    foreach ($dcMetadata->$localName as $title) {
-                    
-                    $title = explode("(",$title.'');
-                    $title = trim($title[0]);
-                    $elementTexts['dcterms:alternative'][] = [
-                            'property_id' => 17,
-                            'type' => 'literal',
-                            '@language' => '',
-                            '@value' => $title.''
-                        ];
-                    
-                        $i++;
-                    }                    
-                }
+                
                 //use identifier to limit to one
                 if($localName == 'identifier'){
                     //put manifest link in the hasFormat field
@@ -423,9 +414,10 @@ class Harvest extends AbstractJob
             endif;
         }
 
-         
-
         $meta = $elementTexts;
+
+       
+        
         //$meta['o:item_set'] = ["o:id" => $setId];
 
         if($args['endpoint'] == "https://repository.teneo.libis.be/oaiprovider/request"):
@@ -471,6 +463,32 @@ class Harvest extends AbstractJob
             endforeach;
 
             $meta['o:media'] = $imgs;
+
+            if(isset($meta['dcterms:replaces']) && $org_title){   
+                foreach ($meta['dcterms:replaces'] as $replace) {  
+                    $replace = $replace['@value'];  
+                    //analyse title and determine correct title based on date, save this title in atlernative
+                    $org_title = explode(", ",$org_title);
+                    $date = $org_title[1];
+                    $org_title = explode(":",$org_title[2]);
+                    $nr = $org_title[0];
+                    $org_title = $org_title[1];
+    
+                    preg_match('#\((.*?)\)#', $replace.'', $match);
+                    $dates = explode("-",$match[1]);
+                    //if the date of org_title is in the range of the replace dates, use this title
+                    if($date >= $dates[0] && $date <= $dates[1]):
+                        $title = explode("(",$replace.'');
+                        $title = trim($title[0]);
+                        $meta['dcterms:alternative'][0] = [
+                            'property_id' => 17,
+                            'type' => 'literal',
+                            '@language' => '',
+                            '@value' => $title.''
+                        ];                        
+                    endif;
+                }                    
+            }
         endif;    
         //resource template?
         if($args['resource_template']):

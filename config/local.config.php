@@ -2,7 +2,12 @@
 return [
     'logger' => [
         'log' => true,
-        'priority' => \Zend\Log\Logger::NOTICE,
+        'writers' => [
+          'stream' => false,
+          'job' => true,
+          'syslog' => false,
+        ],
+        'priority' => \Laminas\Log\Logger::NOTICE,
     ],
     'http_client' => [
         'sslcapath' => null,

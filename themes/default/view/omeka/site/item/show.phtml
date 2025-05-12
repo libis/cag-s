@@ -17,8 +17,7 @@ $thumb = $item->primaryMedia();
 $old_titles = $item->value('dcterms:replaces',array('all'=>true));
 foreach($old_titles as $old_title):
   preg_match('#\((.*?)\)#', $old_title.'', $match);
-  $old_title = explode("-",$match[1]);
-  
+  $old_title = explode("-",$match[1]);  
 endforeach;  
 
 if($type == 'Ledenblad'):
