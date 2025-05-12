@@ -383,7 +383,7 @@ class Harvest extends AbstractJob
             ->children(self::OAI_DC_NAMESPACE)
             ->children(self::DUBLIN_CORE_NAMESPACE);
        
-        $org_title = ""; 
+        $org_title = ""; $date="";
         foreach ($this->dcProperties as $propertyId => $localName) {
             if (isset($dcMetadata->$localName)) {                
                 $elementTexts["dcterms:$localName"] = $this->extractValues($dcMetadata, $propertyId);
@@ -392,6 +392,10 @@ class Harvest extends AbstractJob
             if($localName == 'title'){
                 foreach ($dcMetadata->$localName as $title) {                    
                     $org_title = $title.'';
+                    $org_title = explode(", ",$org_title);
+                    $date = $org_title[1];
+                    $org_title = explode(":",$org_title[2]);
+                    $org_title = $org_title[1];
                 }    
             }
             if($args['endpoint'] == "https://repository.teneo.libis.be/oaiprovider/request"):
@@ -465,21 +469,18 @@ class Harvest extends AbstractJob
             $meta['o:media'] = $imgs;
 
             if(isset($meta['dcterms:replaces']) && $org_title){   
+                $i = 0;
                 foreach ($meta['dcterms:replaces'] as $replace) {  
                     $replace = $replace['@value'];  
-                    //analyse title and determine correct title based on date, save this title in atlernative
-                    $org_title = explode(", ",$org_title);
-                    $date = $org_title[1];
-                    $org_title = explode(":",$org_title[2]);
-                    $nr = $org_title[0];
-                    $org_title = $org_title[1];
-    
+                    //analyse title and determine correct title based on date, save this title in atlernative    
                     preg_match('#\((.*?)\)#', $replace.'', $match);
                     $dates = explode("-",$match[1]);
                     //if the date of org_title is in the range of the replace dates, use this title
                     if($date >= $dates[0] && $date <= $dates[1]):
                         $title = explode("(",$replace.'');
                         $title = trim($title[0]);
+                        //$this->logger->info($org_title ." -> ".$title);
+                        //$this->logger->info($i.' '.$org_title ." -> ".$title);
                         $meta['dcterms:alternative'][0] = [
                             'property_id' => 17,
                             'type' => 'literal',
@@ -487,6 +488,8 @@ class Harvest extends AbstractJob
                             '@value' => $title.''
                         ];                        
                     endif;
+                    //$this->logger->info($i);
+                    $i++;
                 }                    
             }
         endif;    
