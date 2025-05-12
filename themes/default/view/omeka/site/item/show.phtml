@@ -270,7 +270,7 @@ endif;
         endif;
       ?>
       <?php $this->trigger('view.show.after'); ?>
-      <!--<iframe style="width:100%;overflow:visible;height:800px;border:none" src="https://repository.teneo.libis.be/delivery/DeliveryManagerServlet?dps_pid=<?php echo $itemMedia[0]->value("dcterms:title").$web_query;?>"></iframe> -->     
+      <!--<iframe style="width:100%;overflow:visible;height:800px;border:none" src="https://lib.is/_/<?php echo $itemMedia[0]->value("dcterms:title")."/representation".$web_query;?>"></iframe>--> 
     <?php endif;?>  
 </div>
 <?php endif;?>  
@@ -483,7 +483,7 @@ if($type != 'Nieuws' && $type != 'Agendapunt'):
 <?php endif; ?>
 
 <script>
-  /*$(document).ready(function(){
+  $(document).ready(function(){
     $('.slider-for').slick({
       slidesToShow: 1,
       slidesToScroll: 1,
@@ -515,5 +515,5 @@ if($type != 'Nieuws' && $type != 'Agendapunt'):
         $(this).next("span").fadeToggle("slow");
         $(this).toggleClass('toggled untoggled');
     });
-  });*/
+  });
 </script>
