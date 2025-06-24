@@ -14,6 +14,8 @@ class SetsForm extends Form
         $endpoint = $this->getOption('endpoint');
         $resource_type = $this->getOption('resource_type');
         $resource_template = $this->getOption('resource_template');
+        $from = $this->getOption('from');
+        $until = $this->getOption('until');
         $formats = $this->getOption('formats');
         $sets = $this->getOption('sets') ?: [];
         $harvestAllRecords = $this->getOption('harvest_all_records');
@@ -51,6 +53,22 @@ class SetsForm extends Form
                 'attributes' => [
                     'id' => 'resource_template',
                     'value' => $resource_template,
+                ],
+            ])
+            ->add([
+                'type' => Element\Hidden::class,
+                'name' => 'from',
+                'attributes' => [
+                    'id' => 'from',
+                    'value' => $from,
+                ],
+            ])
+            ->add([
+                'type' => Element\Hidden::class,
+                'name' => 'until',
+                'attributes' => [
+                    'id' => 'until',
+                    'value' => $until,
                 ],
             ])
             ->add([

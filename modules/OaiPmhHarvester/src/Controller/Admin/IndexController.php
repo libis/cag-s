@@ -58,6 +58,8 @@ class IndexController extends AbstractActionController
         $endpoint = @$post['endpoint'];
         $resource_type =  @$post['resource_type'];
         $resource_template =  @$post['resource_template'];
+        $from = @$post['from'];
+        $until = @$post['until'];
 
         // Avoid direct acces to the page.
         if (empty($endpoint)) {
@@ -138,6 +140,8 @@ class IndexController extends AbstractActionController
             'predefined_sets' => $predefinedSets,
             'favorite_format' => $favoriteFormat,
             'resource_template' => $resource_template,
+            'from' => $from,
+            'until' => $until,
             'resource_type' => $resource_type
         ];
         $form = $this->getForm(SetsForm::class, $options);
@@ -159,6 +163,8 @@ class IndexController extends AbstractActionController
         $post = $this->params()->fromPost();
         $resource_type =  $post['resource_type'];
         $resource_template =  $post['resource_template'];
+        $from =  $post['from'];
+        $until =  $post['until'];
 
         $filters = [];
         $filters['whitelist'] = $post['filters_whitelist'];
@@ -267,6 +273,8 @@ class IndexController extends AbstractActionController
                 'has_err' => 0,
                 'metadata_prefix' => $set['metadata_prefix'],
                 'resource_template' => $resource_template,
+                'from' => $from,
+                'until' => $until,
                 'resource_type' => $resource_type,
                 'filters' => $filters,
             ] + $set;

@@ -1,6 +1,6 @@
 <?php
 namespace OaiPmhHarvester\Job;
-
+ini_set('memory_limit', '512M');
 use Omeka\Job\AbstractJob;
 use SimpleXMLElement;
 
@@ -87,7 +87,7 @@ class Harvest extends AbstractJob
             'resource_template' => $args['resource_template'],
             'o-module-oai-pmh-harvester:metadata_prefix' => $args['metadata_prefix'],
             'o-module-oai-pmh-harvester:set_spec' => $args['set_spec'],
-            'o-module-oai-pmh-harvester:set_name' => $args['set_name'],
+            'o-module-oai-pmh-harvester:set_name' => $args['set_name']. ' - from ' . $args['from']. ' - until ' . $args['until'],
             'o-module-oai-pmh-harvester:set_description' => @$args['set_description'],
             'o-module-oai-pmh-harvester:has_err' => false,
             'o-module-oai-pmh-harvester:stats' => $stats,
@@ -139,17 +139,25 @@ class Harvest extends AbstractJob
 
             if ($resumptionToken) {
                 $url = $args['endpoint'] . "?resumptionToken=$resumptionToken&verb=ListRecords";
+                $this->logger->info($resumptionToken);
             } else {
                 $url = $args['endpoint'] . "?metadataPrefix=" . $args['metadata_prefix'] . '&verb=ListRecords';
                 if (strlen($args['set_spec'])) {
                     $url .= '&set=' . $args['set_spec'];
                 }
+                if (strlen($args['from'])) {
+                    $url .= '&from=' . $args['from'];
+                }
             }
-            $this->logger->info($args['resource_type']);
+            //$this->logger->info($args['resource_type']);
             $this->logger->info("start load xml");
 
             /** @var \SimpleXMLElement $response */
-            $response = \simplexml_load_file($url);
+            //$response = \simplexml_load_file($url);
+            $timeout = 480;
+            $context = stream_context_create(['http' => ['timeout' => $timeout]]);
+            $data = file_get_contents($url, false, $context);
+            $response = simplexml_load_string($data);
             //$this->logger->info($response->asXML());
             if (!$response) {
                 $this->hasErr = true;
@@ -227,6 +235,7 @@ class Harvest extends AbstractJob
                 $this->createItems($toInsert);
             }*/
             gc_collect_cycles();
+            //$this->logger->info("mem: ".memory_get_usage());
             $identityMap = $entityManager->getUnitOfWork()->getIdentityMap();
             foreach ($identityMap as $entityClass => $entities) {
                 foreach ($entities as $idHash => $entity) {
@@ -428,6 +437,8 @@ class Harvest extends AbstractJob
             $dcHeader = $record->header->identifier;
             $ie = explode(":",$dcHeader);
             $ie = $ie[2];
+
+            //$this->logger->info($dcHeader);
 
             $media['https://lib.is/'.$ie.'/thumbnail']= [
                 'o:ingester' => 'url',

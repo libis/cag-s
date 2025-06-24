@@ -1,9 +1,9 @@
-version: '2'
-
 services:
 
   omeka-s:
     build: ./
+    networks:
+      - my-network
     ports:
       - "9016:80"
     volumes:
@@ -13,3 +13,8 @@ services:
       - ./config/:/var/www/html/config/
       - ./htaccess:/var/www/html/.htaccess
     restart: "no"
+
+networks:
+  my-network:
+    external:
+      name: dev-network    
