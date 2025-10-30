@@ -248,7 +248,8 @@ $this->headScript()->appendFile($assetUrl('js/search.js', 'AdvancedSearch'), 'te
         var dateMin =1500;
         var dateMax = 2023;      
       <?php endif;?>
-      <?php if($searchPage->name() == "Ledenbladen"):?>   
+      <?php 
+        if($searchPage->name() == "Ledenbladen"):?>   
         var dateFrom = $('#psl-search-form input[name="dcterms_date_drm[from]"]');
         var dateTo = $('#psl-search-form input[name="dcterms_date_drm[to]"]');
         var dateMin =1890;
@@ -322,7 +323,7 @@ $this->headScript()->appendFile($assetUrl('js/search.js', 'AdvancedSearch'), 'te
       
     <?php endif;?>
 
-    <?php if($searchPage->name() == "Beeldbank" || $searchPage->name() == "Ledenbladen"):?>
+    <?php if($searchPage->name() == "Beeldbank"):?>
       $('#psl-search-form-date-slider').slider({
         range: true,
         min: dateMin,

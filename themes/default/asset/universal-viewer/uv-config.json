@@ -21,7 +21,8 @@
       },
       "seadragonCenterPanel": {
         "options": {
-          "autoHideControls": false
+          "autoHideControls": false,
+          "defaultZoomLevel": 1
         }
       },
       "searchFooterPanel":{
@@ -29,7 +30,8 @@
             "elideDetailsTermsCount":20,
             "elideResultsTermsCount":10,
             "pageModeEnabled":false,
-            "positionMarkerEnabled":false
+            "positionMarkerEnabled":false,
+            "autoSelectFirstResult": true
          },
          "content":{
             "clearSearch":"Clear",

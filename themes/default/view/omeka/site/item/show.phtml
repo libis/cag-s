@@ -6,6 +6,8 @@ $embedMedia = $this->siteSetting('item_media_embed', false);
 $itemMedia = $item->media();
 $template = $item->resourceTemplate();
 
+$searchReferer = $session->searchReferer ?? null;
+  
 if($template):
   $type = $template->label();
 else:
@@ -50,7 +52,9 @@ endif;
             <a href="<?php echo $site->url();?>" itemprop="url" class="breadcrumb__item"><span itemprop="title">Home</span></a>
         </span>
         <span itemscope="" itemtype="http://data-vocabulary.org/Breadcrumb" class="breadcrumb__scope">
-          <?php if($type == "Beeld"): ?>
+          <?php if($searchReferer):?>
+            <a href="<?= htmlspecialchars($searchReferer) ?>" itemprop="url" class="breadcrumb__item"><span itemprop="title">Zoekresultaten</span></a>
+          <?php elseif($type == "Beeld"): ?>
             <a href="/beeldbank?q=" itemprop="url" class="breadcrumb__item"><span itemprop="title">Beeldbank</span></a>
           <?php elseif($type == "Collectie"):?>
             <a href="/collecties?q=" itemprop="url" class="breadcrumb__item"><span itemprop="title">Collectie</span></a>
@@ -71,6 +75,9 @@ endif;
         </span>
     </div>
     <h1><?php echo $this->pageTitle($title, 2); ?></h1>
+
+
+
     <?php if($item->value('dcterms:date') && ($type == 'Nieuws' || $type == 'Agendapunt')):?>
         <?php
           $date = $item->value('dcterms:date');
@@ -85,6 +92,8 @@ endif;
     <?php endif;?>
   </div>
 </div>
+
+
 
 <?php $this->trigger('view.show.before'); ?>
 
@@ -269,10 +278,13 @@ endif;
         endif;
       ?>
       <?php $this->trigger('view.show.after'); ?>
-      <!--<iframe style="width:100%;overflow:visible;height:800px;border:none" src="https://lib.is/_/<?php echo $itemMedia[0]->value("dcterms:title")."/representation".$web_query;?>"></iframe>--> 
+
+      
+        <!--<iframe style="width:100%;overflow:visible;height:800px;border:none" src="https://lib.is/_/<?php echo $itemMedia[0]->value("dcterms:title")."/representation".$web_query;?>"></iframe>--> 
     <?php endif;?>  
 </div>
 <?php endif;?>  
+
 <?php if($type != 'Nieuws' && $type != 'Agendapunt'):?>
 <div class="section section--default">
   <div class="container">
@@ -358,6 +370,14 @@ endif;
   </div>
 </div>
 <?php endif;?>
+
+<?php
+  if ($searchReferer):
+?>
+  <div class="container" style="text-align:right;">
+    <a href="<?= htmlspecialchars($searchReferer) ?>" class="button btn">Terug naar resultaten</a>
+  </div>
+<?php endif; ?>
 
 <?php
 $translate = $this->plugin('translate');
