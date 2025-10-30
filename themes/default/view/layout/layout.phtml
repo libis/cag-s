@@ -5,7 +5,7 @@ use Laminas\Session\Container;
 $session = new Container('navigation');
 $referer = $_SERVER['HTTP_REFERER'] ?? null;
 
-if ($referer && strpos($referer, '?q=') !== false) {
+if ($referer && strpos($referer, 'q=') !== false) {
     $session->searchReferer = $referer;
 }
 
