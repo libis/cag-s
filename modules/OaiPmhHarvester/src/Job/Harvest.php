@@ -308,7 +308,7 @@ class Harvest extends AbstractJob
             if($result):                
                 try{
                     //don't update files for now to avoid redownload
-                    if(isset($item['o:media'])):
+                    if($result->media()):
                         unset($item['o:media']);
                     endif;
                     
@@ -503,7 +503,29 @@ class Harvest extends AbstractJob
                     $i++;
                 }                    
             }
+
+            if(isset($meta['dcterms:title'])) {  
+                $title_parts = $meta['dcterms:title'][0]['@value'];  
+                //get year and number from string type KYE001403, 1959, nr. 03-07: De Boer : weekblad van de Belgische Boerenbond
+                $title_parts = explode(", ",$title_parts);
+                $year = trim($title_parts[1]);
+                $number = trim($title_parts[2]);
+                $number = str_replace("nr. ","",$number);
+                $number = explode(":",$number);
+                $number = trim($number[0]);
+                $number = explode("-",$number);
+                $sortkey = $year.trim($number[0]); 
+
+                $meta['dcterms:hasVersion'][0] = [
+                    'property_id' => 28,
+                    'type' => 'literal',
+                    '@language' => '',
+                    '@value' => $sortkey.''
+                ];               
+            }  
         endif;    
+
+
         //resource template?
         if($args['resource_template']):
           $meta['o:resource_template'] = ["o:id" => $args['resource_template']];
