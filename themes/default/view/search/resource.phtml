@@ -47,8 +47,8 @@ if($type == 'Verhaal' || $type == 'Project' || $type == 'Agendapunt' || $type ==
   else:
     $url = $resource->url();
   endif; 
-/*elseif($type == 'Ledenblad'):  
-  $url = '/item/'.$resource->id();*/
+elseif($type == 'Ledenblad'):  
+  $url = '/item/'.$resource->id();
 else:
   $url = $resource->url();
 endif;
