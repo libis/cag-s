@@ -2,13 +2,6 @@
 
 use Laminas\Session\Container;
 
-$session = new Container('navigation');
-$referer = $_SERVER['HTTP_REFERER'] ?? null;
-
-if ($referer && strpos($referer, 'q=') !== false) {
-    $session->searchReferer = $referer;
-}
-
 $escape = $this->plugin('escapeHtml');
 $this->htmlElement('html')->setAttribute('lang', 'nl');
 $this->headMeta()->setCharset('utf-8');
