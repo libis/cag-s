@@ -14,11 +14,11 @@ document.addEventListener('DOMContentLoaded', function (event) {
             embedded: uvConfig.embedded,
             collectionIndex: urlAdapter.get('c') !== undefined ? Number(urlAdapter.get('c')) : undefined,
             manifestIndex: Number(urlAdapter.get('m', 0)),
-            canvasIndex: Number(urlAdapter.get('cv', 0)),
+            canvasIndex: urlAdapter.get('searchText') ? undefined : Number(urlAdapter.get('cv', 0)),
             rotation: Number(urlAdapter.get('r', 0)),
             rangeId: urlAdapter.get('rid', ''),
             highlight: urlAdapter.get('searchText'),
-            xywh: urlAdapter.get('xywh', ''),
+            xywh: urlAdapter.get('searchText') ? '' : urlAdapter.get('xywh', ''),
             target: urlAdapter.get('target', ''),
         };
 
