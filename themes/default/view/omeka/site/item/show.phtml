@@ -505,28 +505,29 @@ if($type != 'Nieuws' && $type != 'Agendapunt'):
 
 <script>
   $(document).ready(function(){
-    $('.slider-for').slick({
-      slidesToShow: 1,
-      slidesToScroll: 1,
-      arrows: false,
-      fade: true,
-      centerMode: true,
-      asNavFor: '.slider-nav'
-    });
-    $('.slider-nav').slick({
-      slidesToShow: 10,
-      slidesToScroll: 1,
-      asNavFor: '.slider-for',
-      focusOnSelect: true
-    });
-    $('.slick-embed').slick({
-      slidesToShow: 1,
-      slidesToScroll: 1,
-      arrows: true,
-      fade: true,
-      centerMode: true
-    });
-
+  if(typeof $.fn.slick != 'undefined'){  
+      $('.slider-for').slick({
+        slidesToShow: 1,
+        slidesToScroll: 1,
+        arrows: false,
+        fade: true,
+        centerMode: true,
+        asNavFor: '.slider-nav'
+      });
+      $('.slider-nav').slick({
+        slidesToShow: 10,
+        slidesToScroll: 1,
+        asNavFor: '.slider-for',
+        focusOnSelect: true
+      });
+      $('.slick-embed').slick({
+        slidesToShow: 1,
+        slidesToScroll: 1,
+        arrows: true,
+        fade: true,
+        centerMode: true
+      });
+    }
     $('.beeld').on('contextmenu', 'img', function(e){
       return false;
     });
