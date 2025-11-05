@@ -7,7 +7,12 @@ $embedMedia = $this->siteSetting('item_media_embed', false);
 $itemMedia = $item->media();
 $template = $item->resourceTemplate();
 
-$searchReferer = $_SESSION['searchReferer'] ?? '';
+$searchReferer = "";  
+if(isset($_GET['ref'])):
+  if(isset($_SESSION['searchReferer']) && $_GET['ref'] == 'search'):   
+    $searchReferer = $_SESSION['searchReferer'];   
+  endif;
+endif;
 
 if($template):
   $type = $template->label();
@@ -465,7 +470,11 @@ if($type != 'Nieuws' && $type != 'Agendapunt'):
                <?php endif; ?>
 
                <div class="card__body panel panel--light">
-                   <h2 class="heading--3 card__title"><?php echo $resource->link($title); ?></h2>
+                    <?php if($type == 'Ledenblad'):?>
+                      <h2 class="heading--3 card__title"><a href="<?php echo '/item/'.$resource->id();?>"><?= $title ?></a></h2>
+                    <?php else:?>
+                    <h2 class="heading--3 card__title"><?php echo $resource->link($title); ?></h2>
+                   <?php endif;?>
                    <?php if ($description = $resource->displayDescription()): ?>
                       <?php $description = strip_tags($description);?>
                        <p class="description">
@@ -473,7 +482,7 @@ if($type != 'Nieuws' && $type != 'Agendapunt'):
                        </p>
                    <?php endif; ?>
                    <?php if($type == 'Ledenblad'):?>
-                      <div class="link link--ext card__link"><a href="<?php echo "/s/test/item/".$resource->id();?>">Meer info</a></div>
+                      <div class="link link--ext card__link"><a href="<?php echo "/item/".$resource->id();?>">Meer info</a></div>
                    <?php else:?> 
                       <div class="link link--ext card__link"><a href="<?php echo $resource->url();?>">Meer info</a></div>
                    <?php endif;?>

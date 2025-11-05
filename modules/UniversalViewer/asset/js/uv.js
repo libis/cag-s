@@ -19,13 +19,53 @@ document.addEventListener('DOMContentLoaded', function (event) {
             rangeId: urlAdapter.get('rid', ''),
             highlight: urlAdapter.get('searchText'),
             xywh: urlAdapter.get('searchText') ? '' : urlAdapter.get('xywh', ''),
-            target: urlAdapter.get('target', ''),
+            target: ''
+            //target: urlAdapter.get('target', ''),
         };
 
         uv = UV.init(uvConfig.id, data);
         urlAdapter.bindTo(uv);
 
-       
+       uv.on('searchResultsAvailable', function(searchResults) {
+    console.log('Search results available:', searchResults);
+    
+    // Wait for the UI to be ready
+    setTimeout(function() {
+        try {
+            // Access the extension and search panel
+            const ext = uv.extension;
+            const searchPanel = ext.searchFooterPanel;
+            
+            if (searchPanel) {
+                console.log('Search panel found');
+                
+                // Try to trigger selection of first result
+                if (searchPanel.selectResult) {
+                    searchPanel.selectResult(0);
+                } else if (searchPanel.elideResultsTermsCount !== undefined) {
+                    // Trigger the result selection event
+                    searchPanel.selectIndex(0);
+                }
+                
+                // Also try triggering the canvas change with xywh
+                const firstResult = searchResults.resources[0];
+                if (firstResult && firstResult.on) {
+                    const parts = firstResult.on.split('#xywh=');
+                    const canvasUri = parts[0];
+                    const xywh = parts[1];
+                    
+                    console.log('First result canvas:', canvasUri);
+                    console.log('First result xywh:', xywh);
+                    
+                    // Try to navigate directly
+                    ext.viewCanvas(canvasUri, xywh);
+                }
+            }
+        } catch (e) {
+            console.error('Error navigating to result:', e);
+        }
+    }, 500);
+});
         
         if (uvConfig.configUri) {
             uv.on('configure', function ({ config, cb }) {
@@ -41,6 +81,8 @@ document.addEventListener('DOMContentLoaded', function (event) {
                     })
                 );
            });
+
+           
        }
 
         if (!uvConfig.embedded) {
