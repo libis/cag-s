@@ -7,12 +7,7 @@ $embedMedia = $this->siteSetting('item_media_embed', false);
 $itemMedia = $item->media();
 $template = $item->resourceTemplate();
 
-$referer = $_SERVER['HTTP_REFERER'] ?? null;
-//last search 
-$searchReferer = "";
-if ($referer && str_contains($referer, 'q=')) {
-    $searchReferer = $referer;
-}
+$searchReferer = $_SESSION['searchReferer'] ?? '';
 
 if($template):
   $type = $template->label();

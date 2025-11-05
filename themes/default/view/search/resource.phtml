@@ -48,9 +48,9 @@ if($type == 'Verhaal' || $type == 'Project' || $type == 'Agendapunt' || $type ==
     $url = $resource->url();
   endif; 
 elseif($type == 'Ledenblad'):  
-  $url = '/item/'.$resource->id();
+  $url = '/item/'.$resource->id()."?ref=search";
 else:
-  $url = $resource->url();
+  $url = $resource->url()."?ref=search";
 endif;
 ?>
 <div class="grid__item">
@@ -65,7 +65,7 @@ endif;
               $q = $q." ".htmlspecialchars(strip_tags($value["value"]));
             endif;  
           endforeach;
-          $url = $url."#?searchText=".trim($q);
+          $url = $url."?searchText=".trim($q)."&ref=search";
         endif;
      ?>
      <a href="<?php echo $url;?>" style="display:block;">

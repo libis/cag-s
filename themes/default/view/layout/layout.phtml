@@ -2,6 +2,17 @@
 
 use Laminas\Session\Container;
 
+
+if (!isset($_SESSION['searchReferer'])) {
+    // Check if the current URL has a search query
+    if (isset($_GET['q'])) {
+        // Optionally reconstruct the full URL
+        $fullUrl = $_SERVER['REQUEST_URI'];
+        $_SESSION['searchReferer'] = $fullUrl;
+    }
+}
+
+
 $escape = $this->plugin('escapeHtml');
 $this->htmlElement('html')->setAttribute('lang', 'nl');
 $this->headMeta()->setCharset('utf-8');
