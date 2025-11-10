@@ -28,9 +28,9 @@ endif;
 $searchReferer = "";  
 //check if ref is set and equals search
 if(isset($_GET['ref'])):
-  if(isset($_SESSION['searchReferer']) && $_GET['ref'] == 'search'):   
+  if(isset($_SESSION['searchReferer']) && $_GET['ref'] == 'search' && isset($type_array[$type])):   
     //check if ref contains the correct type
-    if(str_contains($_SESSION['searchReferer'], $type_array[$ype])):
+    if($type && str_contains($_SESSION['searchReferer'], $type_array[$type])):
       $searchReferer = $_SESSION['searchReferer'];   
     endif;
   endif;

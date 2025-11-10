@@ -3,13 +3,10 @@
 use Laminas\Session\Container;
 
 
-if (!isset($_SESSION['searchReferer'])) {
-    // Check if the current URL has a search query
-    if (isset($_GET['q'])) {
-        // Optionally reconstruct the full URL
-        $fullUrl = $_SERVER['REQUEST_URI'];
-        $_SESSION['searchReferer'] = $fullUrl;
-    }
+// Check if the current URL has a search query
+if (isset($_GET['q'])) {  
+    $fullUrl = htmlspecialchars(strip_tags($_SERVER['REQUEST_URI']));
+    $_SESSION['searchReferer'] = $fullUrl;   
 }
 
 
