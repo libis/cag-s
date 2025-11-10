@@ -19,8 +19,8 @@ $displayCount = !empty($options['display_count']);
 ?>
 
 <div class="facet-select-range">
-    <span><?= $translate('Between') ?></span>
-    <select name="facet[<?= $name ?>][from]" class="search-facet-items chosen-select" data-placeholder="<?= $translate('Select below…') ?>">
+    <span><?= $translate('Van') ?></span>
+    <select name="facet[<?= $name ?>][from]" class="search-facet-items chosen-select" data-placeholder="<?= $translate('Selecteer...') ?>">
         <option value=""></option>
         <?php foreach ($facetValues as $facetValue): ?>
         <option value="<?= $escapeAttr($facetValue['value']) ?>"<?= $isFacetModeDirect ? ' data-url="' . $escapeAttr($facetValue['url_from']) . '"' : '' ?><?= $facetValue['is_from'] ? ' selected="selected"' : '' ?>>
@@ -28,8 +28,8 @@ $displayCount = !empty($options['display_count']);
         </option>
         <?php endforeach; ?>
     </select>
-    <span><?= $translate('and') ?></span>
-    <select name="facet[<?= $name ?>][to]" class="search-facet-items chosen-select" data-placeholder="<?= $translate('Select below…') ?>">
+    <span><?= $translate('tot') ?></span>
+    <select name="facet[<?= $name ?>][to]" class="search-facet-items chosen-select" data-placeholder="<?= $translate('Selecteer...') ?>">
         <option value=""></option>
         <?php foreach ($facetValues as $facetValue): ?>
         <option value="<?= $escapeAttr($facetValue['value']) ?>"<?= $isFacetModeDirect ? ' data-url="' . $escapeAttr($facetValue['url_to']) . '"' : '' ?><?= $facetValue['is_to'] ? ' selected="selected"' : '' ?>>
