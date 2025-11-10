@@ -514,7 +514,7 @@ class Harvest extends AbstractJob
                 $number = explode(":",$number);
                 $number = trim($number[0]);
                 $number = explode("-",$number);
-                $sortkey = $year.trim($number[0]); 
+                $sortkey = $year.trim($number[0]);                 
 
                 $meta['dcterms:hasVersion'][0] = [
                     'property_id' => 28,
@@ -523,6 +523,21 @@ class Harvest extends AbstractJob
                     '@value' => $sortkey.''
                 ];               
             }  
+
+            if(isset($meta['dcterms:date'])) {  
+                $date_val = $meta['dcterms:date'][0]['@value'];  
+                //get year from date string
+                $date_val = explode("-",$date_val);
+                $year = trim($date_val[0]);               
+
+                //dupicalte date to dateIssued for better filtering
+                $meta['dcterms:issued'][0] = [
+                    'property_id' => 23,
+                    'type' => 'literal',
+                    '@language' => '',
+                    '@value' => $year.''
+                ];               
+            }
         endif;    
 
 
