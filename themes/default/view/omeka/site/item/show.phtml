@@ -7,17 +7,33 @@ $embedMedia = $this->siteSetting('item_media_embed', false);
 $itemMedia = $item->media();
 $template = $item->resourceTemplate();
 
-$searchReferer = "";  
-if(isset($_GET['ref'])):
-  if(isset($_SESSION['searchReferer']) && $_GET['ref'] == 'search'):   
-    $searchReferer = $_SESSION['searchReferer'];   
-  endif;
-endif;
+$type_array = [
+  "Beeld" => "beeldbank",
+  "Collectie" => "collecties",
+  "Nieuws" => "nieuws",
+  "Agendapunt" => "agenda",
+  "Film" => "films",
+  "Filmkopie" => "filmkopies",
+  "Ledenblad" => "ledenbladen"  
+];
+
+
 
 if($template):
   $type = $template->label();
 else:
   $type = "";
+endif;
+
+$searchReferer = "";  
+//check if ref is set and equals search
+if(isset($_GET['ref'])):
+  if(isset($_SESSION['searchReferer']) && $_GET['ref'] == 'search'):   
+    //check if ref contains the correct type
+    if(str_contains($_SESSION['searchReferer'], $type_array[$ype])):
+      $searchReferer = $_SESSION['searchReferer'];   
+    endif;
+  endif;
 endif;
 
 $thumb = $item->primaryMedia();
