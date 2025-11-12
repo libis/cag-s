@@ -148,6 +148,9 @@ class Harvest extends AbstractJob
                 if (strlen($args['from'])) {
                     $url .= '&from=' . $args['from'];
                 }
+                if (strlen($args['until'])) {
+                    $url .= '&until=' . $args['until'];
+                }
             }
             //$this->logger->info($args['resource_type']);
             $this->logger->info("start load xml");
