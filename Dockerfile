@@ -47,6 +47,7 @@ RUN unzip -q /var/www/omeka-s.zip -d /var/www/ \
 COPY themes /var/www/html/themes
 COPY modules /var/www/html/modules  
 COPY OEmbed.php /var/www/html/application/src/Media/Ingester/OEmbed.php
+COPY google23e26c94f7d8e210.html /var/www/html/google23e26c94f7d8e210.html
 
 COPY extra.ini /usr/local/etc/php/conf.d/
 COPY opcache.ini /usr/local/etc/php/conf.d/opcache.ini
