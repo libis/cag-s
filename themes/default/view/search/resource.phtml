@@ -128,6 +128,7 @@ endif;
                   $text = str_replace(array("-\r", "-\n"), '', $text);
                   $text = str_replace(array("\r", "\n"), ' ', $text);
                   $text = str_replace("  ", ' ', $text);
+                  $text = strip_tags($text);                  
                 endif;  
 
                 if($text):
