@@ -14,7 +14,7 @@ $type_array = [
   "Agendapunt" => "agenda",
   "Film" => "films",
   "Filmkopie" => "filmkopies",
-  "Ledenblad" => "ledenbladen"  
+  "Ledenblad" => "tijdschriften"  
 ];
 
 
@@ -89,7 +89,7 @@ endif;
           <?php elseif($type == "Filmkopie"):?>
             <a href="/filmkopies?q=" itemprop="url" class="breadcrumb__item"><span itemprop="title">Filmkopies</span></a>
           <?php elseif($type == "Ledenblad"):?>
-            <a href="/s/start/ledenbladen?q=" itemprop="url" class="breadcrumb__item"><span itemprop="title">Ledenbladen</span></a>
+            <a href="/s/start/ledenbladen?q=" itemprop="url" class="breadcrumb__item"><span itemprop="title">Tijdschriften</span></a>
           <?php endif;?>
         </span>
         <span itemscope="" itemtype="http://data-vocabulary.org/Breadcrumb" class="breadcrumb__scope">
@@ -455,7 +455,7 @@ if($type != 'Nieuws' && $type != 'Agendapunt'):
         <?php elseif($type == "Filmkopie"): ?>
           <h2>Andere interessante filmkopies</h2>
           <?php elseif($type == "Ledenblad"): ?>
-            <h2>Andere ledenbladen</h2>  
+            <h2>Andere tijdschriften</h2>  
         <?php endif;?>
 
         <div class="grid grid--3-col@med spacer--xsm">

@@ -224,6 +224,8 @@ endif;
             <?php endif; ?>
             <?php if($type == 'Film' || $type == 'Filmkopie'):?>
               <div class="link link--ext card__link"><a href="<?php echo $url;?>">Lees meer</a></div>
+            <?php elseif($type == 'Ledenblad'):?>
+              <div class="link link--ext card__link"><a href="<?php echo $url;?>">Tijdschrift bekijken</a></div>  
             <?php else:?>
               <div class="link link--ext card__link"><a href="<?php echo $url;?>"><?php echo $type;?> bekijken</a></div>
             <?php endif; ?>

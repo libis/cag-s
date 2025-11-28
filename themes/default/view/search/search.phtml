@@ -108,14 +108,14 @@ $this->headScript()->appendFile($assetUrl('js/search.js', 'AdvancedSearch'), 'te
         <?php endif;?>
    </div>
 </div>
-<?php if($searchPage->name() == "Ledenbladen"):?>  
+<?php if($searchPage->name() == "Tijdschriften"):?>  
   <div class="section section--default ledenbladen">
 <?php else:?>  
   <div class="section section--default">
 <?php endif;?>    
   <div class="container">
       
-    <?php if($searchPage->name() == "Ledenbladen"):?>  
+    <?php if($searchPage->name() == "Tijdschriften"):?>  
       
       <div class="panel panel--light ledenbladen-advanced">
         <?php //echo $this->searchForm($searchPage, null,true); ?>
@@ -249,7 +249,7 @@ $this->headScript()->appendFile($assetUrl('js/search.js', 'AdvancedSearch'), 'te
         var dateMax = 2023;      
       <?php endif;?>
       <?php 
-        if($searchPage->name() == "Ledenbladen"):?>   
+        if($searchPage->name() == "Tijdschriften"):?>   
         var dateFrom = $('#psl-search-form input[name="dcterms_date_drm[from]"]');
         var dateTo = $('#psl-search-form input[name="dcterms_date_drm[to]"]');
         var dateMin =1890;
