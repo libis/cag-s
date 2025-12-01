@@ -44,7 +44,7 @@ $options = $searchPage->setting('facet', []);
 
 <div class="grid__12 grid__4@med">
    <div class="panel panel--light">
-    <?php if($searchPage->name() != "Ledenbladen"):?>
+    <?php if($searchPage->name() != "Tijdschriften"):?>
         <h2>Filter <?php echo lcfirst($searchPage->name());?></h2>
         <?php //echo $this->searchForm($searchPage, null,true); ?>
             <?php if($query->getQuery()):?>
@@ -56,7 +56,7 @@ $options = $searchPage->setting('facet', []);
             
             <h4 style="margin-bottom: 0.5rem;">Tekstueel zoeken</h4>
             <div class="spacer">
-            <?php if($searchPage->name() == "Ledenbladen"):?>    
+            <?php if($searchPage->name() == "Tijdschriften"):?>    
                 <?php echo $this->searchForm(); ?>
                 <button class="add_field_button" type="button"><i class='fas fa-plus'></i> Een extra veld toevoegen</button>
             <?php else:?>    
