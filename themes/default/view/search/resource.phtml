@@ -95,10 +95,10 @@ endif;
             if($type == 'Ledenblad'):
               $title = $resource->displayTitle();
               $title = explode(", ",$title);
-              $date = $title[1];
-              $title = explode(":",$title[2]);
+              $date = isset($title[1]) ? $title[1] : $title[0];
+              $title = isset($title[2]) ? explode(":",$title[2]) : $title[0];
               $nr = $title[0];
-              $title = $title[1];
+              $title = isset($title[1]) ? $title[1] : $title[0];
                //check if title is correct
               $old_titles = $resource->value('dcterms:replaces',array('all'=>true));
               foreach($old_titles as $old_title):
@@ -123,15 +123,18 @@ endif;
                 $media = $resource->media();
                 
                 if(isset($media[1])):
+                  echo $media[1]->mediaType();
                   $text = $media[1]->render();
                   //echo $text;
+                  
                   $text = str_replace(array("-\r", "-\n"), '', $text);
                   $text = str_replace(array("\r", "\n"), ' ', $text);
                   $text = str_replace("  ", ' ', $text);
                   $text = str_replace(" : ", ' ', $text);
                   $text = str_replace(" — ", '', $text);
                   $text = str_replace("|", '', $text);
-                  $text = strip_tags($text);                  
+                  $text = strip_tags($text);       
+                  
                 endif;  
 
                 if($text):
@@ -140,7 +143,9 @@ endif;
                       $search_text = htmlspecialchars(strip_tags($value["value"]));
                       //$texts = explode($search_text,str_ireplace($search_text,$search_text,$text));
                       $search_text = str_replace("-"," ",$search_text);
-                      $texts= preg_split("/".$search_text."/i", $text);
+                      $search_text_escaped = preg_quote($search_text, '/');
+                      $texts = preg_split("/\b".$search_text_escaped."\b/i", $text);
+                     
                       if(sizeof($texts)>1):
                         //$first = explode(" ",$texts[0]);
                         $first = substr($texts[0],-45);
@@ -152,7 +157,8 @@ endif;
                         break;
                       endif;  
                       $search_text = str_replace(" ","-",$search_text);
-                      $texts= preg_split("/".$search_text."/i", $text);
+                      $search_text_escaped = preg_quote($search_text, '/');
+                      $texts = preg_split("/\b".$search_text_escaped."\b/i", $text);
                       if(sizeof($texts)>1):
                         //$first = explode(" ",$texts[0]);
                         $first = substr($texts[0], -45);
