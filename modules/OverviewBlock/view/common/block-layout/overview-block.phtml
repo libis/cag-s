@@ -2,8 +2,9 @@
 <?php if($attachments):?>
 <div class="section section--default">
     <div class="container">
-        <div class="grid grid--2-col@sml grid--3-col@med">
-          <?php for($i = 1; $i <= 3; $i++){ ?>
+        <div class="grid grid--2-col@sml grid--<?php echo sizeof($attachments);?>-col@med">
+          <?php for($i = 1; $i <= sizeof($attachments); $i++){ ?>
+            <?php if(isset($attachments[$i-1])):?>
             <div class="grid__item">
                 <div class="card card--clickable card--link card--variant">
                   <a href="<?php echo $block->dataValue('link'.$i);?>">
@@ -41,6 +42,7 @@
                   </a>
                 </div>
             </div>
+            <?php endif;?>
           <?php } ?>
         </div>
     </div>
