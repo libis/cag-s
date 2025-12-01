@@ -56,6 +56,7 @@ class Custom extends AbstractHelper
         return $variants;
     }
 
+   
     // ---------- Core snippet builder (fixed) ----------
     public function make_flexible_snippet($raw_text, $search, $radius = 30)
     {
@@ -76,7 +77,7 @@ class Custom extends AbstractHelper
         $group = implode('|', $escaped);
 
         // word-boundary like anchors that work with unicode letters & numbers
-        $pattern = '/(?<![\p{L}\p{N}])(' . $group . ')(?![\p{L}\p{N}])/iu';
+        $pattern = '/(' . $group . ')/iu';
 
         // find first match and get offset
         if (!preg_match($pattern, $text, $m, PREG_OFFSET_CAPTURE)) {
@@ -110,7 +111,7 @@ class Custom extends AbstractHelper
         foreach ($variants as $v) {
             if (mb_strlen($v) < 1) continue;
             $snippet = preg_replace(
-                '/(?<![\p{L}\p{N}])' . preg_quote($v, '/') . '(?![\p{L}\p{N}])/iu',
+                '/' . preg_quote($v, '/') . '/iu',
                 '<span class="hit">$0</span>',
                 $snippet
             );
