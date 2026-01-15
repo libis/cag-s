@@ -458,7 +458,7 @@ class Harvest extends AbstractJob
             ];
 
             //$this->logger->info($ie);
-            $html = file_get_contents("https://lib.is/_/".$ie."/stream?file_label=ocr-full-text");
+            $html = file_get_contents("https://lib.is/".$ie."/stream?file_label=ocr-full-text");
             //$html = utf8_encode($html);
 
             $html = mb_convert_encoding($html, 'UTF-8', 'Windows-1252');  
