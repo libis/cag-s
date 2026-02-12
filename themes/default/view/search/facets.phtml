@@ -42,8 +42,8 @@ if (!empty($itemSet)) {
 $options = $searchPage->setting('facet', []);
 ?>
 
-<div class="grid__12 grid__4@med">
-   <div class="panel panel--light">
+<div class="grid__12 grid__4@med facets-group">
+   <div class="panel panel--light facets">
     <?php if($searchPage->name() != "Tijdschriften"):?>
         <h2>Filter <?php echo lcfirst($searchPage->name());?></h2>
         <?php //echo $this->searchForm($searchPage, null,true); ?>
