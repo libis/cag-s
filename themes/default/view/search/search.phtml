@@ -79,7 +79,11 @@ $this->headScript()->appendFile($assetUrl('js/search.js', 'AdvancedSearch'), 'te
                <a href="/" itemprop="url" class="breadcrumb__item"><span itemprop="title">Home</span></a>
            </span>
            <span itemscope="" itemtype="http://data-vocabulary.org/Breadcrumb" class="breadcrumb__scope">
-              <?php if(htmlspecialchars($query->getQuery())):?>
+              <?php if($searchPage->name() == "Tijdschriften"):?>                
+                <a href="/page/digitale-leeszaal-tijdschriften" itemprop="url" class="breadcrumb__item">
+                  <span itemprop="title">Tijdschriften</span>
+                </a>
+              <?php elseif(htmlspecialchars($query->getQuery())):?>
                 <span itemprop="title"><a href="<?= parse_url($_SERVER["REQUEST_URI"], PHP_URL_PATH).'?q=' ?>"><?php echo $page->name();?></a></span></span>
                 <span itemscope="" itemtype="http://data-vocabulary.org/Breadcrumb" class="breadcrumb__scope">
                 <span itemprop="title"><?= htmlspecialchars($query->getQuery())?></span></span>
