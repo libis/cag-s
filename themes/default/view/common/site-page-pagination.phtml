@@ -20,7 +20,7 @@ $nextText = $translate('Next');
                                 </h2>
                                 <div class="btn">
                                   <span class="icon icon--arrow-left" aria-label="vorige"></span>
-                                  <?php echo $prevText;?>
+                                  <?php echo $prevText;?> <?= $translate('page'); ?>
                                 </div>
                             </div>
                         </div>
@@ -39,7 +39,7 @@ $nextText = $translate('Next');
                                     <a href="<?php echo $nextPage->siteUrl();?>"><?php echo $nextPage->title();?></a>
                                 </h2>
                                 <div class="btn">
-                                  <?php echo $nextText;?>
+                                  <?php echo $nextText;?> <?= $translate('page'); ?>
                                   <span class="icon icon--arrow-right" aria-label="volgende"></span>
                                 </div>
                             </div>

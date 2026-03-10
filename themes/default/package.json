@@ -1,0 +1,29 @@
+{
+  "name": "default",
+  "version": "1.0.0",
+  "description": "The default theme for Omeka S.",
+  "main": "gulpfile.js",
+  "scripts": {
+    "test": "test"
+  },
+  "keywords": [
+    "omeka-s",
+    "theme"
+  ],
+  "author": "RRCHNM",
+  "license": "GPL-3.0",
+  "bugs": {
+    "url": "https://github.com/omeka-s-themes/default/issues"
+  },
+  "devDependencies": {
+    "autoprefixer": "^9.2.1",
+    "gulp": "^5.0.0",
+    "gulp-clean-css": "^4.3.0",
+    "gulp-concat": "^2.6.1",
+    "gulp-rename": "^2.0.0",
+    "gulp-sass": "^6.0.0",
+    "gulp-sass-glob": "^1.1.0",
+    "gulp-uglify": "^3.0.2",
+    "sass": "1.75"
+  }
+}
