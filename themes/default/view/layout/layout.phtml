@@ -16,8 +16,8 @@ $this->headMeta()->setCharset('utf-8');
 $this->headMeta()->appendName('viewport', 'width=device-width, initial-scale=1');
 $this->headTitle()->setSeparator(' · ');
 
-$this->headLink()->prependStylesheet($this->assetUrl('css/main.css'));
-$this->headLink()->prependStylesheet($this->assetUrl('css/style.min.css'));
+$this->headLink()->prependStylesheet($this->assetUrl('css/main.css?v=0.1'));
+$this->headLink()->prependStylesheet($this->assetUrl('css/style.min.css?v=0.1'));
 $this->headLink()->prependStylesheet($this->assetUrl('css/slick.css'));
 $this->headLink()->prependStylesheet($this->assetUrl('css/iconfonts.css', 'Omeka'));
 
