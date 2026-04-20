@@ -46,6 +46,7 @@ RUN unzip -q /var/www/omeka-s.zip -d /var/www/ \
 # Content
 COPY themes /var/www/html/themes
 COPY modules /var/www/html/modules  
+COPY robots.txt /var/www/html/robots.txt
 COPY OEmbed.php /var/www/html/application/src/Media/Ingester/OEmbed.php
 COPY google23e26c94f7d8e210.html /var/www/html/google23e26c94f7d8e210.html
 
