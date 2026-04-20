@@ -5,11 +5,11 @@ $this->htmlElement('body')->appendAttribute('class', 'page browse');
   <div class="container">
     <!-- breadcrumbs -->
     <div class="breadcrumb spacer">
-        <span itemscope="" itemtype="http://data-vocabulary.org/Breadcrumb" class="breadcrumb__scope">
-            <a href="/s/start/" itemprop="url" class="breadcrumb__item"><span itemprop="title">Home</span></a>
+        <span class="breadcrumb__scope">
+            <a href="/s/start/" class="breadcrumb__item"><span>Home</span></a>
         </span>
-        <span itemscope="" itemtype="http://data-vocabulary.org/Breadcrumb" class="breadcrumb__scope">
-            <span itemprop="title">Zoekresultaten pagina's</span>
+        <span class="breadcrumb__scope">
+            <span>Zoekresultaten pagina's</span>
         </span>
     </div>
     <?php  $query = $this->params()->fromQuery();?>

@@ -75,20 +75,20 @@ $this->headScript()->appendFile($assetUrl('js/search.js', 'AdvancedSearch'), 'te
 
        <!-- breadcrumbs -->
        <div class="breadcrumb spacer">
-           <span itemscope="" itemtype="http://data-vocabulary.org/Breadcrumb" class="breadcrumb__scope">
-               <a href="/" itemprop="url" class="breadcrumb__item"><span itemprop="title">Home</span></a>
+           <span class="breadcrumb__scope">
+               <a href="/" class="breadcrumb__item"><span>Home</span></a>
            </span>
-           <span itemscope="" itemtype="http://data-vocabulary.org/Breadcrumb" class="breadcrumb__scope">
+           <span class="breadcrumb__scope">
               <?php if($searchPage->name() == "Tijdschriften"):?>                
-                <a href="/page/digitale-leeszaal-tijdschriften" itemprop="url" class="breadcrumb__item">
-                  <span itemprop="title">Tijdschriften</span>
+                <a href="/page/digitale-leeszaal-tijdschriften" class="breadcrumb__item">
+                  <span>Tijdschriften</span>
                 </a>
               <?php elseif(htmlspecialchars($query->getQuery())):?>
-                <span itemprop="title"><a href="<?= parse_url($_SERVER["REQUEST_URI"], PHP_URL_PATH).'?q=' ?>"><?php echo $page->name();?></a></span></span>
-                <span itemscope="" itemtype="http://data-vocabulary.org/Breadcrumb" class="breadcrumb__scope">
-                <span itemprop="title"><?= htmlspecialchars($query->getQuery())?></span></span>
+                <span><a href="<?= parse_url($_SERVER["REQUEST_URI"], PHP_URL_PATH).'?q=' ?>"><?php echo $page->name();?></a></span></span>
+                <span class="breadcrumb__scope">
+                <span><?= htmlspecialchars($query->getQuery())?></span></span>
               <?php else:?>
-               <span itemprop="title"><?php echo $page->name();?></span>
+               <span><?php echo $page->name();?></span>
               <?php endif;?>
            </span>
        </div>

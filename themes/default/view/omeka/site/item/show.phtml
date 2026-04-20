@@ -70,30 +70,30 @@ endif;
 <div class="section section--default">
   <div class="container">
     <div class="breadcrumb spacer">
-        <span itemscope="" itemtype="http://data-vocabulary.org/Breadcrumb" class="breadcrumb__scope">
-            <a href="<?php echo $site->url();?>" itemprop="url" class="breadcrumb__item"><span itemprop="title">Home</span></a>
+        <span class="breadcrumb__scope">
+            <a href="<?php echo $site->url();?>" class="breadcrumb__item"><span>Home</span></a>
         </span>
-        <span itemscope="" itemtype="http://data-vocabulary.org/Breadcrumb" class="breadcrumb__scope">
+        <span class="breadcrumb__scope">
           <?php if($searchReferer):?>
-            <a href="<?= htmlspecialchars($searchReferer) ?>" itemprop="url" class="breadcrumb__item"><span itemprop="title">Zoekresultaten</span></a>
+            <a href="<?= htmlspecialchars($searchReferer) ?>" class="breadcrumb__item"><span>Zoekresultaten</span></a>
           <?php elseif($type == "Beeld"): ?>
-            <a href="/beeldbank?q=" itemprop="url" class="breadcrumb__item"><span itemprop="title">Beeldbank</span></a>
+            <a href="/beeldbank?q=" class="breadcrumb__item"><span>Beeldbank</span></a>
           <?php elseif($type == "Collectie"):?>
-            <a href="/collecties?q=" itemprop="url" class="breadcrumb__item"><span itemprop="title">Collectie</span></a>
+            <a href="/collecties?q=" class="breadcrumb__item"><span>Collectie</span></a>
           <?php elseif($type == "Nieuws"):?>
-            <a href="/nieuws?q=" itemprop="url" class="breadcrumb__item"><span itemprop="title">Nieuws</span></a>
+            <a href="/nieuws?q=" class="breadcrumb__item"><span>Nieuws</span></a>
           <?php elseif($type == "Agendapunt"):?>
-            <a href="/agenda?q=" itemprop="url" class="breadcrumb__item"><span itemprop="title">Agenda</span></a>
+            <a href="/agenda?q=" class="breadcrumb__item"><span>Agenda</span></a>
           <?php elseif($type == "Film"):?>
-            <a href="/films?q=" itemprop="url" class="breadcrumb__item"><span itemprop="title">Films</span></a>
+            <a href="/films?q=" class="breadcrumb__item"><span>Films</span></a>
           <?php elseif($type == "Filmkopie"):?>
-            <a href="/filmkopies?q=" itemprop="url" class="breadcrumb__item"><span itemprop="title">Filmkopies</span></a>
+            <a href="/filmkopies?q=" class="breadcrumb__item"><span>Filmkopies</span></a>
           <?php elseif($type == "Ledenblad"):?>
-            <a href="/s/start/ledenbladen?q=" itemprop="url" class="breadcrumb__item"><span itemprop="title">Tijdschriften</span></a>
+            <a href="/s/start/ledenbladen?q=" class="breadcrumb__item"><span>Tijdschriften</span></a>
           <?php endif;?>
         </span>
-        <span itemscope="" itemtype="http://data-vocabulary.org/Breadcrumb" class="breadcrumb__scope">
-            <span itemprop="title"><?php echo $title;?></span>
+        <span class="breadcrumb__scope">
+            <span><?php echo $title;?></span>
         </span>
     </div>
     <h1><?php echo $this->pageTitle($title, 2); ?></h1>

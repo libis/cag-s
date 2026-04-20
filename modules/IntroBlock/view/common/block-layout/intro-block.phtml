@@ -5,8 +5,8 @@
                 <div class="panel panel--lrg panel--light u-pl-0 top-section">
                     <!-- breadcrumbs -->
                     <div class="breadcrumb spacer">
-                        <span itemscope="" itemtype="https://data-vocabulary.org/Breadcrumb" class="breadcrumb__scope">
-                            <a href="<?php echo "/";?>" itemprop="url" class="breadcrumb__item"><span itemprop="title">Home</span></a>
+                        <span class="breadcrumb__scope">
+                            <a href="<?php echo "/";?>" class="breadcrumb__item"><span>Home</span></a>
                         </span>
                         <?php
                           $flat = filter_bc(flattenArray($block->page()->site()->navigation()));
@@ -28,15 +28,15 @@
                               $page = $this->api()->read('site_pages', $id)->getContent();
                               $link = '<a href="'.$page->url().'">'.$page->title().'</a>';
                               $crumbs = $link.'</span>
-                                <span itemscope="" itemtype="https://data-vocabulary.org/Breadcrumb" class="breadcrumb__scope">'.$crumbs;
+                                <span class="breadcrumb__scope">'.$crumbs;
                             endif;
                           }
                           //return $crumbs;
                           //$crumbs = get_crumb($flat,$pageid,$this);
                         ?>
-                        <span itemscope="" itemtype="https://data-vocabulary.org/Breadcrumb" class="breadcrumb__scope">
+                        <span class="breadcrumb__scope">
                           <?php echo $crumbs;?>
-                          <span itemprop="title"><?php echo $block->page()->title();?></span>
+                          <span><?php echo $block->page()->title();?></span>
                         </span>
                     </div>
                     <h1 class="spacer"><?php echo $block->dataValue('title');?></h1>
