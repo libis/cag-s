@@ -575,19 +575,22 @@ class Harvest extends AbstractJob
             //add media if Beeld or Collectie
             if($localName == 'relation' && ($args['resource_template'] == 7 || $args['resource_template'] == 6)){
                 foreach ($dcMetadata->$localName as $imageUrl) {
-                    $media['https://lib.is/'.$imageUrl.'/stream']= [
-                        'o:ingester' => 'url',
-                        'o:source' => 'https://lib.is/'.$imageUrl.'/stream',
-                        'ingest_url' => 'https://lib.is/'.$imageUrl.'/stream',
-                        'dcterms:title' => [
-                            [
-                                'type' => 'literal',
-                                '@language' => '',
-                                '@value' => $imageUrl,
-                                'property_id' => 1,
+                    //only import FL-numbers
+                    if(str_contains($imageUrl.'', 'FL')){
+                        $media['https://lib.is/'.$imageUrl.'/stream']= [
+                            'o:ingester' => 'url',
+                            'o:source' => 'https://lib.is/'.$imageUrl.'/stream',
+                            'ingest_url' => 'https://lib.is/'.$imageUrl.'/stream',
+                            'dcterms:title' => [
+                                [
+                                    'type' => 'literal',
+                                    '@language' => '',
+                                    '@value' => $imageUrl,
+                                    'property_id' => 1,
+                                ],
                             ],
-                        ],
-                    ];
+                        ];
+                    }
                 }
             }
         }    
