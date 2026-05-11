@@ -19,7 +19,7 @@ class FileWriter
         return is_dir((string) $path);
     }
 
-    public function is_writable($path): bool
+    public function is_writeable($path): bool
     {
         return is_writeable((string) $path);
     }
@@ -73,7 +73,7 @@ class FileWriter
             && file_exists($path)
             && is_dir($path)
             && is_readable($path)
-            && is_writable($path)
+            && is_writeable($path)
             && ($evenNonEmpty || count(array_diff(@scandir($path), ['.', '..'])) == 0)
         ) {
             return $this->recursiveRemoveDir($path);
@@ -84,20 +84,27 @@ class FileWriter
     /**
      * Removes directories recursively.
      *
-     * @param string $dirPath Directory name.
+     * @param string $dirPath Absolute directory name.
      * @return bool
      */
     protected function recursiveRemoveDir($dirPath): bool
     {
-        $files = array_diff(scandir((string) $dirPath), ['.', '..']);
+        $dirPath = (string) $dirPath;
+        if (!file_exists($dirPath)) {
+            return true;
+        }
+        if (strpos($dirPath, '/..') !== false || substr($dirPath, 0, 1) !== '/') {
+            return false;
+        }
+        $files = array_diff(scandir($dirPath), ['.', '..']);
         foreach ($files as $file) {
-            $path = $dirPath . DIRECTORY_SEPARATOR . $file;
+            $path = $dirPath . '/' . $file;
             if (is_dir($path)) {
                 $this->recursiveRemoveDir($path);
             } else {
                 unlink($path);
             }
         }
-        return rmdir((string) $dirPath);
+        return rmdir($dirPath);
     }
 }

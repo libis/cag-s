@@ -2,7 +2,8 @@
 /**
  * @var \Laminas\View\Renderer\PhpRenderer $this
  * @var \Omeka\Api\Representation\SiteRepresentation $site
- * @var \AdvancedSearch\Api\Representation\SearchConfigRepresentation $searchPage
+ * @var \AdvancedSearch\Api\Representation\SearchConfigRepresentation $searchConfig
+ * @var \AdvancedSearch\Api\Representation\SearchConfigRepresentation $searchPage Alias of $searchConfig
  * @var \AdvancedSearch\Query $query
  * @var \AdvancedSearch\Response $response
  * @var \Omeka\Api\Representation\ItemSetRepresentation $itemSet
@@ -12,31 +13,54 @@
 
 $plugins = $this->getHelperPluginManager();
 $translate = $plugins->get('translate');
+$translatePlural = $plugins->get('translatePlural');
 
 // Default values of the module.
 $displayParts = [
     'search_filters' => 'header',
+    'active_facets' => 'none',
+    'total_results' => 'header',
     'paginator' => 'header',
     'per_pages' => 'header',
     'sort' => 'header',
     'grid_list' => 'header',
     'grid_list_mode' => 'auto',
 ];
-$displayParts = $searchPage ? $searchPage->setting('display', $displayParts) : $displayParts;
+$displayParts = $searchConfig ? $searchConfig->setting('display', $displayParts) : $displayParts;
 $displayParts = array_filter($displayParts, function ($v) use ($resultPart) { return in_array($v, [$resultPart, 'both']); });
 
-$paginationPerPages = isset($displayParts['per_pages']) ? $searchPage->subSetting('pagination', 'per_pages') : [];
-$sortFields = isset($displayParts['sort']) ? $searchPage->subSetting('sort', 'fields') : [];
-$gridListMode = $searchPage->subSetting('display', 'grid_list_mode', 'auto');
+$paginationPerPages = isset($displayParts['per_pages']) ? $searchConfig->subSetting('pagination', 'per_pages') : [];
+$sortFields = isset($displayParts['sort']) ? $searchConfig->subSetting('sort', 'fields') : [];
+$gridListMode = $searchConfig->subSetting('display', 'grid_list_mode', 'auto');
 $multiMode = isset($displayParts['grid_list']) && !in_array($gridListMode, ['list_only', 'grid_only']);
 ?>
 
 <?php if (isset($displayParts['search_filters'])): ?>
-<?= $this->searchingFilters($searchPage, $query, ['template' => 'common/search-filters-links']) ?>
+<?= $this->searchingFilters($searchConfig, $query, ['template' => 'common/search-filters-links']) ?>
+<?php endif; ?>
+
+<?php if (isset($displayParts['active_facets']) && $activeFacets = $response->getActiveFacets()): ?>
+    <?php
+    $facetActive = $plugins->get('facetActive');
+    $options = $searchConfig->setting('facet', []);
+    ?>
+<ul class="search-facets-active">
+    <?php foreach ($activeFacets as $name => $facetValues) foreach ($facetValues as $facetKey => $facetValue): ?>
+    <li><?= $facetActive($name, ['value' => $facetValue, 'count' => null, 'key' => $facetKey], $options) ?></li>
+    <?php endforeach; ?>
+</ul>
+<?= $this->searchingFilters($searchConfig, $query, ['template' => 'common/search-filters-links']) ?>
+<?php endif; ?>
+
+<?php if (isset($displayParts['total_results'])): ?>
+<div class="search-results-count-total">
+    <?php $totalResults = $response->getTotalResults(); ?>
+    <?=  sprintf($translatePlural('%s item', '%s items', $totalResults), $totalResults) ?>
+</div>
 <?php endif; ?>
 
 <?php if (isset($displayParts['paginator'])): ?>
-<div class="search-results-count">
+<div class="search-results-count <?= isset($displayParts['total_results']) ? 'no-total-results' : '' ?>">
     <?= $this->pagination('common/pagination') ?>
 </div>
 <?php endif; ?>

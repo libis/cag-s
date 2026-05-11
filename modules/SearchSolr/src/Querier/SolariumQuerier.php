@@ -2,7 +2,7 @@
 
 /*
  * Copyright BibLibre, 2016
- * Copyright Daniel Berthereau, 2017-2022
+ * Copyright Daniel Berthereau, 2017-2023
  *
  * This software is governed by the CeCILL license under French law and abiding
  * by the rules of distribution of free software.  You can use, modify and/ or
@@ -42,6 +42,9 @@ use Solarium\QueryType\Select\Query\Query as SolariumQuery;
 /**
  * @todo Rewrite the querier to simplify it and to use all solarium features directly.
  * @todo Remove grouping (item/itemset): this is native in Omeka and most of the time, user want them mixed.
+ *
+ * @todo Use Solarium helpers (geo, escape, xml, etc.).
+ * @see \Solarium\Core\Query\Helper
  */
 class SolariumQuerier extends AbstractQuerier
 {
@@ -82,7 +85,7 @@ class SolariumQuerier extends AbstractQuerier
         $this->solariumQuery = $this->getPreparedQuery();
         if (is_null($this->solariumQuery)) {
             return $this->response
-                ->setIsMessage('An issue occurred.'); // @translate
+                ->setMessage('An issue occurred.'); // @translate
         }
 
         try {
@@ -102,16 +105,16 @@ class SolariumQuerier extends AbstractQuerier
             // characters instead of returning an exception.
             // @link https://lucene.apache.org/core/8_5_1/queryparser/org/apache/lucene/queryparser/classic/package-summary.html#Escaping_Special_Characters
             // TODO Check before the query.
-            $escapedQ = $this->escapeSolrQuery($q);
+            $escapedQ = $this->escapePhrase($q);
             $this->solariumQuery->setQuery($escapedQ);
             try {
                 $solariumResultSet = $this->solariumClient->execute($this->solariumQuery);
-            /*
-            } catch (\Solarium\Exception\HttpException $e) {
-                // Http Exception has getStatusMessage() and getBody(), but useless.
-                // TODO Get the error with the same url, but direct query. Or find where Solarium store the error message.
-                throw new QuerierException($e->getMessage(), $e->getCode(), $e);
-            */
+                /*
+                } catch (\Solarium\Exception\HttpException $e) {
+                    // Http Exception has getStatusMessage() and getBody(), but useless.
+                    // TODO Get the error with the same url, but direct query. Or find where Solarium store the error message.
+                    throw new QuerierException($e->getMessage(), $e->getCode(), $e);
+                */
             } catch (\Exception $e) {
                 throw new QuerierException($e->getMessage(), $e->getCode(), $e);
             }
@@ -125,6 +128,7 @@ class SolariumQuerier extends AbstractQuerier
         // There is only one grouping here: by resource name (items/item sets).
         foreach ($solariumResultSet->getGrouping() as $fieldGroup) {
             $this->response->setTotalResults($fieldGroup->getMatches());
+            /** @var \Solarium\Component\Result\Grouping\ValueGroup $valueGroup */
             foreach ($fieldGroup as $valueGroup) {
                 $groupName = $valueGroup->getValue();
                 $this->response->setResourceTotalResults($groupName, $valueGroup->getNumFound());
@@ -132,6 +136,31 @@ class SolariumQuerier extends AbstractQuerier
                     $resourceId = basename($document['id']);
                     $this->response->addResult($groupName, ['id' => is_numeric($resourceId) ? (int) $resourceId : $resourceId]);
                 }
+            }
+        }
+
+        // TODO If less than pagination, get it directly.
+        try {
+            // Normally no exception, since previous query has no issue.
+            /** @var \Solarium\QueryType\Select\Result\Result $solariumResultSetAll */
+            $this->solariumQuery->setFields(['id']);
+            $solariumResultSetAll = $this->solariumClient->execute($this->solariumQuery);
+        } catch (\Exception $e) {
+            throw new QuerierException($e->getMessage(), $e->getCode(), $e);
+        }
+
+        // TODO Optimize output and conversion (solr argument to get id only as array).
+        foreach ($solariumResultSetAll->getGrouping() as $fieldGroup) {
+            /** @var \Solarium\Component\Result\Grouping\ValueGroup $valueGroup */
+            foreach ($fieldGroup as $valueGroup) {
+                $groupName = $valueGroup->getValue();
+                $result = array_column($valueGroup->getDocuments(), 'id');
+                foreach ($result as &$documentId) {
+                    $resourceId = basename($documentId);
+                    $documentId = is_numeric($resourceId) ? (int) $resourceId : $resourceId;
+                }
+                unset($documentId);
+                $this->response->setAllResourceIdsForResourceType($groupName, $result);
             }
         }
 
@@ -225,7 +254,13 @@ class SolariumQuerier extends AbstractQuerier
 
         $this->solariumQuery->addField('id');
 
+        // IsPublic is set by the server automatically, not by the user.
+        // TODO Check if the arguments are set by the user and remove them.
         $isPublic = $this->query->getIsPublic();
+
+        // Since version of module Access 3.4.17, the access level is a standard
+        // filter that may be enable or not.
+
         if ($isPublic) {
             $this->solariumQuery
                 ->createFilterQuery($isPublicField)
@@ -262,7 +297,7 @@ class SolariumQuerier extends AbstractQuerier
 
         $sort = $this->query->getSort();
         if ($sort) {
-            @list($sortField, $sortOrder) = explode(' ', $sort, 2);
+            @[$sortField, $sortOrder] = explode(' ', $sort, 2);
             if ($sortField === 'score') {
                 $sortOrder = $sortOrder === 'asc' ? SolariumQuery::SORT_ASC : SolariumQuery::SORT_DESC;
             } else {
@@ -285,9 +320,13 @@ class SolariumQuerier extends AbstractQuerier
         /** @var \Solarium\Component\FacetSet $solariumFacetSet */
         $solariumFacetSet = $this->solariumQuery->getFacetSet();
 
-        // TODO Remove generic limit and order and set them by field.
+        // TODO Manage facets individually by fields for limit and order.
+
+        $queryFacets = $this->query->getFacets();
+        $firstFacet = reset($queryFacets);
+
         // This is the default limit for facets.
-        $facetLimit = $this->query->getFacetLimit();
+        $facetLimit = $firstFacet ? $firstFacet['limit'] ?? 0 : 0;
         if ($facetLimit) {
             $solariumFacetSet->setLimit($facetLimit);
         }
@@ -295,19 +334,26 @@ class SolariumQuerier extends AbstractQuerier
         // This is the default order for facets.
         // Only two choices here: index asc (alphabetic/numeric) or count desc.
         // Default is by total desc.
-        $facetOrder = $this->query->getFacetOrder();
-        $facetSort = \Solarium\Component\Facet\AbstractField::SORT_COUNT;
-        if ($facetOrder === 'total asc' || $facetOrder === 'total desc') {
-            $solariumFacetSet->setSort(\Solarium\Component\Facet\AbstractField::SORT_COUNT);
+        $facetOrder = $firstFacet ? $firstFacet['order'] ?? '' : '';
+        $facetSort = \Solarium\Component\Facet\JsonTerms::SORT_COUNT_DESC;
+        if ($facetOrder === 'total desc') {
+            $facetSort = \Solarium\Component\Facet\JsonTerms::SORT_COUNT_DESC;
+            $solariumFacetSet->setSort(\Solarium\Component\Facet\JsonTerms::SORT_COUNT_DESC);
+        } elseif ($facetOrder === 'total asc') {
+            $facetSort = \Solarium\Component\Facet\JsonTerms::SORT_COUNT_ASC;
+            $solariumFacetSet->setSort(\Solarium\Component\Facet\JsonTerms::SORT_COUNT_ASC);
         } elseif ($facetOrder === 'alphabetic asc') {
-            $facetSort = \Solarium\Component\Facet\AbstractField::SORT_INDEX;
-            $solariumFacetSet->setSort(\Solarium\Component\Facet\AbstractField::SORT_INDEX);
+            $facetSort = \Solarium\Component\Facet\JsonTerms::SORT_INDEX_ASC;
+            $solariumFacetSet->setSort(\Solarium\Component\Facet\JsonTerms::SORT_INDEX_ASC);
+        } elseif ($facetOrder === 'alphabetic desc') {
+            $facetSort = \Solarium\Component\Facet\JsonTerms::SORT_INDEX_DESC;
+            $solariumFacetSet->setSort(\Solarium\Component\Facet\JsonTerms::SORT_INDEX_DESC);
         }
 
         $facets = $this->query->getFacets();
         if (count($facets)) {
             // Use "json facets" output, that is recommended by Solr.
-            /** @see https://solr.apache.org/guide/solr/latest/query-guide/json-facet-api.html */
+            /* @see https://solr.apache.org/guide/solr/latest/query-guide/json-facet-api.html */
             foreach ($facets as $facetField => $facetData) {
                 if ($facetData['type'] === 'SelectRange') {
                     // TODO Use arbitrary range to use default values for start/end/gap? No, the range are not arbitrary.
@@ -349,22 +395,22 @@ class SolariumQuerier extends AbstractQuerier
                     $hasFrom = isset($values['from']) && $values['from'] !== '';
                     $hasTo = isset($values['to']) && $values['to'] !== '';
                     if ($hasFrom && $hasTo) {
-                        $from = $this->enclose($values['from']);
-                        $to = $this->enclose($values['to']);
+                        $from = $this->escapePhrase($values['from']);
+                        $to = $this->escapePhrase($values['to']);
                         $this->solariumQuery->addFilterQuery([
                            'key' => $name . '-facet',
                            'query' => "$name:[$from TO $to]",
                            'tag' => 'exclude',
                         ]);
                     } elseif ($hasFrom) {
-                        $from = $this->enclose($values['from']);
+                        $from = $this->escapePhrase($values['from']);
                         $this->solariumQuery->addFilterQuery([
                            'key' => $name . '-facet',
                            'query' => "$name:[$from TO *]",
                            'tag' => 'exclude',
                         ]);
                     } elseif ($hasTo) {
-                        $to = $this->enclose($values['to']);
+                        $to = $this->escapePhrase($values['to']);
                         $this->solariumQuery->addFilterQuery([
                            'key' => $name . '-facet',
                            'query' => "$name:[* TO $to]",
@@ -373,7 +419,7 @@ class SolariumQuerier extends AbstractQuerier
                     }
                     // TODO Add a exclude facet field?
                 } else {
-                    $enclosedValues = $this->encloseValue($values);
+                    $enclosedValues = $this->escapePhraseValue($values, 'OR');
                     $this->solariumQuery->addFilterQuery([
                         'key' => $name . '-facet',
                         'query' => "$name:$enclosedValues",
@@ -497,8 +543,10 @@ class SolariumQuerier extends AbstractQuerier
                 });
                 $values = array_unique(array_map('intval', $value));
                 if (count($values)) {
-                    $value = '("items:' . implode('" OR "items:', $values)
-                        . '" OR "item_sets:' . implode('" OR "item_sets:', $values) . '")';
+                    // Manage any special indexers for third party.
+                    // TODO Add a second (hidden?) field "o_id_i".
+                    // TODO Or reindex in the other way #id/items-index-serverId.
+                    $value = '*\/' . implode(' OR *\/', $values);
                     $this->solariumQuery
                         ->createFilterQuery($name . '_' . ++$this->appendToKey)
                         ->setQuery("$name:$value");
@@ -520,7 +568,7 @@ class SolariumQuerier extends AbstractQuerier
                         continue;
                     }
                 }
-                $value = $this->encloseValue($value);
+                $value = $this->escapePhraseValue($value, 'OR');
                 if (!strlen($value)) {
                     continue;
                 }
@@ -715,14 +763,21 @@ class SolariumQuerier extends AbstractQuerier
                     $endBool = ')';
                 }
                 switch ($queryType) {
-                    // Regex requires string (_s), not text or anything else.
-                    // So if the field is not a string, use a simple "+", that
-                    // will be enough in most of the cases.
-                    // Furthermore, unlike sql, solr regex doesn't manage
-                    // insensitive search, neither flag "i".
-                    // The pattern is limited to 1000 characters by default.
-                    // TODO Check the size of the pattern.
-                    // @link https://lucene.apache.org/core/6_6_6/core/org/apache/lucene/util/automaton/RegExp.html
+                    /**
+                     * Regex requires string (_s), not text or anything else.
+                     * So if the field is not a string, use a simple "+", that
+                     * will be enough in most of the cases.
+                     * Furthermore, unlike sql, solr regex doesn't manage
+                     * insensitive search, neither flag "i".
+                     * The pattern is limited to 1000 characters by default.
+                     *
+                     * @todo Check the size of the pattern.
+                     *
+                     * For diacritics and case: index and query without diacritics and lowercase.
+                     *
+                     * @link https://lucene.apache.org/core/6_6_6/core/org/apache/lucene/util/automaton/RegExp.html
+                     * @link https://solr.apache.org/guide/solr/latest/indexing-guide/language-analysis.html
+                     */
 
                     // Equal.
                     case 'neq':
@@ -730,7 +785,7 @@ class SolariumQuerier extends AbstractQuerier
                         if ($this->fieldIsString($name)) {
                             $value = $this->regexDiacriticsValue($value, '', '');
                         } else {
-                            $value = $this->encloseValue($value);
+                            $value = $this->escapePhraseValue($value, 'OR');
                         }
                         $fq .= " $joiner ($name:$bool$value$endBool)";
                         break;
@@ -741,7 +796,7 @@ class SolariumQuerier extends AbstractQuerier
                         if ($this->fieldIsString($name)) {
                             $value = $this->regexDiacriticsValue($value, '.*', '.*');
                         } else {
-                            $value = $this->encloseValueAnd($value);
+                            $value = $this->escapePhraseValue($value, 'AND');
                         }
                         $fq .= " $joiner ($name:$bool$value$endBool)";
                         break;
@@ -760,7 +815,7 @@ class SolariumQuerier extends AbstractQuerier
                         if ($this->fieldIsString($name)) {
                             $value = $this->regexDiacriticsValue($value, '', '.*');
                         } else {
-                            $value = $this->encloseValueAnd($value);
+                            $value = $this->escapePhraseValue($value, 'AND');
                         }
                         $fq .= " $joiner ($name:$bool$value$endBool)";
                         break;
@@ -771,7 +826,7 @@ class SolariumQuerier extends AbstractQuerier
                         if ($this->fieldIsString($name)) {
                             $value = $this->regexDiacriticsValue($value, '.*', '');
                         } else {
-                            $value = $this->encloseValueAnd($value);
+                            $value = $this->escapePhraseValue($value, 'AND');
                         }
                         $fq .= " $joiner ($name:$bool$value$endBool)";
                         break;
@@ -784,7 +839,7 @@ class SolariumQuerier extends AbstractQuerier
                         // regex and anchors are added by default.
                         // TODO Add // or not?
                         // TODO Escape regex for regexes…
-                        $value = $this->fieldIsString($name) ? $value : $this->encloseValue($value);
+                        $value = $this->fieldIsString($name) ? $value : $this->escapePhraseValue($value, 'OR');
                         $fq .= " $joiner ($name:$bool$value$endBool)";
                         break;
 
@@ -800,11 +855,11 @@ class SolariumQuerier extends AbstractQuerier
 
                     // Exists (has a value).
                     case 'nex':
-                        $value = $this->encloseValue($value);
+                        $value = $this->escapePhraseValue($value, 'OR');
                         $fq .= " $joiner (-$name:$value)";
                         break;
                     case 'ex':
-                        $value = $this->encloseValue($value);
+                        $value = $this->escapePhraseValue($value, 'OR');
                         $fq .= " $joiner (+$name:$value)";
                         break;
 
@@ -899,6 +954,9 @@ class SolariumQuerier extends AbstractQuerier
         return $fields;
     }
 
+    /**
+     * @todo Use schema.
+     */
     protected function fieldIsTokenized($name): bool
     {
         return substr($name, -2) === '_t'
@@ -907,6 +965,9 @@ class SolariumQuerier extends AbstractQuerier
             || strpos($name, '_txt_') !== false;
     }
 
+    /**
+     * @todo Use schema.
+     */
     protected function fieldIsString($name): bool
     {
         return substr($name, -2) === '_s'
@@ -915,53 +976,56 @@ class SolariumQuerier extends AbstractQuerier
             || substr($name, -9) === '_ss_lower';
     }
 
+    /**
+     * @todo Use schema.
+     */
     protected function fieldIsLower($name): bool
     {
         return substr($name, -6) === '_lower';
     }
 
     /**
-     * Enclose a string to protect a query for Solr.
+     * Escape a string to query, so just enclose it with a double quote.
+     *
+     * The double quote and "\" are escaped too.
+     *
+     * @see https://solr.apache.org/guide/solr/latest/query-guide/standard-query-parser.html#escaping-special-characters
+     * @uses \Solarium\Core\Query\Helper::escapePhrase()
+     */
+    protected function escapePhrase($phrase): string
+    {
+        return $this->solariumQuery->getHelper()->escapePhrase((string) $phrase);
+    }
+
+    /**
+     * Enclose a value or a list of values (OR/AND) to protect a query for Solr.
      *
      * @param array|string $string
      * @return string
      */
-    protected function encloseValue($value): string
+    protected function escapePhraseValue($valueOrValues, string $joiner = 'OR'): string
     {
-        if (is_array($value)) {
-            if (empty($value)) {
-                $value = '';
-            } else {
-                $value = '(' . implode(' OR ', array_unique(array_map([$this, 'enclose'], $value))) . ')';
-            }
+        if (!is_array($valueOrValues)) {
+            return $this->escapePhrase($valueOrValues);
+        } elseif (empty($valueOrValues)) {
+            return '';
+        } elseif (count($valueOrValues) === 1) {
+            return $this->escapePhrase(reset($valueOrValues));
         } else {
-            $value = $this->enclose($value);
+            return '(' . implode(" $joiner ", array_unique(array_map([$this, 'escapePhrase'], $valueOrValues))) . ')';
         }
-        return $value;
     }
 
+
+
     /**
-     * Enclose a string to protect a query for Solr.
+     * Prepare a value for a regular expression, managing diacritics, case and
+     * joker "*" and "?".
      *
-     * @param array|string $string
-     * @return string
-     */
-    protected function encloseValueAnd($value): string
-    {
-        if (is_array($value)) {
-            if (empty($value)) {
-                $value = '';
-            } else {
-                $value = '(' . implode(' +', array_map([$this, 'enclose'], $value)) . ')';
-            }
-        } else {
-            $value = $this->enclose($value);
-        }
-        return $value;
-    }
-
-    /**
-     * Prepare a value for a regular expression, managing diacritics and case.
+     * For the list of characters to escape:
+     * @see https://solr.apache.org/guide/solr/latest/query-guide/standard-query-parser.html#escaping-special-characters
+     *
+     * @deprecated Instead, index and query without diacritics.
      *
      * @param array|string $value
      * @param string $append
@@ -975,8 +1039,10 @@ class SolariumQuerier extends AbstractQuerier
             $basicDiacritics = [
                 '\\' => '\\\\',
                 '.' => '\.',
+                // To expand.
                 '*' => '.*',
                 '?' => '.',
+                // To escape.
                 '+' => '\+',
                 '[' => '\[',
                 '^' => '\^',
@@ -998,67 +1064,17 @@ class SolariumQuerier extends AbstractQuerier
                 return substr($v, 0, 1);
             }, $this->baseDiacritics);
         }
+
         $regexVal = function ($string) use ($prepend, $append, $basicDiacritics) {
             $latinized = str_replace(array_keys($basicDiacritics), array_values($basicDiacritics), mb_strtolower($string));
             return '/' . $prepend
                 . str_replace(array_keys($this->regexDiacritics), array_values($this->regexDiacritics), $latinized)
                 . $append . '/';
         };
+
         $values = array_map($regexVal, is_array($value) ? $value : [$value]);
 
         return implode(' OR ', $values);
-    }
-
-    /**
-     * Enclose a string to protect a query for Solr.
-     *
-     * @param string $string
-     * @return string
-     */
-    protected function enclose($string): string
-    {
-        return '"' . addcslashes((string) $string, '"') . '"';
-    }
-
-    /**
-     * Enclose a string to protect a filter query for Solr.
-     *
-     * @param $string $string
-     * @return $string
-     */
-    protected function escape($string): string
-    {
-        return preg_replace('/([+\-&|!(){}[\]\^"~*?:])/', '\\\\$1', (string) $string);
-    }
-
-    protected function escapeSolrQuery($q): string
-    {
-        $reservedCharacters = [
-            // The character "\" must be escaped first.
-            '\\' => '\\\\',
-            '+' => '\+',
-            '-' => '\-' ,
-            '&&' => '\&\&',
-            '||' => '\|\|',
-            '!' => '\!',
-            '(' => '\(' ,
-            ')' => '\)',
-            '{' => '\{',
-            '}' => '\}',
-            '[' => '\[',
-            ']' => '\]',
-            '^' => '\^',
-            '"' => '\"',
-            '~' => '\~',
-            '*' => '\*',
-            '?' => '\?',
-            ':' => '\:',
-        ];
-        return str_replace(
-            array_keys($reservedCharacters),
-            array_values($reservedCharacters),
-            (string) $q
-        );
     }
 
     /**

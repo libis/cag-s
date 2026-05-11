@@ -1,7 +1,7 @@
 <?php
 /*
  * Copyright BibLibre, 2017
- * Copyright Daniel Berthereau, 2017-2021
+ * Copyright Daniel Berthereau, 2017-2023
  *
  * This software is governed by the CeCILL license under French law and abiding
  * by the rules of distribution of free software.  You can use, modify and/ or
@@ -117,11 +117,21 @@ $this->htmlElement('body')->appendAttribute('class', 'solr-map browse');
                     </td>
                     <td><?= $map->source() ?></td>
                     <td><?php
+                        $filterValues = $map->pool('filter_values');
+                        $filterUris = $map->pool('filter_uris');
                         $filterResources = $map->pool('filter_resources');
                         $filterValueResources = $map->pool('filter_value_resources');
                         $dataTypes = $map->pool('data_types');
                         $dataTypesExclude = $map->pool('data_types_exclude');
+                        $filterLanguages = $map->pool('filter_languages');
+                        $filterVisibility = $map->pool('filter_visibility');
                         ?>
+                        <?php if ($filterValues): ?>
+                        <div><?= $translate('Filtered by values') ?></div>
+                        <?php endif; ?>
+                        <?php if ($filterUris): ?>
+                        <div><?= $translate('Filtered by uris') ?></div>
+                        <?php endif; ?>
                         <?php if ($filterResources): ?>
                         <div><?= $translate('Filtered by resources') ?></div>
                         <?php endif; ?>
@@ -133,6 +143,17 @@ $this->htmlElement('body')->appendAttribute('class', 'solr-map browse');
                             <?php if ($dataTypes) echo '<dt>' . $translate('Data types') . '</dt><dd>' . implode('</dd><dd>', $dataTypes) . '</dd>'; ?>
                             <?php if ($dataTypesExclude) echo '<dt>' . $translate('Excluded data types') . '</dt><dd>' . implode('</dd><dd>', $dataTypesExclude) . '</dd>'; ?>
                         </dl>
+                        <?php endif; ?>
+                        <?php if ($filterLanguages): ?>
+                        <dl>
+                            <dt><?= $translate('Only languages') ?></dt>
+                            <dd><?= implode('</dd><dd>', $filterLanguages) ?></dd>
+                        </dl>
+                        <?php endif; ?>
+                        <?php if ($filterVisibility === 'public'): ?>
+                        <div><?= $translate('Filtered by visibility Public') ?></div>
+                        <?php elseif ($filterVisibility === 'private'): ?>
+                        <div><?= $translate('Filtered by visibility Private') ?></div>
                         <?php endif; ?>
                     </td>
                     <td><?php if (!empty($mapSettings['label'])) echo $translate($mapSettings['label']); ?></td>

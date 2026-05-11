@@ -1,10 +1,61 @@
 {
-    "require-dev": {
-        "biblibre/omeka-s-test-helper": "dev-master"
+    "name": "daniel-km/omeka-s-module-easy-admin",
+    "type": "omeka-s-module",
+    "description": "Module for Omeka S: Manage tasks from the admin interface: install modules and themes, check database and files, bulk upload without limits.",
+    "keywords": [
+        "Omeka S",
+        "Omeka S module",
+        "administration",
+        "miscellaneous",
+        "check",
+        "curation"
+    ],
+    "license": "CECILL-2.1",
+    "homepage": "https://gitlab.com/Daniel-KM/Omeka-S-module-EasyAdmin",
+    "authors": [
+        {
+            "name": "Daniel Berthereau",
+            "email": "Daniel.packagist@Berthereau.net"
+        }
+    ],
+    "support": {
+        "issues": "https://gitlab.com/Daniel-KM/Omeka-S-module-EasyAdmin/-/issues",
+        "forum": "https://forum.omeka.org/"
+    },
+    "_require (not set until Omeka S merges PR #2412)": {
+        "omeka/omeka-s": "^4.0",
+        "daniel-km/omeka-s-module-common": "*"
+    },
+    "require": {
+        "flowjs/flow-php-server": "^1.2",
+        "sempia/external-assets": "^1.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "EasyAdmin\\": "src/"
+        }
     },
     "autoload-dev": {
         "psr-4": {
-            "EasyAdminTest\\": "test/EasyAdminTest/"
+            "EasyAdminTest\\": "tests/EasyAdminTest/"
         }
+    },
+    "config": {
+        "platform": {
+            "php": "7.4"
+        },
+        "allow-plugins": {
+            "composer/installers": true,
+            "sempia/external-assets": true
+        }
+    },
+    "extra": {
+        "external-assets": {
+            "asset/vendor/flow.js/flow.min.js": "https://github.com/Daniel-KM/Omeka-S-module-EasyAdmin/releases/download/3.4.18/flow.min.js",
+            "asset/vendor/chosen-js/chosen.jquery.js": "https://raw.githubusercontent.com/Daniel-KM/chosen-jquery/master/docs/chosen.jquery.js",
+            "asset/vendor/chosen-js/chosen.css": "https://raw.githubusercontent.com/Daniel-KM/chosen-jquery/master/docs/chosen.css"
+        },
+        "installer-name": "EasyAdmin",
+        "configurable": true
     }
 }

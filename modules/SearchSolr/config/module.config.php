@@ -54,7 +54,7 @@ return [
         ],
     ],
     'navigation' => [
-        'AdminModule' => [
+        'AdvancedSearchSolr' => [
             'search' => [
                 // Copy of the first level of navigation from the config of the module Search.
                 // It avoids an error when Advanced Search is automatically disabled for upgrading. This errors occurs one time only anyway.
@@ -237,18 +237,19 @@ return [
     ],
     'searchsolr_value_formatters' => [
         'invokables' => [
-            'date' => ValueFormatter\Date::class,
-            'date_range' => ValueFormatter\DateRange::class,
-            'plain_text' => ValueFormatter\PlainText::class,
-            'html_escaped_text' => ValueFormatter\HtmlEscapedText::class,
-            'raw_text' => ValueFormatter\RawText::class,
-            'point' => ValueFormatter\Point::class,
             'standard' => ValueFormatter\Standard::class,
             'standard_with_uri' => ValueFormatter\StandardWithUri::class,
             'standard_without_uri' => ValueFormatter\StandardWithoutUri::class,
-            'table' => ValueFormatter\Table::class,
+            'alphanumeric' => ValueFormatter\Alphanumeric::class,
+            'plain_text' => ValueFormatter\PlainText::class,
+            'raw_text' => ValueFormatter\RawText::class,
+            'html_escaped_text' => ValueFormatter\HtmlEscapedText::class,
             'uri' => ValueFormatter\Uri::class,
+            'date' => ValueFormatter\Date::class,
+            'date_range' => ValueFormatter\DateRange::class,
             'year' => ValueFormatter\Year::class,
+            'point' => ValueFormatter\Point::class,
+            'table' => ValueFormatter\Table::class,
         ],
     ],
 ];

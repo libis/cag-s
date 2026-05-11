@@ -323,12 +323,13 @@ var Omeka = {
     disableQueryTextInput: function() {
         var queryType = $(this);
         var queryText = queryType.siblings('.query-text');
-        queryText.prop('disabled', ['ex', 'nex', 'exs', 'nexs', 'exm', 'nexm', 'lex', 'nlex', 'tpl', 'ntpl', 'tpr', 'ntpr', 'tpu', 'ntpu'].includes(queryType.val()));
+        queryText.prop('disabled',
+            ['ex', 'nex', 'exs', 'nexs', 'exm', 'nexm', 'resq', 'nresq', 'lex', 'nlex', 'lkq', 'nlkq', 'dtp', 'ndtp', 'tp', 'ntp', 'tpl', 'ntpl', 'tpr', 'ntpr', 'tpu', 'ntpu'].includes(queryType.val()));
     },
 
     // Clean the search query of empty or otherwise unneeded inputs.
     cleanSearchQuery: function(form) {
-        form.find(':input').each(function(index) {
+        form.find(":input[name]:not([name='']):not(:disabled)").each(function(index) {
             const input = $(this);
             const inputName = input.attr('name');
             const inputValue = input.val();
@@ -343,6 +344,9 @@ var Omeka = {
                     'media_type',
                     'sort_by',
                     'sort_order',
+                    'is_public',
+                    'has_media',
+                    'id',
                 ];
                 if (inputNames.includes(inputName)) {
                     input.prop('name', '');
@@ -350,7 +354,7 @@ var Omeka = {
                     const match = inputName.match(/property\[(\d+)\]\[text\]/);
                     if (match) {
                         const propertyType = form.find(`[name="property[${match[1]}][type]"]`);
-                        if (['eq', 'neq', 'in', 'nin', 'res', 'nres', 'list', 'nlist', 'sw', 'nsw', 'ew', 'new', 'lres', 'nlres', 'tp', 'ntp', 'dtp', 'ndtp', 'gt', 'gte', 'lte', 'lt']
+                        if (['eq', 'neq', 'in', 'nin', 'res', 'nres', 'resq', 'nresq', 'list', 'nlist', 'sw', 'nsw', 'ew', 'new', 'near', 'nnear', 'lres', 'nlres', 'lkq', 'nlkq', 'dtp', 'ndtp', 'tp', 'ntp', 'gt', 'gte', 'lte', 'lt']
                             .includes(propertyType.val())
                         ) {
                             form.find(`[name="property[${match[1]}][joiner]"]`).prop('name', '');

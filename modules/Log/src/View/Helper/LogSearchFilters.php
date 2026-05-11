@@ -41,7 +41,7 @@ class LogSearchFilters extends AbstractHelper
         ];
 
         foreach ($query as $key => $value) {
-            if (is_null($value) || $value === '') {
+            if ($value === null || $value === '') {
                 continue;
             }
             switch ($key) {
@@ -98,6 +98,12 @@ class LogSearchFilters extends AbstractHelper
                     } catch (NotFoundException $e) {
                         $filterValue = $translate('Unknown job'); // @translate
                     }
+                    $filters[$filterLabel][] = $filterValue;
+                    break;
+
+                case 'job_class':
+                    $filterLabel = $translate('Job class'); // @translate
+                    $filterValue = $value;
                     $filters[$filterLabel][] = $filterValue;
                     break;
 

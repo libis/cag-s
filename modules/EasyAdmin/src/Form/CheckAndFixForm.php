@@ -2,9 +2,9 @@
 
 namespace EasyAdmin\Form;
 
-use Doctrine\DBAL\Connection;
-use Laminas\EventManager\EventManagerAwareTrait;
+use Common\Form\Element as CommonElement;
 use Laminas\EventManager\Event;
+use Laminas\EventManager\EventManagerAwareTrait;
 use Laminas\Form\Element;
 use Laminas\Form\Fieldset;
 use Laminas\Form\Form;
@@ -14,22 +14,38 @@ class CheckAndFixForm extends Form
 {
     use EventManagerAwareTrait;
 
-    /**
-     * @var \Doctrine\DBAL\Connection
-     */
-    protected $connection;
-
     public function init(): void
     {
         $this
+            ->setAttribute('id', 'check-and-fix-form')
             ->appendFieldsetFilesCheckFix()
             ->appendFieldsetFilesDatabase()
             ->appendFieldsetResourceValues()
             ->appendFieldsetDatabase()
             ->appendFieldsetBackup()
-            ->appendFieldsetCache()
+            ->appendFieldsetThemes()
+            ->appendFieldsetSystem()
             ->appendFieldsetTasks()
         ;
+
+        $taskWarnings = [
+            'files_missing_fix_db',
+            'files_media_no_original_fix',
+            'theme_templates_fix',
+        ];
+        $this->setAttribute('data-tasks-warning', implode(',', $taskWarnings));
+
+        $this
+            ->add([
+                'name' => 'toggle_tasks_with_warning',
+                'type' => Element\Checkbox::class,
+                'options' => [
+                    'label' => 'Display dangerous tasks', // @translate
+                ],
+                'attributes' => [
+                    'id' => 'toggle_tasks_with_warning',
+                ],
+            ]);
 
         $event = new Event('form.add_elements', $this);
         $this->getEventManager()->triggerEvent($event);
@@ -77,20 +93,20 @@ class CheckAndFixForm extends Form
                 'name' => 'type_resources',
                 'required' => false,
             ]);
+        $inputFilter->get('resource_values')
+            ->get('db_resource_title')
+            ->add([
+                'name' => 'report_type',
+                'required' => false,
+            ])
+            ->add([
+                'name' => 'mode',
+                'required' => false,
+            ]);
 
         $inputFilter->get('database')
             ->add([
                 'name' => 'process',
-                'required' => false,
-            ]);
-        $inputFilter->get('database')
-            ->get('db_content_lock')
-            ->add([
-                'name' => 'hours',
-                'required' => false,
-            ])
-            ->add([
-                'name' => 'user_id',
                 'required' => false,
             ]);
         $inputFilter->get('database')
@@ -103,6 +119,16 @@ class CheckAndFixForm extends Form
             ->get('db_log')
             ->add([
                 'name' => 'days',
+                'required' => false,
+            ])
+            ->add([
+                'name' => 'length',
+                'required' => false,
+            ]);
+        $inputFilter->get('database')
+            ->get('db_customvocab_missing_itemsets')
+            ->add([
+                'name' => 'mode',
                 'required' => false,
             ]);
 
@@ -118,15 +144,53 @@ class CheckAndFixForm extends Form
                 'required' => false,
             ]);
 
-        $inputFilter->get('cache')
+        $inputFilter->get('themes')
             ->add([
                 'name' => 'process',
                 'required' => false,
             ]);
-        $inputFilter->get('cache')
-            ->get('cache_clear')
+        $inputFilter->get('themes')
+            ->get('theme_templates')
+            ->add([
+                'name' => 'modules',
+                'required' => false,
+            ]);
+
+        $inputFilter->get('system')
+            ->add([
+                'name' => 'process',
+                'required' => false,
+            ]);
+        $inputFilter->get('system')
+            ->get('cache')
             ->add([
                 'name' => 'type',
+                'required' => false,
+            ]);
+        $inputFilter->get('system')
+            ->get('mail')
+            ->add([
+                'name' => 'recipient',
+                'required' => false,
+            ])
+            ->add([
+                'name' => 'check_dns',
+                'required' => false,
+            ])
+            ->add([
+                'name' => 'domain',
+                'required' => false,
+            ])
+            ->add([
+                'name' => 'ip_address',
+                'required' => false,
+            ])
+            ->add([
+                'name' => 'dkim_selector',
+                'required' => false,
+            ])
+            ->add([
+                'name' => 'generate_dkim',
                 'required' => false,
             ]);
 
@@ -170,150 +234,270 @@ class CheckAndFixForm extends Form
                         'files_missing_check' => 'List files that are present in database, not in "/files/" (original only)', // @translate
                         'files_missing_check_full' => 'List files that are present in database, not in "/files/" (include derivatives)', // @translate
                         'files_missing_fix' => 'Copy missing original files from the source directory below (recover a disaster)', // @translate
-                        'files_missing_fix_db' => 'Remove items with one file that is missing (WARNING: export your items first)', // @translate
+                        'files_missing_fix_db' => 'Remove items with one file that is missing and missing medias (WARNING: export your items first)', // @translate
                         'dirs_excess' => 'Remove empty directories in "/files/" (mainly for module Archive Repertory)', // @translate
                         'files_derivative' => 'Rebuild derivative images (thumbnails)', // @translate
+                        'files_derivative_file_system' => 'Quick rebuild all derivative images (from terminal, 10x times faster)', // @translate
                     ],
                 ],
                 'attributes' => [
                     'id' => 'files_checkfix-process',
                     'required' => false,
-                    'class' => 'fieldset-process'
+                    'class' => 'fieldset-process',
                 ],
             ]);
 
-            $fieldset
-                ->add([
-                    'type' => Fieldset::class,
-                    'name' => 'files_missing',
-                    'options' => [
-                        'label' => 'Options for fix missing files', // @translate
+        $fieldset
+            ->add([
+                'type' => Fieldset::class,
+                'name' => 'files_missing',
+                'options' => [
+                    'label' => 'Options for fix missing files', // @translate
+                ],
+                'attributes' => [
+                    'class' => 'files_missing_fix',
+                ],
+            ])
+            ->get('files_missing')
+            ->add([
+                'name' => 'source_dir',
+                'type' => Element\Text::class,
+                'options' => [
+                    'label' => 'Source for restoration', // @translate
+                ],
+                'attributes' => [
+                    'id' => 'files_missing-source_dir',
+                    'placeholder' => '/server/path/to/my/source/directory', // @translate
+                ],
+            ])
+            ->add([
+                'name' => 'extensions',
+                'type' => CommonElement\ArrayText::class,
+                'options' => [
+                    'label' => 'Limit to extensions', // @translate
+                    'value_separator' => ',',
+                ],
+                'attributes' => [
+                    'id' => 'files_missing-extensions',
+                    'placeholder' => 'pdf, jpeg', // @translate
+                ],
+            ])
+            ->add([
+                'name' => 'extensions_exclude',
+                'type' => CommonElement\ArrayText::class,
+                'options' => [
+                    'label' => 'Exclude extensions', // @translate
+                    'value_separator' => ',',
+                ],
+                'attributes' => [
+                    'id' => 'files_missing-extensions_exclude',
+                    'value' => [
+                        'DS_Store',
+                        'db',
                     ],
-                    'attributes' => [
-                        'class' => 'files_missing_fix',
+                    'placeholder' => 'DS_Store, db', // @translate
+                ],
+            ])
+            ->add([
+                'name' => 'filenames_end_exclude',
+                'type' => CommonElement\ArrayText::class,
+                'options' => [
+                    'label' => 'Exclude source files ending with strings', // @translate
+                    'value_separator' => ',',
+                ],
+                'attributes' => [
+                    'id' => 'files_missing-filenames_end_exclude',
+                    'placeholder' => '_low, _medium', // @translate
+                ],
+            ])
+            ->add([
+                'name' => 'matching',
+                'type' => CommonElement\OptionalRadio::class,
+                'options' => [
+                'label' => 'Matching mode', // @translate
+                    'value_options' => [
+                        'sha256' => 'Hash sha256 (recommended)', // @translate
+                        'source' => 'Source file path', // @translate
+                        'source_filename' => 'Source file name (warning: they should be unique)', // @translate
+                        'md5' => 'Hash md5 (when stored as sha256; the real sha256 must be set next with another task)', // @translate
                     ],
-                ]);
-            $fieldset->get('files_missing')
-                ->add([
-                    'name' => 'source_dir',
-                    'type' => Element\Text::class,
-                    'options' => [
-                        'label' => 'Source for restoration', // @translate
+                ],
+                'attributes' => [
+                    'id' => 'files_missing-matching',
+                ],
+            ])
+            ->add([
+                'name' => 'report_type',
+                'type' => CommonElement\OptionalRadio::class,
+                'options' => [
+                    'label' => 'Report type', // @translate
+                    'info' => 'Full report: all files are listed (slower). Partial report: only missing and restored files are listed (faster, recommended for large collections).', // @translate
+                    'value_options' => [
+                        'partial' => 'Partial: only missing/restored files (faster)', // @translate
+                        'full' => 'Full: all files including existing ones (slower)', // @translate
                     ],
-                    'attributes' => [
-                        'id' => 'files_missing-source_dir',
-                        'placeholder' => '/server/path/to/my/source/directory', // @translate
-                    ],
-                ])
-                ->add([
-                    'name' => 'extensions',
-                    'type' => Element\Text::class,
-                    'options' => [
-                        'label' => 'Limit to extensions', // @translate
-                    ],
-                    'attributes' => [
-                        'id' => 'files_missing-extensions',
-                        'placeholder' => 'pdf, jpeg', // @translate
-                    ],
-                ])
-            ;
+                ],
+                'attributes' => [
+                    'id' => 'files_missing-report_type',
+                    'value' => 'partial',
+                ],
+            ])
+        ;
 
-            $fieldset
-                ->add([
-                    'type' => Fieldset::class,
-                    'name' => 'files_derivative',
-                    'options' => [
-                        'label' => 'Options to rebuild derivative files (thumbnails)', // @translate
+        $fieldset
+            ->add([
+                'type' => Fieldset::class,
+                'name' => 'files_derivative',
+                'options' => [
+                    'label' => 'Options to rebuild derivative files (thumbnails)', // @translate
+                ],
+                'attributes' => [
+                    'class' => 'files_derivative',
+                ],
+            ])
+            ->get('files_derivative')
+            ->add([
+                'name' => 'item_sets',
+                'type' => OmekaElement\ItemSetSelect::class,
+                'options' => [
+                    'label' => 'Item sets', // @translate
+                ],
+                'attributes' => [
+                    'id' => 'files_derivative-item_sets',
+                    'class' => 'chosen-select',
+                    'multiple' => true,
+                    'required' => false,
+                    'data-placeholder' => 'Select one or more item sets…', // @translate
+                ],
+            ])
+            ->add([
+                'name' => 'ingesters',
+                'type' => CommonElement\MediaIngesterSelect::class,
+                'options' => [
+                    'label' => 'Ingesters to process', // @translate
+                    'empty_option' => 'All ingesters', // @translate
+                ],
+                'attributes' => [
+                    'id' => 'files_derivative-ingesters',
+                    'class' => 'chosen-select',
+                    'multiple' => true,
+                    'placeholder' => 'Select ingesters to process', // @ translate
+                    'data-placeholder' => 'Select ingesters to process', // @ translate
+                ],
+            ])
+            ->add([
+                'name' => 'renderers',
+                'type' => CommonElement\MediaRendererSelect::class,
+                'options' => [
+                    'label' => 'Renderers to process', // @translate
+                    'empty_option' => 'All renderers', // @translate
+                ],
+                'attributes' => [
+                    'id' => 'files_derivative-renderers',
+                    'class' => 'chosen-select',
+                    'multiple' => true,
+                    'placeholder' => 'Select renderers to process', // @ translate
+                    'data-placeholder' => 'Select renderers to process', // @ translate
+                ],
+            ])
+            ->add([
+                'name' => 'media_types',
+                'type' => CommonElement\MediaTypeSelect::class,
+                'options' => [
+                    'label' => 'Media types to process', // @translate
+                    'empty_option' => 'All media types', // @translate
+                ],
+                'attributes' => [
+                    'id' => 'files_derivative-media_types',
+                    'class' => 'chosen-select',
+                    'multiple' => true,
+                    'placeholder' => 'Select media types to process', // @ translate
+                    'data-placeholder' => 'Select media types to process', // @ translate
+                ],
+            ])
+            ->add([
+                'name' => 'media_ids',
+                'type' => Element\Text::class,
+                'options' => [
+                    'label' => 'Media ids', // @translate
+                ],
+                'attributes' => [
+                    'id' => 'files_derivative-media_ids',
+                    'placeholder' => '2-6 8 38-52 80-', // @ translate
+                ],
+            ])
+            ->add([
+                'name' => 'thumbnails_to_create',
+                'type' => Element\Radio::class,
+            'options' => [
+                'label' => 'Thumbnails to create', // @translate
+                    'value_options' => [
+                        'missing' => 'Only missing thumbnails', // @translate
+                        'all' => 'All thumbnails', // @translate
                     ],
-                    'attributes' => [
-                        'class' => 'files_derivative',
+                ],
+                'attributes' => [
+                    'id' => 'files_derivative-thumbnails_to_create',
+                    'value' => 'missing',
+                ],
+            ])
+            ->add([
+                'name' => 'original_without_thumbnails',
+                'type' => Element\Checkbox::class,
+                'options' => [
+                    'label' => 'Only originals marked without thumbnails in database', // @translate
+                ],
+                'attributes' => [
+                    'id' => 'files_derivative-original_without_thumbnails',
+                ],
+            ])
+        ;
+
+        $fieldset
+            ->add([
+                'type' => Fieldset::class,
+                'name' => 'files_derivative_file_system',
+                'options' => [
+                    'label' => 'Options to rebuild derivative files via file system', // @translate
+                ],
+                'attributes' => [
+                    'class' => 'files_derivative_file_system',
+                ],
+            ])
+            ->get('files_derivative_file_system')
+            /* // TODO Implement fast check of extension and media types.
+            ->add([
+                'name' => 'media_types',
+                'type' => CommonElement\MediaTypeSelect::class,
+                'options' => [
+                    'label' => 'Media types to process', // @translate
+                    'empty_option' => 'All media types', // @translate
+                ],
+                'attributes' => [
+                    'id' => 'files_derivative_file_system-media_types',
+                    'class' => 'chosen-select',
+                    'multiple' => true,
+                    'placeholder' => 'Select media types to process', // @ translate
+                    'data-placeholder' => 'Select media types to process', // @ translate
+                ],
+            ])
+            */
+            ->add([
+                'name' => 'thumbnails_to_create',
+                'type' => Element\Radio::class,
+                'options' => [
+                    'label' => 'Thumbnails to create', // @translate
+                    'value_options' => [
+                        'missing' => 'Only missing thumbnails', // @translate
+                        'all' => 'All thumbnails', // @translate
                     ],
-                ]);
-            $fieldset->get('files_derivative')
-                ->add([
-                    'name' => 'item_sets',
-                    'type' => OmekaElement\ItemSetSelect::class,
-                    'options' => [
-                        'label' => 'Item sets', // @translate
-                    ],
-                    'attributes' => [
-                        'id' => 'files_derivative-item_sets',
-                        'class' => 'chosen-select',
-                        'multiple' => true,
-                        'required' => false,
-                        'data-placeholder' => 'Select one or more item sets…', // @translate
-                    ],
-                ])
-                ->add([
-                    'name' => 'ingesters',
-                    'type' => Element\Select::class,
-                    'options' => [
-                        'label' => 'Ingesters to process', // @translate
-                        'empty_option' => 'All ingesters', // @translate
-                        'value_options' => $this->listIngesters(),
-                    ],
-                    'attributes' => [
-                        'id' => 'files_derivative-ingesters',
-                        'class' => 'chosen-select',
-                        'multiple' => true,
-                        'placeholder' => 'Select ingesters to process', // @ translate
-                        'data-placeholder' => 'Select ingesters to process', // @ translate
-                    ],
-                ])
-                ->add([
-                    'name' => 'renderers',
-                    'type' => Element\Select::class,
-                    'options' => [
-                        'label' => 'Renderers to process', // @translate
-                        'empty_option' => 'All renderers', // @translate
-                        'value_options' => $this->listRenderers(),
-                    ],
-                    'attributes' => [
-                        'id' => 'files_derivative-renderers',
-                        'class' => 'chosen-select',
-                        'multiple' => true,
-                        'placeholder' => 'Select renderers to process', // @ translate
-                        'data-placeholder' => 'Select renderers to process', // @ translate
-                    ],
-                ])
-                ->add([
-                    'name' => 'media_types',
-                    'type' => Element\Select::class,
-                    'options' => [
-                        'label' => 'Media types to process', // @translate
-                        'empty_option' => 'All media types', // @translate
-                        'value_options' => $this->listMediaTypes(),
-                    ],
-                    'attributes' => [
-                        'id' => 'files_derivative-media_types',
-                        'class' => 'chosen-select',
-                        'multiple' => true,
-                        'placeholder' => 'Select media types to process', // @ translate
-                        'data-placeholder' => 'Select media types to process', // @ translate
-                    ],
-                ])
-                ->add([
-                    'name' => 'media_ids',
-                    'type' => Element\Text::class,
-                    'options' => [
-                        'label' => 'Media ids', // @translate
-                    ],
-                    'attributes' => [
-                        'id' => 'files_derivative-media_ids',
-                        'placeholder' => '2-6 8 38-52 80-', // @ translate
-                    ],
-                ])
-                ->add([
-                    'name' => 'original_without_thumbnails',
-                    'type' => Element\Checkbox::class,
-                    'options' => [
-                        'label' => 'Only originals without thumbnails', // @translate
-                    ],
-                    'attributes' => [
-                        'id' => 'files_derivative-original_without_thumbnails',
-                    ],
-                ])
-            ;
+                ],
+                'attributes' => [
+                    'id' => 'files_derivative_file_system-thumbnails_to_create',
+                    'value' => 'missing',
+                ],
+            ])
+        ;
 
         return $this;
     }
@@ -349,8 +533,10 @@ class CheckAndFixForm extends Form
                         'files_size_fix' => 'Fix all file sizes in database (for example after hard import)', // @translate
                         'files_hash_check' => 'Check sha256 hashes of files', // @translate
                         'files_hash_fix' => 'Fix wrong sha256 of files', // @translate
-                        'files_media_type_check' => 'Check generic media type of files, mainly for xml', // @translate
-                        'files_media_type_fix' => 'Fix generic media type of files, mainly for xml', // @translate
+                        'files_storage_check' => 'Check hashes of storage names of files', // @translate
+                        'files_storage_fix' => 'Re-hash storage names of files', // @translate
+                        'files_media_type_check' => 'Check use of precise media type of files, mainly for xml', // @translate
+                        'files_media_type_fix' => 'Fill precise media type of files', // @translate
                         'files_dimension_check' => 'Check files dimensions (modules IIIF Server / Image Server)', // @translate
                         'files_dimension_fix' => 'Fix files dimensions (modules IIIF Server / Image Server)', // @translate
                         'media_position_check' => 'Check positions of media (start from 1, without missing number)', // @translate
@@ -360,7 +546,7 @@ class CheckAndFixForm extends Form
                 'attributes' => [
                     'id' => 'files_database-process',
                     'required' => false,
-                    'class' => 'fieldset-process'
+                    'class' => 'fieldset-process',
                 ],
             ]);
 
@@ -392,12 +578,16 @@ class CheckAndFixForm extends Form
                     // Fix the formatting issue of the label in Omeka.
                     'label_attributes' => ['style' => 'display: inline-block'],
                     'value_options' => [
+                        'db_loop_save' => 'Save all resources, for example to apply new settings via triggers', // @translate
+                        'db_resource_invalid_check' => 'Check if all resource have valid types. (Item, ItemSet, etc)', // @translate
+                        'db_resource_invalid_fix' => 'Fix all resource with invalid types.', // @translate
                         'db_resource_incomplete_check' => 'Check if all resources are specified as items, medias, etc.', // @translate
                         'db_resource_incomplete_fix' => 'Remove all resources that are not specified', // @translate
-                        'item_no_value' => 'Check items without value (media values are not checked)', // @translate
-                        'item_no_value_fix' => 'Remove items without value (files are moved into "/files/check/")', // @translate
+                        'db_item_no_value' => 'Check items without value (media values are not checked)', // @translate
+                        'db_item_no_value_fix' => 'Remove items without value (files are moved into "/files/check/")', // @translate
                         'db_utf8_encode_check' => 'Check if all values are utf-8 encoded (Windows issues like "Ã©" for "é")', // @translate
                         'db_utf8_encode_fix' => 'Fix utf-8 encoding issues', // @translate
+                        'db_value_clean_fix' => 'Clean and deduplicate values', // @translate
                         'db_resource_title_check' => 'Check resource titles, for example after hard import', // @translate
                         'db_resource_title_fix' => 'Update resource titles', // @translate
                         'db_item_primary_media_check' => 'Check if the primary medias are set', // @translate
@@ -409,7 +599,50 @@ class CheckAndFixForm extends Form
                 'attributes' => [
                     'id' => 'resource_values-process',
                     'required' => false,
-                    'class' => 'fieldset-process'
+                    'class' => 'fieldset-process',
+                ],
+            ]);
+
+        $fieldset
+            ->add([
+                'type' => Fieldset::class,
+                'name' => 'db_loop_save',
+                'options' => [
+                    'label' => 'Options to loop resources', // @translate
+                ],
+                'attributes' => [
+                    'class' => 'db_loop_save',
+                ],
+            ])
+            ->get('db_loop_save')
+            ->add([
+                'name' => 'resource_types',
+                'type' => CommonElement\OptionalMultiCheckbox::class,
+                'options' => [
+                    'label' => 'Types of resources to process', // @translate
+                    'value_options' => [
+                        'all' => 'All', // @translate
+                        'items' => 'Items', // @translate
+                        'item_sets' => 'Item sets', // @translate
+                        'media' => 'Medias', // @translate
+                        'value_annotations' => 'Value annotations', // @translate
+                        'annotations' => 'Annotations', // @translate
+                    ],
+                ],
+                'attributes' => [
+                    'id' => 'db_loop_save-resource_types',
+                ],
+            ])
+            ->add([
+                'name' => 'query',
+                'type' => OmekaElement\Query::class,
+                'options' => [
+                    'label' => 'Query to limit resources to process', // @translate
+                    'info' => 'It is not recommended to use the query when multiple resource types are selected.', // @translate
+                    'query_resource_type' => null,
+                ],
+                'attributes' => [
+                    'id' => 'db_loop_save-query',
                 ],
             ]);
 
@@ -423,8 +656,8 @@ class CheckAndFixForm extends Form
                 'attributes' => [
                     'class' => 'db_utf8_encode_check db_utf8_encode_fix',
                 ],
-            ]);
-        $fieldset->get('db_utf8_encode')
+            ])
+            ->get('db_utf8_encode')
             ->add([
                 'name' => 'type_resources',
                 'type' => Element\MultiCheckbox::class,
@@ -442,6 +675,122 @@ class CheckAndFixForm extends Form
                 ],
                 'attributes' => [
                     'id' => 'db_utf8_encode-type_resources',
+                ],
+            ]);
+
+        $fieldset
+            ->add([
+                'type' => Fieldset::class,
+                'name' => 'db_value_clean',
+                'options' => [
+                    'label' => 'Options to clean and deduplicate', // @translate
+                ],
+                'attributes' => [
+                    'class' => 'db_value_clean_check db_value_clean_fix',
+                ],
+            ])
+            ->get('db_value_clean')
+            ->add([
+                'name' => 'actions',
+                'type' => CommonElement\OptionalMultiCheckbox::class,
+                'options' => [
+                    'label' => 'Actions to process', // @translate
+                    'value_options' => [
+                        'trim' => 'Trim property values', // @translate
+                        // 'specify_datatype' => 'Specify data type  for linked resources', // @translate
+                        'null_empty_value' => 'Set null for empty values or uris', // @translate
+                        'null_empty_language' => 'Set null when language is empty', // @translate
+                        'deduplicate' => 'Deduplicate property values case insensitively', // @translate
+                    ],
+                ],
+                'attributes' => [
+                    'id' => 'db_value_clean-actions',
+                    'value' => [
+                        'trim',
+                        // 'specify_datatype',
+                        'null_empty_value',
+                        'null_empty_language',
+                        // 'deduplicate',
+                    ],
+                ],
+            ])
+            ->add([
+                'name' => 'resource_types',
+                'type' => CommonElement\OptionalMultiCheckbox::class,
+                'options' => [
+                    'label' => 'Types of resources to process', // @translate
+                    'value_options' => [
+                        'all' => 'All', // @translate
+                        'items' => 'Items', // @translate
+                        'item_sets' => 'Item sets', // @translate
+                        'media' => 'Medias', // @translate
+                        'value_annotations' => 'Value annotations', // @translate
+                        'annotations' => 'Annotations', // @translate
+                    ],
+                ],
+                'attributes' => [
+                    'id' => 'db_value_clean-resource_types',
+                    'value' => [
+                        'all',
+                    ],
+                ],
+            ])
+            ->add([
+                'name' => 'query',
+                'type' => OmekaElement\Query::class,
+                'options' => [
+                    'label' => 'Query to limit resources to process', // @translate
+                    'info' => 'It is not recommended to use the query when multiple resource types are selected.', // @translate
+                    'query_resource_type' => null,
+                ],
+                'attributes' => [
+                    'id' => 'db_value_clean-query',
+                ],
+            ]);
+
+        $fieldset
+            ->add([
+                'type' => Fieldset::class,
+                'name' => 'db_resource_title',
+                'options' => [
+                    'label' => 'Options for resource titles', // @translate
+                ],
+                'attributes' => [
+                    'class' => 'db_resource_title_check db_resource_title_fix',
+                ],
+            ])
+            ->get('db_resource_title')
+            ->add([
+                'name' => 'report_type',
+                'type' => CommonElement\OptionalRadio::class,
+                'options' => [
+                    'label' => 'Report type', // @translate
+                    'info' => 'Full report: all resources are listed (slower). Partial report: only resources with different titles are listed (faster, recommended for large collections).', // @translate
+                    'value_options' => [
+                        'partial' => 'Partial: only different titles (faster)', // @translate
+                        'full' => 'Full: all resources (slower)', // @translate
+                    ],
+                ],
+                'attributes' => [
+                    'id' => 'db_resource_title-report_type',
+                    'value' => 'partial',
+                ],
+            ])
+            ->add([
+                'name' => 'mode',
+                'type' => CommonElement\OptionalRadio::class,
+                'options' => [
+                    'label' => 'Update mode (fix only)', // @translate
+                    'info' => 'Direct mode: fast update via database, but does not trigger Omeka events (modules like AdvancedResourceTemplate will not update titles). API mode: slower but triggers all events and modules, ensuring full consistency.', // @translate
+                    'value_options' => [
+                        'direct' => 'Direct (fast, no events)', // @translate
+                        'api' => 'API (slower, triggers all events and modules)', // @translate
+                    ],
+                ],
+                'attributes' => [
+                    'id' => 'db_resource_title-mode',
+                    'value' => 'direct',
+                    'class' => 'db_resource_title_fix',
                 ],
             ]);
 
@@ -473,8 +822,6 @@ class CheckAndFixForm extends Form
                     // Fix the formatting issue of the label in Omeka.
                     'label_attributes' => ['style' => 'display: inline-block'],
                     'value_options' => [
-                        'db_content_lock_check' => 'Check existing content locks', // @translate
-                        'db_content_lock_clean' => 'Remove existing content locks', // @translate
                         'db_job_check' => 'Check dead jobs (living in database, but non-existent in system)', // @translate
                         'db_job_fix' => 'Set status "stopped" for jobs that never started, and "error" for the jobs that never ended', // @translate
                         'db_job_fix_all' => 'Fix status as above for all jobs (when check cannot be done after a reboot)', // @translate
@@ -483,52 +830,16 @@ class CheckAndFixForm extends Form
                         'db_session_recreate' => 'Remove all sessions (when table is too big)', // @translate
                         'db_log_check' => 'Check the size of the table of logs in database (module Log)', // @translate
                         'db_log_clean' => 'Remove old logs', // @translate
+                        'db_customvocab_missing_itemsets_check' => 'Check if all custom vocabs with item sets have an existing item set', // @translate
+                        'db_customvocab_missing_itemsets_clean' => 'Fix missing item sets of custom vocabs (replace or remove)', // @translate
                     ],
                 ],
                 'attributes' => [
                     'id' => 'database-process',
                     'required' => false,
-                    'class' => 'fieldset-process'
+                    'class' => 'fieldset-process',
                 ],
             ]);
-
-            $fieldset
-                ->add([
-                    'type' => Fieldset::class,
-                    'name' => 'db_content_lock',
-                    'options' => [
-                        'label' => 'Options to remove content locks', // @translate
-                    ],
-                    'attributes' => [
-                        'class' => 'db_content_lock_check db_content_lock_clean',
-                    ],
-                ]);
-            $fieldset->get('db_content_lock')
-                ->add([
-                    'name' => 'hours',
-                    'type' => Element\Number::class,
-                    'options' => [
-                        'label' => 'Older than this number of hours', // @translate
-                    ],
-                    'attributes' => [
-                        'id' => 'db_content_lock-hours',
-                    ],
-                ])
-                ->add([
-                    'name' => 'user_id',
-                    'type' => OmekaElement\UserSelect::class,
-                    'options' => [
-                        'label' => 'Belonging to these users', // @translate
-                        'empty_option' => '',
-                    ],
-                    'attributes' => [
-                        'id' => 'db_content_lock-user_id',
-                        'multiple' => true,
-                        'required' => false,
-                        'class' => 'chosen-select',
-                        'data-placeholder' => 'Select users…', // @translate
-                    ],
-                ]);
 
         $fieldset
             ->add([
@@ -540,8 +851,8 @@ class CheckAndFixForm extends Form
                 'attributes' => [
                     'class' => 'db_session_check db_session_clean',
                 ],
-            ]);
-        $fieldset->get('db_session')
+            ])
+            ->get('db_session')
             ->add([
                 'name' => 'days',
                 'type' => Element\Number::class,
@@ -563,8 +874,8 @@ class CheckAndFixForm extends Form
                 'attributes' => [
                     'class' => 'db_log_check db_log_clean',
                 ],
-            ]);
-        $fieldset->get('db_log')
+            ])
+            ->get('db_log')
             ->add([
                 'name' => 'days',
                 'type' => Element\Number::class,
@@ -593,6 +904,47 @@ class CheckAndFixForm extends Form
                 ],
                 'attributes' => [
                     'id' => 'db_log-severity',
+                ],
+            ])
+            ->add([
+                'name' => 'length',
+                'type' => Element\Number::class,
+                'options' => [
+                    'label' => 'Maximum length of message', // @translate
+                ],
+                'attributes' => [
+                    'id' => 'db_log-length',
+                ],
+            ]);
+
+        $fieldset
+            ->add([
+                'type' => Fieldset::class,
+                'name' => 'db_customvocab_missing_itemsets',
+                'options' => [
+                    'label' => 'Options for custom vocabs', // @translate
+                ],
+                'attributes' => [
+                    'class' => 'db_customvocab_missing_itemsets_check db_customvocab_missing_itemsets_clean',
+                ],
+            ])
+            ->get('db_customvocab_missing_itemsets')
+            ->add([
+                'name' => 'mode',
+                'type' => Element\Radio::class,
+                'options' => [
+                    'label' => 'Fix mode', // @translate
+                    // Fix the formatting issue of the label in Omeka.
+                    'label_attributes' => ['style' => 'display: inline-block'],
+                    'value_options' => [
+                        'replace' => 'Replace by a standard empty custom vocab', // @translate
+                        'remove' => 'Remove the custom vocab', // @translate
+                    ],
+                ],
+                'attributes' => [
+                    'id' => 'db_customvocab_missing_itemsets-mode',
+                    'required' => false,
+                    'class' => 'db_customvocab_missing_itemsets-mode',
                 ],
             ]);
 
@@ -630,7 +982,7 @@ class CheckAndFixForm extends Form
                 'attributes' => [
                     'id' => 'backup-process',
                     'required' => false,
-                    'class' => 'fieldset-process'
+                    'class' => 'fieldset-process',
                 ],
             ]);
 
@@ -644,8 +996,8 @@ class CheckAndFixForm extends Form
                 'attributes' => [
                     'class' => 'backup_install',
                 ],
-            ]);
-        $fieldset->get('backup_install')
+            ])
+            ->get('backup_install')
             ->add([
                 'name' => 'include',
                 'type' => Element\MultiCheckbox::class,
@@ -697,72 +1049,250 @@ class CheckAndFixForm extends Form
         return $this;
     }
 
-    protected function appendFieldsetCache(): self
+    protected function appendFieldsetThemes(): self
     {
         $this
             ->add([
-                'name' => 'cache',
+                'name' => 'themes',
                 'type' => Fieldset::class,
                 'options' => [
-                    'label' => 'Cache', // @translate
+                    'label' => 'Themes', // @translate
                 ],
                 'attributes' => [
-                    'id' => 'cache',
+                    'id' => 'themes',
                     'class' => 'field-container',
                 ],
             ]);
 
-        $fieldset = $this->get('cache');
+        $fieldset = $this->get('themes');
         $fieldset
             ->add([
                 'name' => 'process',
                 'type' => Element\Radio::class,
                 'options' => [
-                    'label' => 'Cache php', // @translate
+                    'label' => 'Tasks', // @translate
                     // Fix the formatting issue of the label in Omeka.
                     'label_attributes' => ['style' => 'display: inline-block'],
                     'value_options' => [
-                        'cache_check' => 'Check php cache (after update or modifications of code)', // @translate
-                        'cache_fix' => 'Clear php cache', // @translate
+                        'theme_templates_check' => 'Check templates to migrate in themes for Omeka S v4.1', // @translate
+                        'theme_templates_fix' => 'Migrate templates in themes for Omeka S v4.1 (WARNING: backup themes first)', // @translate
                     ],
                 ],
                 'attributes' => [
-                    'id' => 'cache-process',
+                    'id' => 'themes-process',
                     'required' => false,
-                    'class' => 'fieldset-process'
+                    'class' => 'fieldset-process',
                 ],
             ]);
 
         $fieldset
             ->add([
                 'type' => Fieldset::class,
-                'name' => 'cache_clear',
+                'name' => 'theme_templates',
+                'options' => [
+                    'label' => 'Options to migrate templates in themes', // @translate
+                ],
+                'attributes' => [
+                    'class' => 'theme_templates_check theme_templates_fix',
+                ],
+            ])
+            ->get('theme_templates')
+            ->add([
+                'name' => 'modules',
+                'type' => Element\Select::class,
+                'options' => [
+                    'label' => 'Modules', // @translate
+                    'value_options' => [
+                        'Reference' => 'Reference',
+                    ],
+                    'empty_option' => '',
+                ],
+                'attributes' => [
+                    'id' => 'theme_templates-modules',
+                ],
+            ])
+        ;
+
+        $fieldset
+            ->add([
+                'type' => Fieldset::class,
+                'name' => 'theme_templates_warn',
+                'options' => [
+                    'label' => 'Check backup', // @translate
+                ],
+                'attributes' => [
+                    'class' => 'theme_templates_fix',
+                ],
+            ])
+            ->get('theme_templates_warn')
+            ->add([
+                'name' => 'backup_confirmed',
+                'type' => Element\Checkbox::class,
+                'options' => [
+                    'label' => 'I confirm to have an external backup of my themes and files', // @translate
+                ],
+                'attributes' => [
+                    'id' => 'theme_templates_warn-backup_confirmed',
+                ],
+            ])
+        ;
+
+        return $this;
+    }
+
+    protected function appendFieldsetSystem(): self
+    {
+        $this
+            ->add([
+                'name' => 'system',
+                'type' => Fieldset::class,
+                'options' => [
+                    'label' => 'System', // @translate
+                ],
+                'attributes' => [
+                    'id' => 'system',
+                    'class' => 'field-container',
+                ],
+            ]);
+
+        $fieldset = $this->get('system');
+        $fieldset
+            ->add([
+                'name' => 'process',
+                'type' => Element\Radio::class,
+                'options' => [
+                    'label' => 'Tasks', // @translate
+                    // Fix the formatting issue of the label in Omeka.
+                    'label_attributes' => ['style' => 'display: inline-block'],
+                    'value_options' => [
+                        'install_check' => 'Run installation checks (after a copy of the database on a new server)', // @translate
+                        'cache_check' => 'Check caches', // @translate
+                        'cache_fix' => 'Clear caches (after update or modifications of code)', // @translate
+                        'mail_check' => 'Check email configuration and send test email', // @translate
+                    ],
+                ],
+                'attributes' => [
+                    'id' => 'system-process',
+                    'required' => false,
+                    'class' => 'fieldset-process',
+                ],
+            ]);
+
+        $fieldset
+            ->add([
+                'type' => Fieldset::class,
+                'name' => 'cache',
                 'options' => [
                     'label' => 'Options to clear cache', // @translate
                 ],
                 'attributes' => [
                     'class' => 'cache_check cache_fix',
                 ],
-            ]);
-        $fieldset->get('cache_clear')
+            ])
+            ->get('cache')
             ->add([
                 'name' => 'type',
                 'type' => Element\MultiCheckbox::class,
                 'options' => [
                     'label' => 'Types of cache', // @translate
                     'value_options' => [
+                        'doctrine' => 'Application (Symfony Doctrine ORM)', // @translate
                         'code' => 'Code (opcache)', // @translate
                         'data' => 'Data (apcu)', // @translate
                         'path' => 'Real paths', // @translate
                     ],
                 ],
                 'attributes' => [
-                    'id' => 'cache_clear-cache',
+                    'id' => 'cache-type',
                     'value' => [
+                        'doctrine',
                         'code',
                         'data',
                         'path',
                     ],
+                ],
+            ])
+        ;
+
+        $fieldset
+            ->add([
+                'type' => Fieldset::class,
+                'name' => 'mail',
+                'options' => [
+                    'label' => 'Options for email check', // @translate
+                ],
+                'attributes' => [
+                    'class' => 'mail_check',
+                ],
+            ])
+            ->get('mail')
+            ->add([
+                'name' => 'recipient',
+                'type' => Element\Email::class,
+                'options' => [
+                    'label' => 'Recipient email for test', // @translate
+                ],
+                'attributes' => [
+                    'id' => 'mail-recipient',
+                    'placeholder' => 'test@example.org', // @translate
+                ],
+            ])
+            ->add([
+                'name' => 'check_dns',
+                'type' => Element\Checkbox::class,
+                'options' => [
+                    'label' => 'Check DNS records (SPF, DKIM, DMARC)', // @translate
+                    'info' => 'Check the DNS records of the mail domain to help configure your registrar and mail server.', // @translate
+                ],
+                'attributes' => [
+                    'id' => 'mail-check-dns',
+                ],
+            ])
+            ->add([
+                'name' => 'domain',
+                'type' => Element\Text::class,
+                'options' => [
+                    'label' => 'Domain (optional)', // @translate
+                    'info' => 'The domain to check DNS records for. If not provided, it will be extracted from the sender email.', // @translate
+                ],
+                'attributes' => [
+                    'id' => 'mail-domain',
+                    'placeholder' => 'example.org',
+                ],
+            ])
+            ->add([
+                'name' => 'ip_address',
+                'type' => Element\Text::class,
+                'options' => [
+                    'label' => 'Mail server IP address (optional, auto-detected)', // @translate
+                    'info' => 'The IP address of your mail server. If empty, it will be auto-detected from SMTP config, server IP, or domain A record.', // @translate
+                ],
+                'attributes' => [
+                    'id' => 'mail-ip-address',
+                    'placeholder' => '192.0.2.1',
+                ],
+            ])
+            ->add([
+                'name' => 'dkim_selector',
+                'type' => Element\Text::class,
+                'options' => [
+                    'label' => 'DKIM selector (optional)', // @translate
+                    'info' => 'The DKIM selector used in your DNS records (e.g., "mail", "default", "selector1"). Default is "mail".', // @translate
+                ],
+                'attributes' => [
+                    'id' => 'mail-dkim-selector',
+                    'placeholder' => 'mail',
+                ],
+            ])
+            ->add([
+                'name' => 'generate_dkim',
+                'type' => Element\Checkbox::class,
+                'options' => [
+                    'label' => 'Generate DKIM key if missing', // @translate
+                    'info' => 'Generate a new DKIM key pair using OpenSSL. The public key will be shown for DNS configuration.', // @translate
+                ],
+                'attributes' => [
+                    'id' => 'mail-generate-dkim',
                 ],
             ])
         ;
@@ -795,48 +1325,16 @@ class CheckAndFixForm extends Form
                     // Fix the formatting issue of the label in Omeka.
                     'label_attributes' => ['style' => 'display: inline-block'],
                     'value_options' => [
-                        'db_fulltext_index' => 'Index full-text search (core job)', // @translate
-                        'db_statistics_index' => 'Index statistics (module Statistics, needed only after direct import)', // @translate
-                        'db_thesaurus_index' => 'Index thesaurus (module Thesaurus)', // @translate
+                        'db_fulltext_index' => 'Omeka: Index full-text search', // @translate
                     ],
                 ],
                 'attributes' => [
                     'id' => 'module_tasks-process',
                     'required' => false,
-                    'class' => 'fieldset-process'
+                    'class' => 'fieldset-process',
                 ],
             ]);
 
-        return $this;
-    }
-
-    protected function listIngesters(): array
-    {
-        $sql = 'SELECT DISTINCT(ingester) FROM media ORDER BY ingester ASC';
-        $result = $this->connection->executeQuery($sql)->fetchFirstColumn();
-        return ['' => 'All ingesters'] // @translate
-            + array_combine($result, $result);
-    }
-
-    protected function listRenderers(): array
-    {
-        $sql = 'SELECT DISTINCT(renderer) FROM media ORDER BY renderer ASC';
-        $result = $this->connection->executeQuery($sql)->fetchFirstColumn();
-        return ['' => 'All renderers'] // @translate
-            + array_combine($result, $result);
-    }
-
-    protected function listMediaTypes(): array
-    {
-        $sql = 'SELECT DISTINCT(media_type) FROM media WHERE media_type IS NOT NULL AND media_type != "" ORDER BY media_type ASC';
-        $result = $this->connection->executeQuery($sql)->fetchFirstColumn();
-        return ['' => 'All media types'] // @translate
-            + array_combine($result, $result);
-    }
-
-    public function setConnection(Connection $connection): self
-    {
-        $this->connection = $connection;
         return $this;
     }
 }

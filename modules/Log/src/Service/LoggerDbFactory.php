@@ -1,12 +1,15 @@
 <?php declare(strict_types=1);
+
 namespace Log\Service;
 
-use Interop\Container\ContainerInterface;
+use Psr\Container\ContainerInterface;
 use Laminas\Log\Logger;
 use Laminas\Log\Writer\Noop;
 
 /**
  * Logger Db factory.
+ *
+ * Creates a logger with only the database writer (no stream writer).
  */
 class LoggerDbFactory extends LoggerFactory
 {
@@ -15,29 +18,33 @@ class LoggerDbFactory extends LoggerFactory
      *
      * @return Logger
      */
-    public function __invoke(ContainerInterface $services, $requestedName, array $options = null)
+    public function __invoke(ContainerInterface $services, $requestedName, ?array $options = null)
     {
         $config = $services->get('Config');
 
-        $writers = ['db' => $config['logger']['options']['writers']['db']];
+        // Only use the doctrine writer.
+        $writers = ['doctrine' => $config['logger']['options']['writers']['doctrine']];
 
-        if (empty($writers['db']['options']['db'])) {
-            $dbAdapter = $this->getDbAdapter($services);
-            if ($dbAdapter) {
-                $writers['db']['options']['db'] = $dbAdapter;
-            } else {
-                error_log('[Omeka S] Database logging disabled: wrong config.'); // @translate
-                return (new Logger)->addWriter(new Noop);
-            }
+        // Get Doctrine connection.
+        $connection = $this->getDoctrineConnection($services);
+        if (!$connection) {
+            error_log('[Omeka S] Database logging disabled: connection unavailable.'); // @translate
+            return (new Logger)->addWriter(new Noop);
         }
 
-        $config['logger']['options']['writers'] = $writers;
+        // Create Doctrine writer.
+        $doctrineWriter = $this->createDoctrineWriter($connection, $writers['doctrine']);
 
+        // Create logger and add Doctrine writer.
+        $logger = new Logger();
+        $logger->addWriter($doctrineWriter);
+
+        // Add user id processor if configured.
         if (!empty($config['logger']['options']['processors']['userid']['name'])) {
-            $config['logger']['options']['processors']['userid']['name'] = $this->addUserIdProcessor($services);
+            $processor = $this->addUserIdProcessor($services);
+            $logger->addProcessor($processor);
         }
 
-        // Checks are managed via the constructor.
-        return new Logger($config['logger']['options']);
+        return $logger;
     }
 }

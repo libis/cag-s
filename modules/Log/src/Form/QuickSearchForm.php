@@ -5,6 +5,7 @@ namespace Log\Form;
 use Laminas\Form\Element;
 use Laminas\Form\Form;
 use Laminas\View\Helper\Url;
+
 // use Omeka\Form\Element as OmekaElement;
 
 class QuickSearchForm extends Form
@@ -97,6 +98,18 @@ class QuickSearchForm extends Form
                 'attributes' => [
                     'id' => 'job_id',
                     'placeholder' => 'Set a job id…', // @translate
+                ],
+            ])
+
+            ->add([
+                'name' => 'job_class',
+                'type' => Element\Text::class,
+                'options' => [
+                    'label' => 'Job class', // @translate
+                ],
+                'attributes' => [
+                    'id' => 'job_class',
+                    'placeholder' => 'Set a job class…', // @translate
                 ],
             ])
 

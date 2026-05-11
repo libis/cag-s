@@ -1,7 +1,7 @@
 <?php declare(strict_types=1);
 
 /*
- * Copyright Daniel Berthereau, 2017-2021
+ * Copyright Daniel Berthereau, 2017-2023
  *
  * This software is governed by the CeCILL license under French law and abiding
  * by the rules of distribution of free software.  You can use, modify and/ or
@@ -46,6 +46,14 @@ class SolariumAdapter extends AbstractAdapter
      */
     protected $translator;
 
+    protected $label = 'Solr [via Solarium]'; // @translate
+
+    protected $configFieldsetClass = \SearchSolr\Form\Admin\SolrConfigFieldset::class;
+
+    protected $indexerClass = \SearchSolr\Indexer\SolariumIndexer::class;
+
+    protected $querierClass = \SearchSolr\Querier\SolariumQuerier::class;
+
     /**
      * @param ApiManager $api
      * @param TranslatorInterface $translator
@@ -56,25 +64,10 @@ class SolariumAdapter extends AbstractAdapter
         $this->translator = $translator;
     }
 
-    public function getLabel(): string
-    {
-        return 'Solr [via Solarium]';
-    }
-
     public function getConfigFieldset(): ?\Laminas\Form\Fieldset
     {
         $solrCores = $this->api->search('solr_cores')->getContent();
         return new SolrConfigFieldset(null, ['solrCores' => $solrCores]);
-    }
-
-    public function getIndexerClass(): string
-    {
-        return \SearchSolr\Indexer\SolariumIndexer::class;
-    }
-
-    public function getQuerierClass(): string
-    {
-        return \SearchSolr\Querier\SolariumQuerier::class;
     }
 
     public function getAvailableFields(): array

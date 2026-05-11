@@ -32,22 +32,22 @@ class DbJob extends AbstractCheck
      * @param bool $fix
      * @param bool $fixAll
      */
-    protected function checkDbJob($fix = false, $fixAll = false)
+    protected function checkDbJob($fix = false, $fixAll = false): void
     {
-        $sql = <<<SQL
-SELECT id, pid, status
-FROM job
-WHERE id != :jobid
-    AND status IN ("starting", "stopping", "in_progress")
-ORDER BY id ASC;
-SQL;
+        $sql = <<<'SQL'
+            SELECT id, pid, status
+            FROM job
+            WHERE id != :jobid
+                AND status IN ("starting", "stopping", "in_progress")
+            ORDER BY id ASC;
+            SQL;
 
         // Fetch all: jobs are few, except if admin never checks result of jobs.
         $result = $this->connection->executeQuery($sql, ['jobid' => $this->job->getId()])->fetchAllAssociative();
 
         // Unselect processes with an existing pid.
+        // Uses /proc filesystem (Linux only; most Omeka S installations are Linux-based).
         foreach ($result as $id => $row) {
-            // TODO The check of the pid works only with Linux.
             if ($row['pid'] && file_exists('/proc/' . $row['pid'])) {
                 unset($result[$id]);
             }
@@ -57,20 +57,20 @@ SQL;
             $sql = 'SELECT COUNT(id) FROM job';
             $countJobs = $this->connection->executeQuery($sql)->fetchOne();
 
-            $sql = <<<SQL
-UPDATE job
-SET status = "stopped"
-WHERE id != :jobid
-    AND status IN ("starting", "stopping");
-SQL;
+            $sql = <<<'SQL'
+                UPDATE job
+                SET status = "stopped"
+                WHERE id != :jobid
+                    AND status IN ("starting", "stopping");
+                SQL;
             $stopped = $this->connection->executeQuery($sql, ['jobid' => $this->job->getId()])->rowCount();
 
-            $sql = <<<SQL
-UPDATE job
-SET status = "error"
-WHERE id != :jobid
-    AND status IN ("in_progress");
-SQL;
+            $sql = <<<'SQL'
+                UPDATE job
+                SET status = "error"
+                WHERE id != :jobid
+                    AND status IN ("in_progress");
+                SQL;
             $error = $this->connection->executeQuery($sql, ['jobid' => $this->job->getId()])->rowCount();
 
             $this->logger->notice(
@@ -95,9 +95,7 @@ SQL;
             'The following {count} jobs are dead: {job_ids}.', // @translate
             [
                 'count' => count($result),
-                'job_ids' => implode(', ', array_map(function ($v) {
-                    return '#' . $v['id'];
-                }, $result)),
+                'job_ids' => implode(', ', array_map(fn ($v) => '#' . $v['id'], $result)),
             ]
         );
 

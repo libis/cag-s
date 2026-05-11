@@ -162,7 +162,6 @@ class DbUtf8Encode extends AbstractCheck
         $totalProcessed = 0;
         $this->totalUtf8 = 0;
         $totalSucceed = 0;
-        $maxRows = self::SPREADSHEET_ROW_LIMIT;
         while (true) {
             $criteria = clone $baseCriteria;
             $criteria->setFirstResult($offset);
@@ -202,7 +201,7 @@ class DbUtf8Encode extends AbstractCheck
 
                 $isPageBlock = $recordData === 'page_block';
                 $iso = $this->convertToUnicode($string, $isPageBlock);
-                if (is_null($iso)) {
+                if ($iso === null) {
                     continue;
                 }
 
@@ -251,7 +250,7 @@ class DbUtf8Encode extends AbstractCheck
                     default:
                         return false;
                 }
-                $row['content'] = mb_substr(trim(str_replace(["\n", "\r", "\t"], ['  ', '  ', '  '], is_string($string) ? $string : json_encode($string))), 0, 1000);
+                $row['content'] = mb_substr(trim(strtr(is_string($string) ? $string : json_encode($string), ["\n" => ' ', "\r" => ' ', "\v" => ' ', "\t" => ' '])), 0, 1000);
                 $row['fixed'] = $fix ? $yes : '';
 
                 if ($fix) {
@@ -264,9 +263,7 @@ class DbUtf8Encode extends AbstractCheck
                     ++$totalSucceed;
                 }
 
-                if (--$maxRows >= 0) {
-                    $this->writeRow($row);
-                }
+                $this->writeRow($row);
             }
 
             $this->entityManager->flush();
@@ -296,11 +293,11 @@ class DbUtf8Encode extends AbstractCheck
             $hasHtml = !empty($string['html']);
             if ($hasHtml) {
                 // Don't convert main xml entities (quotes, > and <).
-                $string['html'] = str_replace(['&_gt_;', '&_lt_;'], ['&gt;', '&lt;'], html_entity_decode(
-                    str_replace(['&gt;', '&lt;'], ['&_gt_;', '&_lt_;'], $string['html']),
+                $string['html'] = strtr(html_entity_decode(
+                    strtr($string['html'], ['&gt;' => '&_gt_;', '&lt;' => '&_lt_;']),
                     ENT_NOQUOTES | ENT_HTML5,
                     'ISO-8859-15'
-                ));
+                ), ['&_gt_;' => '&gt;', '&_lt_;' => '&lt;']);
             }
             // JSON_INVALID_UTF8_IGNORE is only in php 7.2.
             $stringTest = json_encode($string, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_LINE_TERMINATORS);
@@ -308,7 +305,7 @@ class DbUtf8Encode extends AbstractCheck
                 ? json_encode($string, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_LINE_TERMINATORS)
                 : $stringTest;
             $iso = $this->convertToUnicode($string);
-            return is_null($iso)
+            return $iso === null
                 ? json_encode($string, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_LINE_TERMINATORS)
                 : (is_array($iso) ? json_encode($iso, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_LINE_TERMINATORS) : $iso);
         }
@@ -322,10 +319,10 @@ class DbUtf8Encode extends AbstractCheck
             return null;
         }
 
-        // Quick check for ascii encoding.
+        // Quick check for ascii encoding, that is valid utf-8.
         $stringEncoding = mb_detect_encoding($string);
         $isoEncoding = mb_detect_encoding($iso);
-        if (!$stringEncoding === 'ASCII' || $isoEncoding === 'ASCII') {
+        if ($stringEncoding === 'ASCII' || $isoEncoding === 'ASCII') {
             ++$this->totalUtf8;
             return null;
         }

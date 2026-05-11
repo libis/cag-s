@@ -28,6 +28,11 @@ Installation
 
 See general end user documentation for [installing a module].
 
+This module requires the module [Common], that should be installed first.
+
+If your records contains diacritic letters like É, Ù, etc., it is recommended to
+install the php extension `intl`.
+
 * From the zip
 
 Download the last release [Reference.zip] from the list of releases, and
@@ -37,6 +42,17 @@ uncompress it in the `modules` directory.
 
 If the module was installed from the source, rename the name of the folder of
 the module to `Reference`.
+
+Then install it like any other Omeka module and follow the config instructions.
+
+- For test
+
+The module includes a comprehensive test suite with unit and functional tests.
+Run them from the root of Omeka:
+
+```sh
+vendor/bin/phpunit -c modules/Reference/phpunit.xml --testdox
+```
 
 ### Note for an upgrade from Omeka Classic
 
@@ -58,7 +74,7 @@ necessary to modify the config.
 Usage
 -----
 
-The site settigns allows to select the terms to display. The config is the same
+The site settings allows to select the terms to display. The config is the same
 for the main site pages or in the block form for pages. It is recommended to use
 site pages when possible.
 
@@ -81,17 +97,19 @@ Available pages and options can be set in the site settings. Options are:
 
 A block allows to display the lists in any page. Furthermore,
 
-These contents can be displayed anywere via the view helper `references()`:
+These contents can be displayed anywhere via the view helper `references()`:
 
 ```php
 // With default values.
 echo $this->references()->displayListForTerm('dcterms:subject', $query, $options);
 // Get the lists.
-echo $this->references()->list('dcterms:subject', $query, $options);
+print_r($this->references()->list('dcterms:subject', $query, $options));
 // Get the count.
 echo $this->references()->count('dcterms:subject', $query, $options);
 // Get the initials (here to get the list of years from iso 8601 values or numeric timestamp).
-echo $this->references()->initials('dcterms:created', $query, ['initial' => 4]);
+print_r($this->references()->initials('dcterms:created', $query, ['initial' => 4]));
+// Get the list of resources related to all subjects.
+print_r($references->list('dcterms:subject', null, ['list_by_max' => 1024]));
 ```
 
 The references are available via the api in `/api/references` too. Arguments are
@@ -160,7 +178,7 @@ The conversion is automatically done inside the user interface (page blocks).
 To get the results via api, use a standard query and append the options you need,
 for example `/api/references?metadata[subjects]=dcterms:subject` to get the list
 of all subjects, or `/api/references?metadata[people]=foaf:Person` to get the
-list of all resources with class "Person". You can add multiple metadata together: `medatadata[subjects]=dcterms:subject&medatadata[creators]=dcterms:creator`
+list of all resources with class "Person". You can add multiple metadata together: `/api/references?medatadata[subjects]=dcterms:subject&medatadata[creators]=dcterms:creator`
 You can use the special metadata `o:title` too, but some options won't be
 available for it since it is managed differently inside Omeka. The metadata can
 be a property term, or `o:item_set`, `o:resource_class`, and `o:resource_template`
@@ -171,55 +189,57 @@ The query from the url can be simplified with `text=my-text` in most of the
 cases, so the references are filtered by this text in any property.
 If one or multiple fields are specified, the references are returned for these
 fields. The fields can be a comma separated list of an array, for example:
-`/api/infos/references?text=example&metadata[subjects]=dcterms:subject` allows to get all
+`/api/references?text=example&metadata[subjects]=dcterms:subject` allows to get all
 references for the specified text in the specified field.
 
 To get the facets for the search result page, you can use this query:
-`text=xxx&site_id=1&option[resource_name]=items&option[sort_by]=total&option[sort_order]=desc&option[filters][languages][]=fra&option[filters][languages][]=null&option[filters][languages]=&option[lang]=1&metadata[subjects]=dcterms:subject`
+`/api/references?text=xxx&site_id=1&option[resource_name]=items&option[sort_by]=total&option[sort_order]=desc&option[filters][languages][]=fra&option[filters][languages][]=null&option[filters][languages]=&option[lang]=1&metadata[subjects]=dcterms:subject`
 Note: if you use the filters for the language, it may be needed to add an
 empty language `&option[filters][languages][]=null` or, for string format, `&option[filters][languages]=fra,null`
 because many metadata have no language (date, names, etc.).
 The empty language can be an empty string too (deprecated).
 
-Options can be appended to the query. If you don't want to mix them, you can use
-the keys `query` and `option`.
+To get more information about results, in particular the list of resources
+associated to each reference (`list_by_max`), use options. Options can be
+appended to the query. If you don't want to mix them, you can use the keys
+`query` and `option`.
 
 Options are the same than the view helper:
 
-- resource_name: items (default), "item_sets", "media", "resources".
-- sort_by: "alphabetic" (default), "count", or any available column.
-- sort_order: "asc" (default) or "desc".
-- filters: array Limit values to the specified data. Currently managed:
-  - "languages": list of languages. Values without language are returned with
+- `resource_name`: items (default), "item_sets", "media", "resources".
+- `sort_by`: "alphabetic" (default), "count", or any available column.
+- `sort_order`: "asc" (default) or "desc".
+- `filters`: array Limit values to the specified data. Currently managed:
+  - `languages`: list of languages. Values without language are returned with
     the value "null". This option is used only for properties.
-  - "datatypes": array Filter property values according to the data types.
+  - `datatypes`: array Filter property values according to the data types.
     Default datatypes are "literal", "resource", "resource:item", "resource:itemset",
-    "resource:media" and "uri".
+    "resource:media" and "uri"; other existing ones are managed.
     Warning: "resource" is not the same than specific resources.
     Use module Bulk Edit or Bulk Check to specify all resources automatically.
-  - "begin": array Filter property values that begin with these strings,
+  - `begin`: array Filter property values that begin with these strings,
     generally one or more initials.
-  - "end": array Filter property values that end with these strings.
-- values: array Allow to limit the answer to the specified values.
-- first: false (default), or true (get first resource).
-- list_by_max: 0 (default), or the max number of resources for each reference)
+  - `end`: array Filter property values that end with these strings.
+- `values`: array Allow to limit the answer to the specified values.
+- `first`: false (default), or true (get first resource).
+- `list_by_max`: 0 (default), or the max number of resources for each reference)
   The max number should be below 1024 (mysql limit for group_concat).
-- fields: the fields to use for the list of resources, if any. If not set, the
+- `fields`: the fields to use for the list of resources, if any. If not set, the
   output is an associative array with id as key and title as value. If set,
   value is an array of the specified fields.
-- initial: false (default), or true (get first letter of each result).
-- distinct: false (default), or true (distinct values by type).
-- datatype: false (default), or true (include datatype of values).
-- lang: false (default), or true (include language of value to result).
-- locale: empty (default) or a string or an ordered array Allow to get the
+- `initial`: false (default), or true (get first letter of each result).
+- `distinct`: false (default), or true (distinct values by type).
+- `datatype`: false (default), or true (include datatype of values).
+- `lang`: false (default), or true (include language of value to result).
+- `locale`: empty (default) or a string or an ordered array Allow to get the
   returned values in the first specified language when a property has translated
   values. Use "null" to get a value without language.
   Unlike Omeka core, it gets the translated title of linked resources.
-- include_without_meta: false (default), or true (include total of resources
+- `include_without_meta`: false (default), or true (include total of resources
   with no metadata) (TODO Check if this option is still needed).
-- single_reference_format: false (default), or true to keep the old output
+- `single_reference_format`: false (default), or true to keep the old output
   without the deprecated warning for single references without named key.
-- output: "list" (default) or "associative" (possible only without added
+- `output`: "list" (default) or "associative" (possible only without added
   options: first, initial, distinct, datatype, or lang).
 
 A standard resource query can be appended to the query. The property argument
@@ -272,9 +292,16 @@ TODO
 - [ ] Make the reference recursive (two levels currently).
 - [ ] Get the second levels via a single sql, not via api.
 - [ ] Check if the option "include_without_meta" is still needed with data types.
-- [ ] Include the fields in the main request or get them via a second request, not via api.
-- [ ] Use the new table `reference_metadata` when possible.
+- [x] Include the fields in the main request or get them via a second request, not via api.
 - [ ] Simplify queries for aggregated fields (see AdvancedSearch).
+- [ ] Order by years instead of alphabetic.
+- [ ] Get thumbnail url directly from references for performance.
+- [ ] Store the display title by language, in particular when the title is a resource or not dcterms:title. Use sql views? Store only ids?
+      Other properties are useless to store. Or use a double or a sub-query.
+
+No more todo:
+
+- Use the new table `reference_metadata` when possible.
 
 
 Warning
@@ -323,7 +350,7 @@ Copyright
 
 * Copyright William Mayo, 2011
 * Copyright Philip Collins, 2013 ([jQuery tree view])
-* Copyright Daniel Berthereau, 2014-2022 (see [Daniel-KM] on GitLab)
+* Copyright Daniel Berthereau, 2014-2026 (see [Daniel-KM] on GitLab)
 
 This module is inspired from earlier work done by William Mayo (see [pobocks] on
 GitLab) in [Subject Browse], with some ideas from [Metadata Browser] and
@@ -337,8 +364,8 @@ Performance fixes were made for Article 19.
 [Reference]: https://gitlab.com/Daniel-KM/Omeka-S-module-Reference
 [Omeka]: https://omeka.org/classic
 [Reference plugin]: https://gitlab.com/Daniel-KM/Omeka-plugin-Reference
-[Reference.zip]: https://gitlab.com/Daniel-KM/Omeka-S-module-Reference/-/releases
-[Installing a module]: http://dev.omeka.org/docs/s/user-manual/modules/#installing-modules
+[Reference.zip]: https://github.com/Daniel-KM/Omeka-S-module-Reference/releases
+[installing a module]: https://omeka.org/s/docs/user-manual/modules/#installing-modules
 [Api Info]: https://gitlab.com/Daniel-KM/Omeka-S-module-ApiInfo
 [Bulk Edit]: https://gitlab.com/Daniel-KM/Omeka-S-module-BulkEdit
 [Bulk Check]: https://gitlab.com/Daniel-KM/Omeka-S-module-BulkCheck

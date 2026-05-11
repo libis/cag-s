@@ -17,11 +17,13 @@ class PreviousNext extends AbstractHelper
     /**
      * Output the links to previous, next and back of a resource.
      *
-     * @todo Check visibility for public front-end.
+     * Visibility is handled automatically:
+     * - On public site: only public resources (or owned by current user) are shown
+     * - On admin: all resources are shown (respecting acl permissions)
      *
      * @param array $options
      * - template (string): set specific template (default: common/previous-next)
-     * - back (bool): add back link
+     * - back (bool): add back link (upper page or home page)
      * - source_query (string): "session" (default when no query), "setting" else
      *   passed query.
      * - query (array|string): use a specific query
@@ -38,27 +40,26 @@ class PreviousNext extends AbstractHelper
         $options['back'] = !empty($options['back']);
         $options['source_query'] = $options['source_query']
             ?? (empty($options['query']) ? 'session' : null);
-        $options['query'] = $options['query'] ?? null;
+        $options['query'] ??= null;
         $asArray = !empty($options['as_array']);
         unset($options['as_array']);
 
         $query = $this->getQuery($resourceName, $options['source_query'], $options['query']);
 
         if ($options['source_query'] === 'session') {
-            $lastBrowseUrl = $options['back'] || $asArray? $view->lastBrowsePage() : null;
+            $lastBrowseUrl = $options['back'] || $asArray ? $view->lastBrowsePage() : null;
         } else {
-            $lastBrowseUrl = $options['back'] || $asArray? $view->url($this->site ? 'site/resource' : 'admin/default', ['action' => ''], [], true) : null;
+            $lastBrowseUrl = $options['back'] || $asArray ? $view->url($this->site ? 'site/resource' : 'admin/default', ['action' => ''], [], true) : null;
         }
 
-        // TODO Manage query for media.
-        // TODO Manage different queries by resource type.
-        $resourceName = $resource->resourceName();
+        // Media navigation is within an item (prev/next media of same item).
+        // Custom queries for media filtering could be added if needed.
         if ($resourceName === 'media') {
             $previous = $this->previousMedia($resource);
             $next = $this->nextMedia($resource);
         } else {
             [$previous, $next] = $this->getPreviousAndNextResourceIds($resource, $query);
-            $previous =  $previous
+            $previous = $previous
                 ? $view->api()->read($resourceName, ['id' => $previous])->getContent()
                 : null;
             $next = $next

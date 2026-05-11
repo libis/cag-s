@@ -91,12 +91,13 @@ class GetResourceIdentifier extends AbstractHelper
 SELECT `value`.`value`
 FROM `value`
     LEFT JOIN `resource` ON (`value`.`resource_id` = `resource`.`id`)
-WHERE `value`.`type` = "literal"
+WHERE `value`.`type` IN ("literal", "uri")
+    AND `value`.`value` IS NOT NULL
     AND `value`.`property_id` = :property_id
     AND `resource`.`resource_type` = :resource_type
     AND `resource`.`id` = :resource_id
     $sqlWhereText
-ORDER BY `value`.`id`
+ORDER BY `value`.`id` ASC
 LIMIT 1
 ;
 SQL;

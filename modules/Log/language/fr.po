@@ -1,13 +1,11 @@
-# Copyright (C) YEAR THE PACKAGE'S COPYRIGHT HOLDER
-# This file is distributed under the same license as the PACKAGE package.
-#
 # Daniel Berthereau <Daniel.gitlab@Berthereau.net>, 2020.
+#
 msgid ""
 msgstr ""
 "Project-Id-Version: \n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2022-01-03 00:00+0000\n"
-"PO-Revision-Date: 2022-01-03 00:00+0000\n"
+"POT-Creation-Date: 2026-03-02 00:00+0000\n"
+"PO-Revision-Date: 2026-03-02 00:00+0000\n"
 "Last-Translator: Daniel Berthereau <Daniel.fr@Berthereau.net>\n"
 "Language-Team: French <kde-i18n-doc@kde.org>\n"
 "Language: fr\n"
@@ -15,208 +13,486 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=2; plural=(n > 1);\n"
-"X-Generator: Poedit 3.0.1\n"
+"X-Generator: Poedit 3.6\n"
 
-#: Module.php:59
+#: data/scripts/upgrade.php:36 Module.php:100
+#, php-format
+msgid "The module %1$s should be upgraded to version %2$s or later."
+msgstr "Le module %1$s doit être mis à niveau à la version %2$s ou supérieure."
+
+#: Module.php:123
 msgid ""
-"Logging is not active. You should enable it in the file config/local.config."
-"php: `'log' => true`."
+"Logging is not active by default in Omeka. This module overrides option "
+"[logger][log]."
 msgstr ""
-"Les journaux ne sont pas activés. Vous devez les activer dans le fichier "
-"config/local.config.php : `'log' => true`."
+"La journalisation n’est pas active par défaut dans Omeka. Ce module la "
+"définit en outrepassant l’option [logger][log]."
 
-#: Module.php:61
+#: Module.php:124
 msgid ""
-"You may need to update config/local.config.php to update your log settings."
+"You may need to update the file config/local.config.php, in particular to "
+"set the default level of severity."
 msgstr ""
-"Il peut être nécessaire de mettre à jour le fichier config/local.config.php "
-"pour les paramètres des journaux."
+"Il peut être nécessaire de mettre à jour le fichier config/local.config.php, "
+"en particulier pour définir le niveau de gravité par défaut."
 
-#: Module.php:63
-#, php-format
-msgid "See examples of config in the %sreadme%s."
-msgstr "Cf. les exemples de configuration dans le %slisez-moi%s."
+#: Module.php:126
+msgid "See examples of config in the {link}readme{link_end}."
+msgstr "Cf. les exemples de configuration dans le {link}lisez-moi{link_end}."
 
-#: src/Generic/AbstractModule.php:66
-#, php-format
-msgid "This module requires the module \"%s\"."
-msgstr "Ce module requiert le module \"%s\"."
-
-#: src/Generic/AbstractModule.php:73
-#, php-format
-msgid "This module requires modules \"%s\"."
-msgstr "Ce module requiert les modules \"%s\"."
-
-#: src/Generic/AbstractModule.php:80
-msgid "This module has resources that cannot be installed."
-msgstr "Ce module a des ressources qui ne peuvent pas être installées."
-
-#: src/Generic/AbstractModule.php:725
-#, php-format
-msgid ""
-"The module \"%s\" was automatically deactivated because the dependencies are "
-"unavailable."
-msgstr ""
-"Le module \"%s\" a été automatiquement désactivé car ses dépendances ne sont "
-"plus disponibles."
-
-#: src/View/Helper/LogSearchFilters.php:56
-msgid "Message contains"
-msgstr "Contenu du message"
-
-#: src/View/Helper/LogSearchFilters.php:62 view/log/admin/log/browse.phtml:36
-#: view/log/admin/log/browse.phtml:101 view/log/admin/log/show-details.phtml:30
-msgid "Reference"
-msgstr "Référence"
-
-#: src/View/Helper/LogSearchFilters.php:68
-#: src/View/Helper/LogSearchFilters.php:73
-#: src/View/Helper/LogSearchFilters.php:79 view/log/admin/log/browse.phtml:40
-#: view/log/admin/log/browse.phtml:100 view/log/admin/log/show-details.phtml:26
-msgid "Severity"
-msgstr "Gravité"
-
-#: src/View/Helper/LogSearchFilters.php:96 view/log/admin/log/browse.phtml:44
-#: view/log/admin/log/browse.phtml:105 view/log/admin/log/show-details.phtml:58
-msgid "Job"
-msgstr "Tâche"
-
-#: src/View/Helper/LogSearchFilters.php:100
-msgid "Unknown job"
-msgstr "Tâche inconnue"
-
-#: view/log/admin/log/browse.phtml:56
-msgid "Logs"
-msgstr "Journaux"
-
-#: view/log/admin/log/browse.phtml:62
-msgid "Quick search / Filter"
-msgstr "Recherche rapide / filtre"
-
-#: view/log/admin/log/browse.phtml:97 view/log/admin/log/show-details.phtml:63
-msgid "Message"
-msgstr "Message"
-
-#: view/log/admin/log/browse.phtml:130
-msgid "Full log"
-msgstr "Message complet"
-
-#: view/log/admin/log/browse.phtml:171 view/log/admin/log/show-details.phtml:50
+#: src/ColumnType/Job.php:68 view/log/admin/log/show-details.phtml:82
 msgid "Parameters"
 msgstr "Paramètres"
 
-#: view/log/admin/log/browse.phtml:208 view/log/admin/log/browse.phtml:226
+#: src/ColumnType/Job.php:83 view/common/job-state.phtml:39
+#: view/log/admin/log/show-details.phtml:33
+#: view/omeka/admin/job/browse.phtml:30 view/omeka/admin/job/show.phtml:56
+msgid "Warning: The system state may not be reliable on some servers."
+msgstr "Attention : l’état système peut être incorrect sur certains serveurs."
+
+#: src/Job/ArchiveLogsJob.php:354 src/Job/ArchiveLogsJob.php:371
+msgid "Id"
+msgstr "Id"
+
+#: src/Job/ArchiveLogsJob.php:357 src/Job/ArchiveLogsJob.php:374
+#: src/View/Helper/LogSearchFilters.php:95
+#: view/log/admin/log/show-details.phtml:90
+msgid "Job"
+msgstr "Tâche"
+
+#: src/Job/ArchiveLogsJob.php:358 src/Job/ArchiveLogsJob.php:375
+#: src/View/Helper/LogSearchFilters.php:61
+#: view/log/admin/log/show-details.phtml:46
+msgid "Reference"
+msgstr "Référence"
+
+#: src/Job/ArchiveLogsJob.php:359 src/Job/ArchiveLogsJob.php:376
+#: src/View/Helper/LogSearchFilters.php:67
+#: src/View/Helper/LogSearchFilters.php:72
+#: src/View/Helper/LogSearchFilters.php:78
+#: view/log/admin/log/show-details.phtml:40
+msgid "Severity"
+msgstr "Gravité"
+
+#: src/Job/ArchiveLogsJob.php:360 src/Job/ArchiveLogsJob.php:377
+#: view/log/admin/log/browse.phtml:76 view/log/admin/log/show-details.phtml:116
+msgid "Message"
+msgstr "Message"
+
+#: src/Job/ArchiveLogsJob.php:378
+msgid "Context"
+msgstr "Contexte"
+
+#: src/View/Helper/LogSearchFilters.php:55
+msgid "Message contains"
+msgstr "Contenu du message"
+
+#: src/View/Helper/LogSearchFilters.php:99
+msgid "Unknown job"
+msgstr "Tâche inconnue"
+
+#: src/View/Helper/LogSearchFilters.php:105
+msgid "Job class"
+msgstr "Classe de tâche"
+
+#: view/common/job-state.phtml:47 view/common/job-state.phtml:48
+msgid "No system state"
+msgstr "Pas d’état système"
+
+#: view/log/admin/log/browse.phtml:35
+msgid "Logs"
+msgstr "Journaux"
+
+#: view/log/admin/log/browse.phtml:41
+msgid "Quick filter"
+msgstr "Filtre rapide"
+
+#: view/log/admin/log/browse.phtml:107
+msgid "Full log"
+msgstr "Message complet"
+
+#: view/log/admin/log/browse.phtml:114
+msgid "Copy"
+msgstr "Copier"
+
+#: view/log/admin/log/browse.phtml:161 view/log/admin/log/browse.phtml:179
 msgid "Delete logs"
 msgstr "Supprimer les journaux"
 
-#: view/log/admin/log/browse.phtml:209
+#: view/log/admin/log/browse.phtml:162
 msgid "Are you sure you would like to delete the selected logs?"
 msgstr "Êtes-vous sûr de vouloir supprimer les journaux sélectionnés ?"
 
-#: view/log/admin/log/browse.phtml:211 view/log/admin/log/browse.phtml:229
+#: view/log/admin/log/browse.phtml:164 view/log/admin/log/browse.phtml:182
 #, php-format
 msgid "%s: this action will permanently delete %s logs and cannot be undone."
 msgstr ""
 "%s : cette action supprimera les %s journaux de manière définitive et ne "
 "pourra pas être annulée."
 
-#: view/log/admin/log/browse.phtml:227
-msgid ""
-"Are you sure you would like to delete all logs on all logs of this result?"
+#: view/log/admin/log/browse.phtml:180
+msgid "Are you sure you would like to delete all logs of this result?"
 msgstr "Êtes-vous sûr de vouloir supprimer tous les journaux du résultat ?"
 
-#: view/log/admin/log/browse.phtml:244
+#: view/log/admin/log/browse.phtml:197
 msgid "Omeka could not find any logs, or they are saved in another place."
 msgstr "Omeka ne trouve pas de journal, ou ils sont enregistrés ailleurs."
 
-#: view/log/admin/log/browse.phtml:256
+#: view/log/admin/log/browse.phtml:209
 msgid "Search logs"
 msgstr "Rechercher les journaux"
 
-#: view/log/admin/log/show-details.phtml:24
+#: view/log/admin/log/show-details.phtml:38
 #, php-format
 msgid "Log #%d on %s"
 msgstr "Journal #%d sur %s"
 
-#: view/log/admin/log/show-details.phtml:42
+#: view/log/admin/log/show-details.phtml:59
 #, php-format
 msgid "Job #%d"
 msgstr "Tâche #%d"
 
-#: view/log/admin/log/show-details.phtml:44
+#: view/log/admin/log/show-details.phtml:62
+msgid "Status:"
+msgstr "Statut :"
+
+#: view/log/admin/log/show-details.phtml:69
+msgid "System state:"
+msgstr "État système :"
+
+#: view/log/admin/log/show-details.phtml:76
 #, php-format
 msgid "Started at %s"
 msgstr "Commencé à %s"
 
-#: view/log/admin/log/show-details.phtml:47
+#: view/log/admin/log/show-details.phtml:79
 #, php-format
 msgid "Ended at %s"
 msgstr "Terminé à %s"
 
-#: view/omeka/admin/job/browse.phtml:47
-msgid "Id / Params"
-msgstr "Id / Paramètres"
+#: view/log/admin/log/show-details.phtml:106
+msgid "Extra data"
+msgstr "Autres données"
 
-#: view/omeka/admin/job/browse.phtml:50
-msgid "Status / Log"
-msgstr "Statut / Journal"
+#: view/omeka/admin/job/browse.phtml:82
+msgid "Id (Params)"
+msgstr "Id (Paramètres)"
 
-#: view/omeka/admin/job/show.phtml:22
+#: view/omeka/admin/job/browse.phtml:83 view/omeka/admin/job/show.phtml:81
+msgid "System state"
+msgstr "État système"
+
+#: view/omeka/admin/job/browse.phtml:87
+msgid "Status (Log)"
+msgstr "Statut (Journal)"
+
+#: view/omeka/admin/job/show.phtml:37
 msgid "[undefined]"
 msgstr "[indéfini]"
 
-#: view/omeka/admin/job/show.phtml:53
+#: view/omeka/admin/job/show.phtml:90
 msgid "Progress"
 msgstr "En cours"
 
-#: view/omeka/admin/job/show.phtml:96
+#: view/omeka/admin/job/show.phtml:133
 msgid "Log (database)"
 msgstr "Journal (base de données)"
 
-#: view/omeka/admin/job/show.phtml:100
+#: view/omeka/admin/job/show.phtml:137
 #, php-format
 msgid "View log (%d results)"
 msgstr "Voir les journaux (%d resultats)"
 
-#: src/Form/QuickSearchForm.php:35
-msgid "Set a date with optional comparator…"
-msgstr "Indiquer une date avec un signe éventuel de comparaison…"
+#: data/scripts/upgrade.php:40
+msgid "Missing requirement. Unable to upgrade."
+msgstr "Pré-requis absent. Impossible de mettre à jour."
 
-#: src/Form/QuickSearchForm.php:40
+#: data/scripts/upgrade.php:73
+msgid ""
+"Support of the third party service Sentry was moved to a separate module, "
+"{link}Log Sentry{link_end}."
+msgstr ""
+"La prise en charge du service tiers Sentry a été déplacée dans un module "
+"séparé, {link}Log Sentry{link_end}."
+
+#: data/scripts/upgrade.php:97
+msgid ""
+"Logs can be archived and purged regularly. Go to {link}config form{link_end} "
+"for params."
+msgstr ""
+"Les journaux peuvent être archivés et purgés régulièrement. Voir {link}"
+"config form{link_end} pour les paramètres."
+
+#: data/scripts/upgrade.php:104
+msgid "A regular deletion of old logs is recommended to keep omeka fluid."
+msgstr ""
+"Il est recommandé de supprimer régulièrement les anciens journaux afin de "
+"préserver la fluidité d'omeka."
+
+#: data/scripts/upgrade.php:125 Module.php:110
+msgid ""
+"The directory \"{directory}\" is not writeable, so old logs cannot be "
+"archived."
+msgstr ""
+"Le répertoire « {directory} » n’est pas accessible en écriture, les anciens "
+"journaux ne peuvent donc pas être archivés."
+
+#: data/scripts/upgrade.php:179
+msgid ""
+"A background job has been started to add database indices. If it fails, you "
+"should create them manually. Missing indices: {list}."
+msgstr ""
+"Une tâche d'arrière-plan a été lancée pour ajouter des index à la base de "
+"données. En cas d’échec, vous devez les créer manuellement. Index "
+"manquants : {list}."
+
+#: Module.php:263
+msgid ""
+"Last cron occurred on {date_time}. Next cron will occur after {date_time_2}."
+msgstr ""
+"Le dernier cron a eu lieu le {date_time}. Le prochain cron aura lieu après "
+"{date_time_2}."
+
+#: src/View/Helper/LogSearchFilters.php:33
+#: src/Api/Representation/LogRepresentation.php:15
+msgid "emergency"
+msgstr "urgence"
+
+#: src/View/Helper/LogSearchFilters.php:34
+#: src/Api/Representation/LogRepresentation.php:16
+msgid "alert"
+msgstr "alerte"
+
+#: src/View/Helper/LogSearchFilters.php:35
+#: src/Api/Representation/LogRepresentation.php:17
+msgid "critical"
+msgstr "critique"
+
+#: src/View/Helper/LogSearchFilters.php:37
+#: src/Api/Representation/LogRepresentation.php:19
+msgid "warning"
+msgstr "attention"
+
+#: src/View/Helper/LogSearchFilters.php:38
+#: src/Api/Representation/LogRepresentation.php:20
+msgid "notice"
+msgstr "avis"
+
+#: src/View/Helper/LogSearchFilters.php:39
+#: src/Api/Representation/LogRepresentation.php:21
+msgid "info"
+msgstr "info"
+
+#: src/View/Helper/LogSearchFilters.php:40
+#: src/Api/Representation/LogRepresentation.php:22
+msgid "debug"
+msgstr "débogage"
+
+#: src/Job/DispatchStrategy/Synchronous.php:48
+msgid ""
+"Fatal error: {message}\n"
+"in {file} on line {line}"
+msgstr ""
+"Erreur fatale : {message}\n"
+"dans {file} ligne {line}"
+
+#: src/Job/DispatchStrategy/Synchronous.php:76
+msgid ""
+"Warning: {message}\n"
+"in {file} on line {line}"
+msgstr ""
+"Attention : {message}\n"
+"dans {file} ligne {line}"
+
+#: src/Job/ArchiveLogsJob.php:69
+msgid "The argument \"seconds\" is not set."
+msgstr "L'argument \"seconds\" n'est pas défini."
+
+#: src/Job/ArchiveLogsJob.php:77
+msgid "The argument \"reference\" should be an array."
+msgstr "L'argument \"référence\" doit être un tableau."
+
+#: src/Job/ArchiveLogsJob.php:85
+msgid "The argument \"format\" should be \"tsv\", \"tsv_context\" or \"sql\"."
+msgstr "L'argument \"format\" doit être \"tsv\", \"tsv_context\" ou \"sql\"."
+
+#: src/Job/ArchiveLogsJob.php:205
+msgid ""
+"Archive then delete specified logs older than {date_time} with params: "
+"severity = {severity}; reference = {references}."
+msgstr ""
+"Archiver puis supprimer les journaux spécifiés antérieurs à {date_time} avec "
+"les paramètres : severity = {severity} ; reference = {references}."
+
+#: src/Job/ArchiveLogsJob.php:210
+msgid ""
+"Archive then delete specified logs for all dates with params: severity = "
+"{severity}; reference = {references}."
+msgstr ""
+"Archiver puis supprimer les journaux spécifiés pour toutes les dates avec "
+"les paramètres : severity = {severity} ; reference = {references}."
+
+#: src/Job/ArchiveLogsJob.php:217
+msgid ""
+"Delete specified logs older than {date_time} with params: severity = "
+"{severity}; reference = {references}."
+msgstr ""
+"Supprime les journaux spécifiés datant de plus de {date_time} avec les "
+"paramètres suivants : severity = {severity} ; reference = {references}."
+
+#: src/Job/ArchiveLogsJob.php:222
+msgid ""
+"Delete specified logs for all dates with params: severity = {severity}; "
+"reference = {references}."
+msgstr ""
+"Supprimer les journaux spécifiés pour toutes les dates avec les paramètres : "
+"severity = {severity} ; reference = {references}."
+
+#: src/Job/ArchiveLogsJob.php:238
+msgid "No logs found matching criteria."
+msgstr "Aucun journal n'a été trouvé correspondant aux critères."
+
+#: src/Job/ArchiveLogsJob.php:244
+msgid "Found {count} logs to process."
+msgstr "Trouvé {count} journaux à traiter."
+
+#: src/Job/ArchiveLogsJob.php:271
+msgid "The backup is available at {link} (size: {size} bytes)."
+msgstr "La sauvegarde est disponible à {link} (taille : {size} octets)."
+
+#: src/Job/ArchiveLogsJob.php:283
+msgid "Deleted {count} logs from database."
+msgstr "Suppression de {count} journaux de la base de données."
+
+#: src/Job/ArchiveLogsJob.php:336
+msgid "Cannot open file {file} for writing. Process is stopped."
+msgstr ""
+"Impossible d'ouvrir le fichier {file} en écriture. Le processus est arrêté."
+
+#: src/Job/ArchiveLogsJob.php:516
+msgid "The directory \"{path}\" is not writeable."
+msgstr "Le dossier « {path} » n’est pas accessible en écriture."
+
+#: src/Job/ArchiveLogsJob.php:527
+msgid "The directory \"{path}\" is not writeable: {error}."
+msgstr "Le dossier « {path} » n’est pas accessible en écriture : {error}."
+
+#: src/Form/ConfigForm.php:15 src/Form/QuickSearchForm.php:28
 msgid "Emergency"
 msgstr "Urgence"
 
-#: src/Form/QuickSearchForm.php:41
+#: src/Form/ConfigForm.php:16 src/Form/QuickSearchForm.php:29
 msgid "Alert"
 msgstr "Alerte"
 
-#: src/Form/QuickSearchForm.php:42
+#: src/Form/ConfigForm.php:17 src/Form/QuickSearchForm.php:30
 msgid "Critical"
 msgstr "Critique"
 
-#: src/Form/QuickSearchForm.php:45
+#: src/Form/ConfigForm.php:20 src/Form/QuickSearchForm.php:33
 msgid "Notice"
 msgstr "Avis"
 
-#: src/Form/QuickSearchForm.php:47
+#: src/Form/ConfigForm.php:22 src/Form/QuickSearchForm.php:35
 msgid "Debug"
 msgstr "Débogage"
 
-#: src/Form/QuickSearchForm.php:55
-msgid "Minimum severity"
-msgstr "Gravité minimale"
+#: src/Form/ConfigForm.php:30
+msgid "Archive or delete logs every x days (set 0 if you use the server cron)"
+msgstr ""
+"Archiver ou supprimer les journaux tous les x jours (mettre 0 si vous "
+"utilisez le cron du serveur)"
 
-#: src/Form/QuickSearchForm.php:62
+#: src/Form/ConfigForm.php:46
+msgid "Age of logs to archive and/or delete (days)"
+msgstr "Âge des journaux à archiver et/ou à supprimer (jours)"
+
+#: src/Form/ConfigForm.php:60
+msgid "Minimum severity to keep"
+msgstr "Gravité minimale à conserver"
+
+#: src/Form/ConfigForm.php:67 src/Form/QuickSearchForm.php:50
 msgid "Select minimum severity…"
 msgstr "Choisir la gravité minimale…"
 
-#: src/Form/QuickSearchForm.php:69
+#: src/Form/ConfigForm.php:74
+msgid "Delete logs with jobs (except errors)"
+msgstr "Supprimer les journaux des tâches (sauf les erreurs)"
+
+#: src/Form/ConfigForm.php:75
+msgid ""
+"When unchecked, logs associated with a job are preserved during archiving "
+"and deletion, unless their severity is info or debug."
+msgstr ""
+"Si décoché, les journaux associés à une tâche sont conservés lors de "
+"l'archivage et de la suppression, sauf si leur gravité est info ou débogage."
+
+#: src/Form/ConfigForm.php:85
+msgid "References to keep"
+msgstr "Références à conserver"
+
+#: src/Form/ConfigForm.php:86
+msgid ""
+"Filter by reference patterns, one per line. Supports wildcards: \"easy-admin/"
+"check/*\" (starts with), \"*/process\" (ends with), \"my/reference\" "
+"(exact). Leave empty for archive all references."
+msgstr ""
+"Filtre par modèles de référence, un par ligne. Prend en charge les "
+"caractères génériques : \"easy-admin/check/*\" (commence par), \"*/process\" "
+"(se termine par), \"my/reference\" (exact). Laisser vide pour archiver "
+"toutes les références."
+
+#: src/Form/ConfigForm.php:100
+msgid "Archive old logs"
+msgstr "Archiver les anciens journaux"
+
+#: src/Form/ConfigForm.php:110
+msgid "Archive format"
+msgstr "Format des archives"
+
+#: src/Form/ConfigForm.php:112
+msgid "tsv"
+msgstr "tsv"
+
+#: src/Form/ConfigForm.php:113
+msgid "Tsv with context"
+msgstr "Tsv avec contexte"
+
+#: src/Form/ConfigForm.php:114
+msgid "sql"
+msgstr "sql"
+
+#: src/Form/ConfigForm.php:126
+msgid "Compress archives (gzip)"
+msgstr "Compression des archives (gzip)"
+
+#: src/Form/ConfigForm.php:136
+msgid "Include log id"
+msgstr "Inclure l'identifiant du journal"
+
+#: src/Form/ConfigForm.php:146
+msgid "Translate messages (tsv)"
+msgstr "Traduire les messages (tsv)"
+
+#: src/Form/ConfigForm.php:159
+msgid "Delete old logs"
+msgstr "Supprimer les anciens journaux"
+
+#: src/Form/QuickSearchForm.php:43
+msgid "Minimum severity"
+msgstr "Gravité minimale"
+
+#: src/Form/QuickSearchForm.php:57
 msgid "Maximum severity"
 msgstr "Gravité maximale"
 
-#: src/Form/QuickSearchForm.php:76
+#: src/Form/QuickSearchForm.php:64
 msgid "Select maximum severity…"
 msgstr "Choisir la gravité maximale…"
+
+#: src/Form/QuickSearchForm.php:76
+msgid "Set a date with optional comparator…"
+msgstr "Indiquer une date avec un signe éventuel de comparaison…"
 
 #: src/Form/QuickSearchForm.php:88
 msgid "Set a reference…"
@@ -226,26 +502,34 @@ msgstr "Indiquer une référence…"
 msgid "Set a job id…"
 msgstr "Indiquer un id de tâche…"
 
+#: src/Form/QuickSearchForm.php:112
+msgid "Set a job class…"
+msgstr "Indiquer une classe de tâche…"
+
 #: src/Form/QuickSearchForm.php:144
+msgid "User by id"
+msgstr "Utilisateur par id"
+
+#: src/Form/QuickSearchForm.php:156
 msgid "Untranslated message"
 msgstr "Message non traduit"
 
-#: src/Form/QuickSearchForm.php:148 src/Form/QuickSearchForm.php:160
+#: src/Form/QuickSearchForm.php:160 src/Form/QuickSearchForm.php:172
 msgid "Set an untranslated string…"
 msgstr "Indiquer une chaîne non traduite…"
 
-#: src/Form/QuickSearchForm.php:156
+#: src/Form/QuickSearchForm.php:168
 msgid "Not in untranslated message"
 msgstr "Absent du message non traduit"
 
-#: src/Controller/Admin/LogController.php:66
+#: src/Controller/Admin/LogController.php:67
 msgid ""
 "The logger is currently disabled for database. Check config/local.config.php."
 msgstr ""
 "Le journal en base de données est actuellement désactivé. Vérifier config/"
 "local.config.php."
 
-#: src/Controller/Admin/LogController.php:105
+#: src/Controller/Admin/LogController.php:102
 msgid "log"
 msgstr "journal"
 
@@ -274,68 +558,118 @@ msgstr ""
 "Suppression des journaux en arrière-plan (<a href=\"{job_url}\">tâche "
 "#{job_id}</a>). Cela peut prendre un moment."
 
-#: src/View/Helper/LogSearchFilters.php:34
-#: src/Api/Representation/LogRepresentation.php:62
-msgid "emergency"
-msgstr "urgence"
-
-#: src/View/Helper/LogSearchFilters.php:35
-#: src/Api/Representation/LogRepresentation.php:63
-msgid "alert"
-msgstr "alerte"
-
-#: src/View/Helper/LogSearchFilters.php:36
-#: src/Api/Representation/LogRepresentation.php:64
-msgid "critical"
-msgstr "critique"
-
-#: src/View/Helper/LogSearchFilters.php:38
-#: src/Api/Representation/LogRepresentation.php:66
-msgid "warning"
-msgstr "attention"
-
-#: src/View/Helper/LogSearchFilters.php:39
-#: src/Api/Representation/LogRepresentation.php:67
-msgid "notice"
-msgstr "avis"
-
-#: src/View/Helper/LogSearchFilters.php:40
-#: src/Api/Representation/LogRepresentation.php:68
-msgid "info"
-msgstr "info"
-
-#: src/View/Helper/LogSearchFilters.php:41
-#: src/Api/Representation/LogRepresentation.php:69
-msgid "debug"
-msgstr "débogage"
-
-#: src/Service/LoggerDbFactory.php:29 src/Service/LoggerFactory.php:62
-msgid "[Omeka S] Database logging disabled: wrong config."
+#: src/Service/LoggerFactory.php:65 src/Service/LoggerDbFactory.php:31
+msgid "[Omeka S] Database logging disabled: connection unavailable."
 msgstr ""
-"[Omeka S] Enregistrement des journaux en base de données désactivée : erreur "
-"de configuration."
+"[Omeka S] Enregistrement des journaux en base de données désactivée : "
+"connexion indisponible."
 
-#: src/Service/LoggerFactory.php:48
+#: src/Service/LoggerFactory.php:122
 msgid "[Omeka S] File logging disabled: not writeable."
 msgstr ""
 "[Omeka S] Enregistrement des journaux dans le fichier désactivée : "
 "permission refusée pour écrire dans le fichier."
 
-#: src/Job/DispatchStrategy/Synchronous.php:45
-msgid ""
-"Fatal error: {message}\n"
-"in {file} on line {line}"
-msgstr ""
-"Erreur fatale : {message}\n"
-"dans {file} ligne {line}"
+#: src/Stdlib/JobState.php:18 src/Stdlib/JobState.php:19
+msgid "Running"
+msgstr "En cours"
 
-#: src/Job/DispatchStrategy/Synchronous.php:71
-msgid ""
-"Warning: {message}\n"
-"in {file} on line {line}"
-msgstr ""
-"Attention : {message}\n"
-"dans {file} ligne {line}"
+#: src/Stdlib/JobState.php:25
+msgid "Interruptible Sleep"
+msgstr "Sommeil interruptible"
+
+#: src/Stdlib/JobState.php:26
+msgid "Processing"
+msgstr "En traitement"
+
+#: src/Stdlib/JobState.php:32
+msgid "Uninterruptible Sleep"
+msgstr "Sommeil ininterrompu"
+
+#: src/Stdlib/JobState.php:33
+msgid "Waiting"
+msgstr "En attente"
+
+#: src/Stdlib/JobState.php:41
+msgid "Paused"
+msgstr "En pause"
+
+#: src/Stdlib/JobState.php:47
+msgid "Zombie"
+msgstr "Zombie"
+
+#: config/module.config.php:334
+msgid "Message copied"
+msgstr "Message copié"
+
+#~ msgid ""
+#~ "The library is not compatible with the version of php on the server. Run "
+#~ "\"composer upgrade\" on the command line or load a version for php ≥ 8.2."
+#~ msgstr ""
+#~ "La bibliothèque n’est pas compatible avec la version de php sur le "
+#~ "serveur. Lancez « composer upgrade » sur l’invite de commandes ou chargez "
+#~ "une version pour php ≥ 8.2."
+
+#~ msgid ""
+#~ "The libraries are not installed. Run \"composer install\" on the command "
+#~ "line or load a version with libraries included."
+#~ msgstr ""
+#~ "Les bibliothèques ne sont pas installées. Lancez « composer install » sur "
+#~ "l’invite de commandes ou chargez une version avec les bibliothèques "
+#~ "incluses."
+
+#~ msgid "[no owner]"
+#~ msgstr "[Pas de propriétaire]"
+
+#~ msgid "[not started]"
+#~ msgstr "[non commencé]"
+
+#~ msgid "[not ended]"
+#~ msgstr "[non terminé]"
+
+#~ msgid "[no args]"
+#~ msgstr "[aucun argument]"
+
+#~ msgid "[no log]"
+#~ msgstr "[aucun journal]"
+
+#~ msgid ""
+#~ "Logging is not active. You should enable it in the file config/"
+#~ "local.config.php: `'log' => true`."
+#~ msgstr ""
+#~ "Les journaux ne sont pas activés. Vous devez les activer dans le fichier "
+#~ "config/local.config.php : `'log' => true`."
+
+#, php-format
+#~ msgid "This module requires the module \"%s\"."
+#~ msgstr "Ce module requiert le module \"%s\"."
+
+#, php-format
+#~ msgid "This module requires modules \"%s\"."
+#~ msgstr "Ce module requiert les modules \"%s\"."
+
+#~ msgid "This module has resources that cannot be installed."
+#~ msgstr "Ce module a des ressources qui ne peuvent pas être installées."
+
+#~ msgid ""
+#~ "This module cannot install its tables, because they exist already. Try to "
+#~ "remove them first."
+#~ msgstr ""
+#~ "Ce module ne peut pas installer ses tables car elles existent déjà. "
+#~ "Essayez de les supprimer manuellement."
+
+#, php-format
+#~ msgid "The module removed tables \"%s\" from a previous broken install."
+#~ msgstr ""
+#~ "Le module a supprimé les tables « %s » depuis une installation échouée."
+
+#, php-format
+#~ msgid ""
+#~ "The module \"%s\" was automatically deactivated because the dependencies "
+#~ "are unavailable."
+#~ msgstr ""
+#~ "Le module \"%s\" a été automatiquement désactivé car ses dépendances ne "
+#~ "sont plus disponibles."
 
 #~ msgid "default"
 #~ msgstr "défaut"

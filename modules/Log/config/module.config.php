@@ -2,10 +2,23 @@
 
 namespace Log;
 
+/**
+ * Important: don't modify this file, but copy the keys you want in
+ * config/local.config.php at the root of Omeka.
+ */
+
 return [
     'logger' => [
+        // Manage some options to bypass default Omeka options (see application/config/module.config.php
+        // and config/local.config.php).
+
         // The default config in Omeka is false, but this module is designed to log.
+        // This parameter is skipped in early event (see Module.php), else this
+        // module is useless. To really disable it, use key below, `disable_log`.
         'log' => true,
+        // This option allows to really skip log without disabling this module.
+        'disable_log' => false,
+
         // Path and priority are used by Omeka default config. Anyway, the local
         // config override it, at least for priority. To set null avoid a check.
         // Note: these options override the ones in the standard config:
@@ -14,42 +27,51 @@ return [
         'path' => null,
         // This is the default level in the standard config. Should not be null
         // when upgrade (so check the file config/local.config.php).
+        // It is used only for the stream logger.
         'priority' => null,
+
+        // Enable/disable the output writers.
         'writers' => [
             // The database used by this module. The database can be the main
             // one or an another one: set it "config/database-log.ini" or in
-            // this file as config[logger][options][writers][db][options][db]
+            // this file as config[logger][options][writers][doctrine][options][db]
             // Warning: Omeka use "dbname" for "database" and "user" for "username".
             // Furthermore, you have to define the table and columns to use
-            // in the options below: config[logger][options][writers][db][options].
+            // in the options below: config[logger][options][writers][doctrine][options].
             // Note: even disabled, the database may be used via loggerDb().
-            'db' => true,
+            'doctrine' => true,
             // This is the default log file of Omeka (logs/application.log).
             'stream' => true,
             // Log for Omeka jobs (useless with this module).
-            // This is a standard Zend writer, but there is no more parameters.
+            // This is a standard Laminas writer, but there is no more parameters.
             // Note: the default log of job is a big text field (4GB), so it may
-            // prevent to restore a database if they a row is too big (bigger than
-            // the param "max_allowed_packet" in the config of mariadb/mysql).
+            // prevent to restore a database if a row is too big (bigger than the
+            // param "max_allowed_packet" in the config of mariadb/mysql).
             'job' => false,
-            // This is the default log for php. On a web server, it may be a log inside /var/log
-            // like /var/log/nginx/ssl-vhost1.error.log, /var/log/apache2/error.log, /var/log/lastlog, or
-            // /tmp/systemd-private-xxx-apache2.service-xxx/tmp/php_errors.log, etc.
+            // This is the default log for php. On a web server, it may be a log
+            // inside /var/log like /var/log/nginx/ssl-vhost1.error.log, /var/log/apache2/error.log,
+            // /var/log/lastlog, or /tmp/systemd-private-xxx-apache2.service-xxx/tmp/php_errors.log, etc.
             'syslog' => false,
-            // Config for sentry, an error tracking service (https://sentry.io).
-            // See readme to enable it.
+            // Config for sentry, an error monitoring service (https://sentry.io).
+            // The module LogSentry is required.
             'sentry' => false,
-            // Note: External logs (db, sentry, etc.) are not fully checked, so their
-            // config should be checked separately.
+            // Note: External logs (doctrine, sentry, etc.) are not fully checked,
+            // so their config should be checked separately.
         ],
+
+        // The logger uses the Laminas Log configuration.
+        // @see https://docs.laminas.dev/laminas-log
+        // @see https://docs.laminas.dev/laminas-log/service-manager
         'options' => [
             'writers' => [
-                'db' => [
-                    'name' => 'db',
+                'doctrine' => [
+                    'name' => 'doctrine',
                     'options' => [
                         'filters' => \Laminas\Log\Logger::DEBUG,
-                        'formatter' => Formatter\PsrLogDb::class,
+                        'formatter' => Log\Formatter\PsrLogDb::class,
+                        // Automatically set by LoggerFactory.
                         'db' => null,
+                        // Deprecated old config with laminas-db.
                         // 'db' => new \Laminas\Db\Adapter\Adapter([
                         //     'driver' => 'mysqli',
                         //     'database' =>null,
@@ -78,8 +100,9 @@ return [
                     'name' => 'stream',
                     'options' => [
                         // This is the default level in the standard config.
+                        // It may be bypassed by the shortcut key set in ['logger']['priority'] when not null.
                         'filters' => \Laminas\Log\Logger::NOTICE,
-                        'formatter' => Formatter\PsrLogSimple::class,
+                        'formatter' => \Common\Log\Formatter\PsrLogSimple::class,
                         'stream' => OMEKA_PATH . '/logs/application.log',
                     ],
                 ],
@@ -87,29 +110,18 @@ return [
                     'name' => 'syslog',
                     'options' => [
                         'filters' => \Laminas\Log\Logger::ERR,
-                        'formatter' => Formatter\PsrLogSimple::class,
+                        'formatter' => \Common\Log\Formatter\PsrLogSimple::class,
                         'application' => 'omeka-s',
                         'facility' => LOG_USER,
-                    ],
-                ],
-                // See https://gitlab.com/facile-it/sentry-module#log-writer
-                'sentry' => [
-                    'name' => \Facile\SentryModule\Log\Writer\Sentry::class,
-                    'options' => [
-                        'filters' => [
-                            [
-                                'name' => 'priority',
-                                'options' => [
-                                    'priority' => \Laminas\Log\Logger::INFO,
-                                ],
-                            ],
-                        ],
                     ],
                 ],
             ],
             'processors' => [
                 'userid' => [
-                    'name' => Processor\UserId::class,
+                    'name' => Log\Processor\UserId::class,
+                ],
+                'httprequest' => [
+                    'name' => Log\Processor\HttpRequest::class,
                 ],
             ],
             // Special options for exceptions, errors and fatal errors, disabled by Laminas by default.
@@ -143,27 +155,36 @@ return [
     'view_helpers' => [
         'invokables' => [
             'logSearchFilters' => View\Helper\LogSearchFilters::class,
-            // Required to manage PsrMessage.
-            'messages' => View\Helper\Messages::class,
+        ],
+        'factories' => [
+            'jobState' => Service\ViewHelper\JobStateFactory::class,
         ],
     ],
     'form_elements' => [
+        'invokables' => [
+            Form\ConfigForm::class => Form\ConfigForm::class,
+        ],
         'factories' => [
             Form\QuickSearchForm::class => Service\Form\QuickSearchFormFactory::class,
         ],
     ],
     'controllers' => [
+        'invokables' => [
+            Controller\Admin\JobController::class => Controller\Admin\JobController::class,
+        ],
         'factories' => [
             Controller\Admin\LogController::class => Service\Controller\Admin\LogControllerFactory::class,
         ],
     ],
     'controller_plugins' => [
         'factories' => [
+            'jobState' => Service\ControllerPlugin\JobStateFactory::class,
             'loggerDb' => Service\ControllerPlugin\LoggerDbFactory::class,
         ],
     ],
     'service_manager' => [
         'factories' => [
+            'Log\JobState' => Service\Stdlib\JobStateFactory::class,
             'Log\LoggerDb' => Service\LoggerDbFactory::class,
             'Omeka\Job\Dispatcher' => Service\Job\DispatcherFactory::class,
             'Omeka\Job\DispatchStrategy\Synchronous' => Service\Job\DispatchStrategy\SynchronousFactory::class,
@@ -172,14 +193,14 @@ return [
     ],
     'log_processors' => [
         'invokables' => [
-            Processor\JobId::class => Processor\JobId::class,
+            Log\Processor\JobId::class => Log\Processor\JobId::class,
         ],
         'factories' => [
-            Processor\UserId::class => Service\Processor\UserIdFactory::class,
+            Log\Processor\UserId::class => Service\Log\Processor\UserIdFactory::class,
         ],
         'aliases' => [
-            'jobid' => Processor\JobId::class,
-            'userid' => Processor\UserId::class,
+            'jobid' => Log\Processor\JobId::class,
+            'userid' => Log\Processor\UserId::class,
         ],
     ],
     'router' => [
@@ -225,7 +246,65 @@ return [
                             ],
                         ],
                     ],
+                    'job-state' => [
+                        'type' => \Laminas\Router\Http\Segment::class,
+                        'options' => [
+                            'route' => '/job-state/:id',
+                            'constraints' => [
+                                'id' => '\d+',
+                            ],
+                            'defaults' => [
+                                '__NAMESPACE__' => 'Log\Controller\Admin',
+                                'controller' => Controller\Admin\JobController::class,
+                                'action' => 'system-state',
+                            ],
+                        ],
+                    ],
                 ],
+            ],
+        ],
+    ],
+    'column_types' => [
+        'invokables' => [
+            'log_id' => ColumnType\Id::class,
+            'log_owner' => ColumnType\Owner::class,
+            'log_job' => ColumnType\Job::class,
+            'log_reference' => ColumnType\Reference::class,
+            'log_severity' => ColumnType\Severity::class,
+            'log_message' => ColumnType\Message::class,
+            'log_created' => ColumnType\Created::class,
+        ],
+    ],
+    'column_defaults' => [
+        'admin' => [
+            'logs' => [
+                // ['type' => 'log_message'],
+                ['type' => 'log_created'],
+                ['type' => 'log_severity'],
+                ['type' => 'log_reference'],
+                ['type' => 'log_job'],
+            ],
+        ],
+    ],
+    'browse_defaults' => [
+        'admin' => [
+            'logs' => [
+                'sort_by' => 'id',
+                'sort_order' => 'desc',
+            ],
+        ],
+    ],
+    'sort_defaults' => [
+        'admin' => [
+            'logs' => [
+                'id' => 'Id', // @translate
+                'owner_id' => 'Owner', // @translate
+                'job_id' => 'Job', // @translate
+                'reference' => 'Reference', // @translate
+                'severity' => 'Severity', // @translate
+                'message' => 'Message', // @translate
+                // 'context' => 'Context', // @translate,
+                'created' => 'Created', // @translate
             ],
         ],
     ],
@@ -243,11 +322,36 @@ return [
     'translator' => [
         'translation_file_patterns' => [
             [
-                'type' => 'gettext',
+                'type' => \Laminas\I18n\Translator\Loader\Gettext::class,
                 'base_dir' => dirname(__DIR__) . '/language',
                 'pattern' => '%s.mo',
                 'text_domain' => null,
             ],
+        ],
+    ],
+    'js_translate_strings' => [
+        'Copy', // @translate
+        'Message copied', // @translate
+    ],
+    'log' => [
+        'config' => [
+            'log_cron_days' => 180,
+
+            'log_archive_days' => 180,
+            'log_archive_severity_max' => 0,
+            'log_archive_delete_job_logs' => false,
+            'log_archive_references' => [],
+
+            'log_archive_store' => true,
+            'log_archive_format' => 'tsv',
+            'log_archive_compress' => true,
+            'log_archive_include_id' => false,
+            'log_archive_translate' => true,
+
+            'log_archive_delete' => true,
+
+            // Hidden settings.
+            'log_cron_last' => null,
         ],
     ],
 ];

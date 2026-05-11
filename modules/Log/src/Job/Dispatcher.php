@@ -1,11 +1,13 @@
 <?php declare(strict_types=1);
+
 namespace Log\Job;
 
 use DateTime;
 use Doctrine\ORM\EntityManager;
-use Log\Log\Writer\Job as JobWriter;
 use Omeka\Entity\Job;
 use Omeka\Job\DispatchStrategy\StrategyInterface;
+use Omeka\Job\Exception;
+use Omeka\Log\Writer\Job as JobWriter;
 
 class Dispatcher extends \Omeka\Job\Dispatcher
 {
@@ -14,23 +16,73 @@ class Dispatcher extends \Omeka\Job\Dispatcher
      */
     protected $useJobWriter;
 
+    /**
+     * Refresh owner before flush.
+     *
+     * {@inheritDoc}
+     * @see \Omeka\Job\Dispatcher::dispatch()
+     */
+    public function dispatch($class, $args = null, ?StrategyInterface $strategy = null)
+    {
+        if (!class_exists($class)) {
+            throw new Exception\InvalidArgumentException(sprintf('The job class "%s" does not exist.', $class));
+        }
+        if (!is_subclass_of($class, 'Omeka\Job\JobInterface')) {
+            throw new Exception\InvalidArgumentException(sprintf('The job class "%s" does not implement Omeka\Job\JobInterface.', $class));
+        }
+
+        // Refresh owner and use reference only to avoid doctrine issue when a
+        // job dispatches another job. Use a new entity manager only if closed.
+        if (!$this->entityManager->isOpen()) {
+            $this->entityManager = $this->getNewEntityManager($this->entityManager);
+        }
+
+        $owner = $this->auth->getIdentity();
+        $owner = $owner
+            ? $this->entityManager->getReference(\Omeka\Entity\User::class, $owner->getId())
+            : null;
+
+        $job = new Job;
+        $job->setStatus(Job::STATUS_STARTING);
+        $job->setClass($class);
+        $job->setArgs($args);
+        $job->setOwner($owner);
+        $this->entityManager->persist($job);
+        $this->entityManager->flush();
+
+        if (!$strategy) {
+            $strategy = $this->getDispatchStrategy();
+        }
+
+        $this->send($job, $strategy);
+        return $job;
+    }
+
+    /**
+     * Better management of job during process.
+     *
+     * {@inheritDoc}
+     * @see \Omeka\Job\Dispatcher::send()
+     */
     public function send(Job $job, StrategyInterface $strategy): void
     {
         // Keep the default writer if wanted.
         if ($this->useJobWriter) {
-            $this->logger->addWriter(new JobWriter($job));
+            $writer = new JobWriter($job);
+            $writer->setFormatter(new \Common\Log\Formatter\PsrLogSimple);
+            $this->logger->addWriter($writer);
         }
 
         // Enable the user and job id in the default logger.
-        $userJobIdProcessor = new \Log\Processor\UserJobId($job);
+        $userJobIdProcessor = new \Log\Log\Processor\UserJobId($job);
         // The priority "0" fixes a precedency issue with the processor UserId.
         $this->logger->addProcessor($userJobIdProcessor, 0);
 
-        // Copy from parent method.
+        // Adapted from parent method.
 
         try {
             $strategy->send($job);
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             $this->logger->err((string) $e);
 
             // Account for "inside Doctrine" errors that close the EM
@@ -45,9 +97,10 @@ class Dispatcher extends \Omeka\Job\Dispatcher
             $em->clear();
             try {
                 $jobEntity = $em->find(Job::class, $job->getId());
-            } catch (\Exception $e) {
+            } catch (\Throwable $e) {
                 return;
             }
+
             $jobEntity->setLog($job->getLog());
             $jobEntity->setStatus(Job::STATUS_ERROR);
             $jobEntity->setEnded(new DateTime('now'));

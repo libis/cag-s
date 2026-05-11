@@ -1,7 +1,7 @@
 <?php declare(strict_types=1);
 
 /*
- * Copyright 2017-2023 Daniel Berthereau
+ * Copyright 2017-2026 Daniel Berthereau
  *
  * This software is governed by the CeCILL license under French law and abiding
  * by the rules of distribution of free software. You can use, modify and/or
@@ -29,46 +29,176 @@
 
 namespace EasyAdmin;
 
-if (!class_exists(\Generic\AbstractModule::class)) {
-    require file_exists(dirname(__DIR__) . '/Generic/AbstractModule.php')
-        ? dirname(__DIR__) . '/Generic/AbstractModule.php'
-        : __DIR__ . '/src/Generic/AbstractModule.php';
+if (!class_exists('Common\TraitModule', false)) {
+    require_once dirname(__DIR__) . '/Common/TraitModule.php';
 }
 
-use DateTime;
-use EasyAdmin\Entity\ContentLock;
-use Generic\AbstractModule;
+use Common\Stdlib\PsrMessage;
+use Common\TraitModule;
 use Laminas\EventManager\Event;
 use Laminas\EventManager\SharedEventManagerInterface;
+use Laminas\ModuleManager\ModuleManager;
+use Laminas\Mvc\MvcEvent;
 use Laminas\Session\Container;
-use Log\Stdlib\PsrMessage;
+use Laminas\View\Renderer\PhpRenderer;
+use Omeka\Api\Representation\AbstractResourceEntityRepresentation;
+use Omeka\Module\AbstractModule;
 
 /**
- * Easy Admin
+ * Easy Admin.
  *
- * @Copyright Daniel Berthereau, 2017-2023
+ * @copyright Daniel Berthereau, 2017-2026
  * @license http://www.cecill.info/licences/Licence_CeCILL_V2.1-en.txt
  */
 class Module extends AbstractModule
 {
+    use TraitModule;
+
     const NAMESPACE = __NAMESPACE__;
 
     protected $dependencies = [
-        'Log',
+        'Common',
     ];
+
+    public function init(ModuleManager $moduleManager): void
+    {
+        require_once __DIR__ . '/vendor/autoload.php';
+    }
+
+    public function getConfig()
+    {
+        $config = include __DIR__ . '/config/module.config.php';
+        // Fix #2236 is integrated in 4.2, so remove it for newer versions.
+        if (version_compare(\Omeka\Module::VERSION, '4.2', '>=')) {
+            unset($config['form_elements']['factories']['Omeka\Form\AssetEditForm']);
+        }
+        return $config;
+    }
+
+    public function onBootstrap(MvcEvent $event): void
+    {
+        parent::onBootstrap($event);
+
+        /** @var \Omeka\Settings\Settings $settings */
+        $settings = $this->getServiceLocator()->get('Omeka\Settings');
+        if ($settings->get('easyadmin_display_exception')) {
+            ini_set('display_errors', '1');
+        }
+
+        /** @var \Omeka\Permissions\Acl $acl */
+        $acl = $this->getServiceLocator()->get('Omeka\Acl');
+
+        // Any user who can create an item can use bulk upload.
+        // Admins are not included because they have the rights by default.
+        $roles = [
+            \Omeka\Permissions\Acl::ROLE_EDITOR,
+            \Omeka\Permissions\Acl::ROLE_REVIEWER,
+            \Omeka\Permissions\Acl::ROLE_AUTHOR,
+        ];
+
+        $acl
+            ->allow(
+                $roles,
+                ['EasyAdmin\Controller\Upload'],
+                [
+                    'index',
+                ]
+            )
+            ->allow(
+                $roles,
+                ['EasyAdmin\Controller\Admin\FileManager'],
+                [
+                    'browse',
+                    'delete',
+                    'delete-confirm',
+                    'download',
+                ]
+            )
+        ;
+
+        if ($settings->get('easyadmin_rights_reviewer_delete_all')) {
+            $acl
+                ->allow(
+                    'reviewer',
+                    [
+                        \Omeka\Entity\Item::class,
+                        \Omeka\Entity\ItemSet::class,
+                        \Omeka\Entity\Media::class,
+                        \Omeka\Entity\Asset::class,
+                    ],
+                    [
+                        'delete',
+                    ]
+                )
+            ;
+        }
+    }
 
     protected function preInstall(): void
     {
-        $this->installDir();
+        $services = $this->getServiceLocator();
+        $translate = $services->get('ControllerPluginManager')->get('translate');
+        $translator = $services->get('MvcTranslator');
+
+        if (!method_exists($this, 'checkModuleActiveVersion') || !$this->checkModuleActiveVersion('Common', '3.4.79')) {
+            $message = new \Omeka\Stdlib\Message(
+                $translate('The module %1$s should be upgraded to version %2$s or later.'), // @translate
+                'Common', '3.4.79'
+            );
+            throw new \Omeka\Module\Exception\ModuleCannotInstallException((string) $message);
+        }
+
+        $js = __DIR__ . '/asset/vendor/flow.js/flow.min.js';
+        if (!file_exists($js)) {
+            $message = new PsrMessage(
+                'The libraries should be installed. See module’s installation documentation.' // @translate
+            );
+            throw new \Omeka\Module\Exception\ModuleCannotInstallException((string) $message->setTranslator($translator));
+        }
+
+        $this->installDirs();
+
+        $config = $services->get('Config');
+        $basePath = $config['file_store']['local']['base_path'] ?: (OMEKA_PATH . '/files');
+        $settings = $services->get('Omeka\Settings');
+        $settings->set('easyadmin_local_path', $settings->get('bulkimport_local_path') ?: $basePath . '/import');
+        $directories = array_filter(array_unique([
+            $basePath . '/backup',
+            $basePath . '/check',
+            $basePath . '/import',
+            $settings->get('easyadmin_local_path') ?: $basePath . '/import',
+        ]));
+        sort($directories);
+        $settings->set('easyadmin_local_paths', $directories);
+        $settings->set('easyadmin_allow_empty_files', (bool) $settings->get('bulkimport_allow_empty_files'));
     }
 
-    protected function installDir(): void
+    protected function postInstall(): void
+    {
+        /**
+         * @var \Omeka\Settings\Settings  $settings
+         * @var \Common\Stdlib\EasyMeta $easyMeta
+         */
+        $services = $this->getServiceLocator();
+        $settings = $services->get('Omeka\Settings');
+        $settings->set('easyadmin_cron_tasks', ['session_8']);
+
+        $this->postInstallAuto();
+
+        // Install default templates.
+        $easyMeta = $services->get('Common\EasyMeta');
+        $val = array_values($easyMeta->resourceTemplateIds());
+        $settings->set('easyadmin_quick_template', $val);
+    }
+
+    protected function installDirs(): void
     {
         // Don't use PsrMessage during install.
         $services = $this->getServiceLocator();
         $config = $services->get('Config');
         $basePath = $config['file_store']['local']['base_path'] ?: (OMEKA_PATH . '/files');
         $messenger = $services->get('ControllerPluginManager')->get('messenger');
+        $translator = $services->get('MvcTranslator');
 
         // Automatic upgrade from module Bulk Check.
         $result = null;
@@ -76,7 +206,7 @@ class Module extends AbstractModule
         if (file_exists($bulkCheckPath) && is_dir($bulkCheckPath)) {
             $result = rename($bulkCheckPath, $basePath . '/check');
             if (!$result) {
-                $message = new \Omeka\Stdlib\Message(
+                $message = new PsrMessage(
                     'Upgrading module BulkCheck: Unable to rename directory "files/bulk_check" into "files/check". Trying to create it.' // @translate
                 );
                 $messenger->addWarning($message);
@@ -84,19 +214,27 @@ class Module extends AbstractModule
         }
 
         if (!$result && !$this->checkDestinationDir($basePath . '/check')) {
-            $message = new \Omeka\Stdlib\Message(
-                'The directory "%s" is not writeable.', // @translate
-                $basePath
+            $message = new PsrMessage(
+                'The directory "{dir}" is not writeable.', // @translate
+                ['dir' => $basePath]
             );
-            throw new \Omeka\Module\Exception\ModuleCannotInstallException((string) $message);
+            throw new \Omeka\Module\Exception\ModuleCannotInstallException((string) $message->setTranslator($translator));
         }
 
         if (!$this->checkDestinationDir($basePath . '/backup')) {
-            $message = new \Omeka\Stdlib\Message(
-                'The directory "%s" is not writeable.', // @translate
-                $basePath
+            $message = new PsrMessage(
+                'The directory "{dir}" is not writeable.', // @translate
+                ['dir' => $basePath]
             );
-            throw new \Omeka\Module\Exception\ModuleCannotInstallException((string) $message);
+            throw new \Omeka\Module\Exception\ModuleCannotInstallException((string) $message->setTranslator($translator));
+        }
+
+        if (!$this->checkDestinationDir($basePath . '/import')) {
+            $message = new PsrMessage(
+                'The directory "{dir}" is not writeable.', // @translate
+                ['dir' => $basePath]
+            );
+            throw new \Omeka\Module\Exception\ModuleCannotInstallException((string) $message->setTranslator($translator));
         }
 
         /** @var \Omeka\Module\Manager $moduleManager */
@@ -109,16 +247,13 @@ class Module extends AbstractModule
         $moduleManager = $services->get('Omeka\ModuleManager');
         foreach ($modules as $moduleName) {
             $module = $moduleManager->getModule($moduleName);
-            $sql = 'DELETE FROM `module` WHERE `id` = "' . $moduleName . '";';
-            $connection->executeStatement($sql);
-            $sql = 'DELETE FROM `setting` WHERE `id` LIKE "' . strtolower($moduleName) . '\\_%";';
-            $connection->executeStatement($sql);
-            $sql = 'DELETE FROM `site_setting` WHERE `id` LIKE "' . strtolower($moduleName) . '\\_%";';
-            $connection->executeStatement($sql);
+            $connection->executeStatement('DELETE FROM `module` WHERE `id` = ?', [$moduleName]);
+            $connection->executeStatement('DELETE FROM `setting` WHERE `id` LIKE ?', [strtolower($moduleName) . '\_%']);
+            $connection->executeStatement('DELETE FROM `site_setting` WHERE `id` LIKE ?', [strtolower($moduleName) . '\_%']);
             if ($module) {
-                $message = new \Omeka\Stdlib\Message(
-                    'The module "%s" was upgraded by module "%s" and uninstalled.', // @translate
-                    $moduleName, 'Easy Admin'
+                $message = new PsrMessage(
+                    'The module "{module}" was upgraded by module "{module_2}" and uninstalled.', // @translate
+                    ['module' => $moduleName, 'module_2' => 'Easy Admin']
                 );
                 $messenger->addWarning($message);
             }
@@ -142,8 +277,8 @@ class Module extends AbstractModule
             return;
         }
 
-        $serviceLocator = $this->getServiceLocator();
-        $t = $serviceLocator->get('MvcTranslator');
+        $services = $this->getServiceLocator();
+        $t = $services->get('MvcTranslator');
         $config = $this->getServiceLocator()->get('Config');
         $basePath = $config['file_store']['local']['base_path'] ?: (OMEKA_PATH . '/files');
 
@@ -154,9 +289,9 @@ class Module extends AbstractModule
         $html .= '</p>';
 
         $html .= '<p>';
-        $html .= sprintf(
-            $t->translate('All stored files from checks and fixes, if any, will be removed from folder "{folder}".'), // @translate
-            $basePath . '/check'
+        $html .= new PsrMessage(
+            'All stored files from checks and fixes, if any, will be removed from folder "{folder}".', // @translate
+            ['folder' => $basePath . '/check']
         );
         $html .= '</p>';
 
@@ -169,7 +304,28 @@ class Module extends AbstractModule
 
     public function attachListeners(SharedEventManagerInterface $sharedEventManager): void
     {
+        // Handle cron tasks: use Cron module if available, otherwise run
+        // independently via view.layout trigger.
+        if (class_exists('Cron\Module', false)) {
+            // Handle session cleanup when triggered by Cron module.
+            $sharedEventManager->attach(
+                \Cron\Job\CronTasks::class,
+                'cron.execute',
+                [$this, 'handleCronExecute']
+            );
+        } else {
+            // Handle cron tasks independently when Cron module is not installed.
+            // Triggered on any admin page load.
+            $sharedEventManager->attach(
+                '*',
+                'view.layout',
+                [$this, 'handleCron']
+            );
+        }
+
         // Manage buttons in admin resources.
+        // Uses view.layout instead of Omeka 4.1 view.show.page_actions because
+        // page_actions does not exist for browse pages.
         $sharedEventManager->attach(
             'Omeka\Controller\Admin\Item',
             'view.layout',
@@ -186,7 +342,32 @@ class Module extends AbstractModule
             [$this, 'handleViewLayoutResource']
         );
 
-        // Manage previous/next resource. Require module EasyAdmin.
+        // Manage resources templates and classes on resource form.
+        $sharedEventManager->attach(
+            \Omeka\Form\ResourceForm::class,
+            'form.add_elements',
+            [$this, 'handleResourceForm']
+        );
+
+        // Manage default and public site links in right sidebar.
+        $sharedEventManager->attach(
+            'Omeka\Controller\Admin\Item',
+            'view.details',
+            [$this, 'handleViewDetailsResource']
+        );
+        $sharedEventManager->attach(
+            'Omeka\Controller\Admin\ItemSet',
+            'view.details',
+            [$this, 'handleViewDetailsResource']
+        );
+        $sharedEventManager->attach(
+            'Omeka\Controller\Admin\Media',
+            'view.details',
+            [$this, 'handleViewDetailsResource']
+        );
+
+        // Manage previous/next resource on items/browse and AdvancedSearch.
+        // Item sets and media browse are not handled (less common use case).
         // TODO Manage item sets and media for search?
         $sharedEventManager->attach(
             'Omeka\Controller\Admin\Item',
@@ -199,81 +380,85 @@ class Module extends AbstractModule
             [$this, 'handleViewBrowse']
         );
 
-        // Content locking in admin board.
-        // It is useless in public board, because there is the moderation.
+        // Add js for the item add/edit pages to manage ingester "bulk_upload".
+        $sharedEventManager->attach(
+            'Omeka\Controller\Admin\Item',
+            'view.add.before',
+            [$this, 'addHeadersAdmin']
+        );
         $sharedEventManager->attach(
             'Omeka\Controller\Admin\Item',
             'view.edit.before',
-            [$this, 'contentLockingOnEdit']
-        );
-        $sharedEventManager->attach(
-            'Omeka\Controller\Admin\ItemSet',
-            'view.edit.before',
-            [$this, 'contentLockingOnEdit']
-        );
-        $sharedEventManager->attach(
-            'Omeka\Controller\Admin\Media',
-            'view.edit.before',
-            [$this, 'contentLockingOnEdit']
-        );
-        // The check for content locking can be done via `api.hydrate.pre` or
-        // `api.update.pre`, that is bypassable in code.
-        $sharedEventManager->attach(
-            \Omeka\Api\Adapter\ItemAdapter::class,
-            'api.update.pre',
-            [$this, 'contentLockingOnSave']
-        );
-        $sharedEventManager->attach(
-            \Omeka\Api\Adapter\ItemSetAdapter::class,
-            'api.update.pre',
-            [$this, 'contentLockingOnSave']
-        );
-        $sharedEventManager->attach(
-            \Omeka\Api\Adapter\MediaAdapter::class,
-            'api.update.pre',
-            [$this, 'contentLockingOnSave']
+            [$this, 'addHeadersAdmin']
         );
 
-        // There is no good event for deletion. So either js on layout, either
-        // view.details and js, eiher override confirm form and/or delete confirm
-        // to add elements or add a trigger in delete-confirm-details.
-        // Here, view details + inline js to avoid to load a js in many views.
-        $sharedEventManager->attach(
-            'Omeka\Controller\Admin\Item',
-            'view.details',
-            [$this, 'contentLockingOnDeleteConfirm']
-        );
-        $sharedEventManager->attach(
-            'Omeka\Controller\Admin\ItemSet',
-            'view.details',
-            [$this, 'contentLockingOnDeleteConfirm']
-        );
-        $sharedEventManager->attach(
-            'Omeka\Controller\Admin\Media',
-            'view.details',
-            [$this, 'contentLockingOnDeleteConfirm']
-        );
-
+        // Manage the special media ingester "bulk_upload".
         $sharedEventManager->attach(
             \Omeka\Api\Adapter\ItemAdapter::class,
-            'api.delete.pre',
-            [$this, 'contentLockingOnDelete']
+            'api.hydrate.pre',
+            [$this, 'handleItemApiHydratePre']
         );
         $sharedEventManager->attach(
-            \Omeka\Api\Adapter\ItemSetAdapter::class,
-            'api.delete.pre',
-            [$this, 'contentLockingOnDelete']
+            \Omeka\Api\Adapter\ItemAdapter::class,
+            'api.create.post',
+            [$this, 'handleAfterSaveItem'],
+            -10
         );
         $sharedEventManager->attach(
-            \Omeka\Api\Adapter\MediaAdapter::class,
-            'api.delete.pre',
-            [$this, 'contentLockingOnDelete']
+            \Omeka\Api\Adapter\ItemAdapter::class,
+            'api.update.post',
+            [$this, 'handleAfterSaveItem'],
+            -10
+        );
+
+        // Add search by name for assets (issue Common #3).
+        $sharedEventManager->attach(
+            \Omeka\Api\Adapter\AssetAdapter::class,
+            'api.search.query',
+            [$this, 'handleAssetSearchQuery']
+        );
+
+        // Optimize asset.
+        $sharedEventManager->attach(
+            \Omeka\Api\Adapter\AssetAdapter::class,
+            'api.create.post',
+            [$this, 'handleAfterSaveAsset']
+        );
+        $sharedEventManager->attach(
+            \Omeka\Api\Adapter\AssetAdapter::class,
+            'api.update.post',
+            [$this, 'handleAfterSaveAsset']
+        );
+        $sharedEventManager->attach(
+            \Omeka\Form\AssetEditForm::class,
+            'form.add_elements',
+            [$this, 'handleFormAsset']
         );
 
         $sharedEventManager->attach(
             \Omeka\Form\SettingForm::class,
             'form.add_elements',
             [$this, 'handleMainSettings']
+        );
+
+        // Load sortable js on the settings page.
+        $sharedEventManager->attach(
+            'Omeka\Controller\Admin\Setting',
+            'view.browse.before',
+            [$this, 'addHeadersSettings']
+        );
+
+        // Check last version of modules.
+        $sharedEventManager->attach(
+            'Omeka\Controller\Admin\Module',
+            'view.browse.after',
+            [$this, 'checkAddonVersions']
+        );
+
+        $sharedEventManager->attach(
+            \Omeka\Media\Ingester\Manager::class,
+            'service.registered_names',
+            [$this, 'handleMediaIngesterRegisteredNames']
         );
 
         // Display a warn before uninstalling.
@@ -284,18 +469,209 @@ class Module extends AbstractModule
         );
     }
 
+    /**
+     * Handle task execution from Cron module.
+     */
+    public function handleCronExecute(Event $event): void
+    {
+        $taskId = $event->getParam('task_id');
+
+        // Handle session cleanup tasks.
+        if (strpos($taskId, 'session_') === 0) {
+            $this->executeSessionCleanup($taskId);
+            $event->setParam('handled', true);
+            return;
+        }
+
+        // Handle database backup tasks.
+        if (strpos($taskId, 'backup_db_') === 0) {
+            $this->executeBackupDatabase($taskId);
+            $event->setParam('handled', true);
+            return;
+        }
+
+        // Handle files backup tasks.
+        if (strpos($taskId, 'backup_files_') === 0) {
+            $this->executeBackupFiles($taskId);
+            $event->setParam('handled', true);
+            return;
+        }
+    }
+
+    /**
+     * Execute session cleanup.
+     */
+    protected function executeSessionCleanup(string $taskId): void
+    {
+        $sessionSecondsMap = [
+            'session_1h' => 3600,
+            'session_2h' => 7200,
+            'session_4h' => 14400,
+            'session_12h' => 43200,
+            'session_1d' => 86400,
+            'session_2d' => 172800,
+            'session_8d' => 691200,
+            'session_30d' => 2592000,
+        ];
+
+        $seconds = $sessionSecondsMap[$taskId] ?? null;
+        if ($seconds === null) {
+            return;
+        }
+
+        $services = $this->getServiceLocator();
+        /** @var \Doctrine\DBAL\Connection $connection */
+        $connection = $services->get('Omeka\Connection');
+        $time = time();
+
+        // Check if index exists for performance.
+        $result = $connection->executeQuery(
+            'SHOW INDEX FROM `session` WHERE `column_name` = "modified";'
+        );
+
+        if ($result->fetchOne()) {
+            // Direct delete with index.
+            $sql = 'DELETE FROM `session` WHERE `modified` < :time;';
+            $connection->executeStatement(
+                $sql,
+                ['time' => $time - $seconds],
+                ['time' => \Doctrine\DBAL\ParameterType::INTEGER]
+            );
+        } else {
+            // Dispatch as background job for tables without index.
+            $dispatcher = $services->get(\Omeka\Job\Dispatcher::class);
+            $dispatcher->dispatch(\EasyAdmin\Job\DbSession::class, [
+                'seconds' => $seconds,
+                'quick' => true,
+            ]);
+        }
+    }
+
+    /**
+     * Execute database backup via Cron.
+     */
+    protected function executeBackupDatabase(string $taskId): void
+    {
+        $services = $this->getServiceLocator();
+        $dispatcher = $services->get(\Omeka\Job\Dispatcher::class);
+
+        $compress = ($taskId === 'backup_db_compressed');
+
+        $dispatcher->dispatch(\EasyAdmin\Job\DatabaseBackup::class, [
+            'compress' => $compress,
+        ]);
+    }
+
+    /**
+     * Execute files backup via Cron.
+     */
+    protected function executeBackupFiles(string $taskId): void
+    {
+        $services = $this->getServiceLocator();
+        $dispatcher = $services->get(\Omeka\Job\Dispatcher::class);
+
+        if ($taskId === 'backup_files_full') {
+            $include = ['core', 'modules', 'themes', 'local_config', 'database_ini', 'htaccess'];
+        } else {
+            // Config only.
+            $include = ['local_config', 'database_ini', 'htaccess'];
+        }
+
+        $dispatcher->dispatch(\EasyAdmin\Job\Backup::class, [
+            'process' => 'backup_install',
+            'include' => $include,
+            'compression' => 6,
+        ]);
+    }
+
+    /**
+     * Handle cron tasks independently when Cron module is not installed.
+     *
+     * This method is triggered on view.layout to execute scheduled tasks
+     * without requiring the Cron module.
+     */
+    public function handleCron(Event $event): void
+    {
+        // Quick static check to avoid reading settings on every page load.
+        // After the first check within the hour, all subsequent requests
+        // skip the settings read entirely.
+        static $checked = false;
+        if ($checked) {
+            return;
+        }
+        $checked = true;
+
+        $services = $this->getServiceLocator();
+
+        // Independent mode: execute cron tasks without the Cron module.
+        $settings = $services->get('Omeka\Settings');
+
+        // Check frequency first (cheapest check) before loading tasks.
+        $lastCron = (int) $settings->get('easyadmin_cron_last');
+        $time = time();
+        if ($lastCron + 3600 > $time) {
+            return;
+        }
+
+        $enabledTasks = $this->getEnabledCronTasks($settings);
+        if (!count($enabledTasks)) {
+            return;
+        }
+
+        $settings->set('easyadmin_cron_last', $time);
+
+        // Dispatch the CronTasks job.
+        $dispatcher = $services->get(\Omeka\Job\Dispatcher::class);
+        $dispatcher->dispatch(\EasyAdmin\Job\CronTasks::class, [
+            'tasks' => $enabledTasks,
+            'manual' => false,
+        ]);
+    }
+
+    /**
+     * Get enabled cron tasks from settings.
+     *
+     * Supports both new structure (easyadmin_cron with nested tasks) and
+     * legacy structure (easyadmin_cron_tasks as flat array).
+     */
+    protected function getEnabledCronTasks(\Omeka\Settings\Settings $settings): array
+    {
+        // New structure.
+        $cronSettings = $settings->get('easyadmin_cron', []);
+        if (!empty($cronSettings['tasks'])) {
+            $enabledTasks = [];
+            foreach ($cronSettings['tasks'] as $taskId => $taskSettings) {
+                if (!empty($taskSettings['enabled'])) {
+                    $enabledTasks[$taskId] = $taskSettings;
+                }
+            }
+            return $enabledTasks;
+        }
+
+        // Legacy structure for backward compatibility.
+        $oldTasks = $settings->get('easyadmin_cron_tasks', []);
+        if (!count($oldTasks)) {
+            return [];
+        }
+        $enabledTasks = [];
+        foreach ($oldTasks as $taskId) {
+            $enabledTasks[$taskId] = ['enabled' => true, 'frequency' => 'hourly'];
+        }
+        return $enabledTasks;
+    }
+
     public function handleViewLayoutResource(Event $event): void
     {
         /** @var \Laminas\View\Renderer\PhpRenderer $view */
         $view = $event->getTarget();
         $params = $view->params()->fromRoute();
         $action = $params['action'] ?? 'browse';
-        if ($action !== 'show') {
+        if ($action !== 'show' && $action !== 'browse') {
             return;
         }
 
         $controller = $params['__CONTROLLER__'] ?? $params['controller'] ?? '';
-        $controllers = [
+        $controllersToResourceTypes = [
             'item' => 'items',
             'item-set' => 'item_sets',
             'media' => 'media',
@@ -303,35 +679,240 @@ class Module extends AbstractModule
             'Omeka\Controller\Admin\ItemSet' => 'item_sets',
             'Omeka\Controller\Admin\Media' => 'media',
         ];
-        if (!isset($controllers[$controller])) {
+        if (!isset($controllersToResourceTypes[$controller])) {
             return;
         }
 
-        // The resource is not available in the main view.
-        $id = isset($params['id']) ? (int) $params['id'] : 0;
-        if (!$id) {
+        if ($action === 'browse') {
+            $this->handleViewLayoutResourceBrowse($view, $controllersToResourceTypes[$controller]);
+        } else {
+            // The resource is not available in the main view.
+            $id = isset($params['id']) ? (int) $params['id'] : 0;
+            if ($id) {
+                $this->handleViewLayoutResourceShow($view, $controllersToResourceTypes[$controller], $id);
+            }
+        }
+    }
+
+    protected function handleViewLayoutResourceBrowse(PhpRenderer $view, string $resourceType): void
+    {
+        /**
+         * @var \Omeka\Api\Manager $api
+         * @var \Omeka\Settings\Settings $settings
+         * @var \Common\Stdlib\EasyMeta $easyMeta
+         * @var \Doctrine\DBAL\Connection $connection
+         */
+        $services = $this->getServiceLocator();
+        $settings = $services->get('Omeka\Settings');
+
+        $templateIds = $settings->get('easyadmin_quick_template');
+        $classTerms = $settings->get('easyadmin_quick_class');
+        if (!$templateIds && !$classTerms) {
             return;
         }
+
+        $acl = $services->get('Omeka\Acl');
+        $user = $services->get('Omeka\AuthenticationService')->getIdentity();
+        $adapter = $services->get('Omeka\ApiAdapterManager')->get($resourceType);
+        if (!$user || !$acl->userIsAllowed(get_class($adapter), 'create')) {
+            return;
+        }
+
+        $api = $services->get('Omeka\ApiManager');
+        $easyMeta = $services->get('Common\EasyMeta');
+
+        $templateLabels = [];
+        if ($templateIds) {
+            $hasAll = in_array('all', $templateIds);
+            $templateLabels = $easyMeta->resourceTemplateLabels($hasAll ? [] : $templateIds);
+        }
+
+        // Search all templates with specified classes.
+        $classIds = $classTerms ? $easyMeta->resourceClassIds($classTerms) : [];
+        $templateClassLabels = [];
+        if ($classIds) {
+            // Omeka doesn't support searching resource templates by class,
+            // so sql is used.
+            // TODO Use api search when Omeka allows searching resource templates by class.
+            // The module AdvancedResourceTemplate allows to suggest multiple
+            // classes by template.
+            if ($this->isModuleActive('AdvancedResourceTemplate')) {
+                // Use DBAL to avoid loading all templates with full hydration.
+                $connection = $services->get('Omeka\Connection');
+                $sql = <<<'SQL'
+                    SELECT rt.id, rt.label, rtd.data
+                    FROM resource_template AS rt
+                    INNER JOIN resource_template_data AS rtd ON rtd.resource_template_id = rt.id
+                    ORDER BY rt.label ASC
+                    SQL;
+                $rows = $connection->executeQuery($sql)->fetchAllAssociative();
+                foreach ($rows as $row) {
+                    $data = json_decode($row['data'], true);
+                    if (!$data) {
+                        continue;
+                    }
+                    $useForResources = $data['use_for_resources'] ?? null;
+                    if ($useForResources && !in_array($resourceType, $useForResources)) {
+                        continue;
+                    }
+                    $suggestedClasses = $data['suggested_resource_class_ids'] ?? [];
+                    if ($ids = array_intersect($suggestedClasses, $classIds)) {
+                        $templateClassLabels[(int) $row['id']] = ['label' => $row['label'], 'resource_class_id' => reset($ids)];
+                    }
+                }
+            } else {
+                $connection = $services->get('Omeka\Connection');
+                $qb = $connection->createQueryBuilder();
+                $qb
+                    ->select('id', 'label', 'resource_class_id')
+                    ->distinct()
+                    ->from('resource_template', 'resource_template')
+                    ->where('resource_template.`resource_class_id` IN (:ids)')
+                    ->setParameter('ids', $classIds, \Doctrine\DBAL\Connection::PARAM_INT_ARRAY)
+                    ->addOrderBy('`resource_template`.`label`', 'asc')
+                ;
+                $templateClassLabels = $qb->execute()->fetchAllAssociative();
+            }
+        }
+
+        if (!$templateLabels && !$templateClassLabels) {
+            return;
+        }
+
+        // Templates are already filtered by AdvancedResourceTemplate above
+        // (use_for_resources).
 
         $plugins = $view->getHelperPluginManager();
+        $url = $plugins->get('url');
+        $escape = $plugins->get('escapeHtmlAttr');
+        $translate = $plugins->get('translate');
+        $hyperlink = $plugins->get('hyperlink');
 
-        $setting = $plugins->get('setting');
-        $interface = $setting('easyadmin_interface') ?: [];
-        $publicView = in_array('resource_public_view', $interface);
-        $previousNext = in_array('resource_previous_next', $interface);
-        if (!$publicView && !$previousNext) {
+        $vars = $view->vars();
+        $html = $vars->offsetGet('content');
+
+        $mainLabels = [
+            'items' => 'Add new item',
+            'item_sets' => 'Add new item set',
+            'media' => 'Add new media',
+        ];
+
+        $buttons = [];
+        foreach ($templateLabels as $id => $label) {
+            $buttons[$id] = $hyperlink($translate($label), $url(null, ['action' => 'add'], ['query' => ['resource_template_id' => $id]], true), ['class' => 'link']);
+        }
+
+        foreach ($templateClassLabels as $id => $data) {
+            $buttons[$id] = $hyperlink($translate($data['label']), $url(null, ['action' => 'add'], ['query' => ['resource_template_id' => $id, 'resource_class_id' => $data['resource_class_id']]], true), ['class' => 'link']);
+        }
+
+        if (count($buttons) > 1) {
+            // Uses anchor links (styled as buttons) for simplicity for now.
+            // TODO Use a real button instead of an anchor for actions for accessibility.
+            $stringButtons = '<li>' . implode("</li>\n<li>", $buttons) . "</li>\n";
+            $stringExpand = $escape($translate('Expand'));
+            $urlAdd = $url(null, ['action' => 'add'], [], true);
+            $stringAdd = $escape($translate($mainLabels[$resourceType]));
+            // Styles adapted from the module Scripto.
+            $html = preg_replace(
+                '~<div id="page-actions">(.*?)</div>~s',
+                <<<HTML
+                    <style>
+                        #page-action-menu .expand::after {
+                            padding-left: 4px;
+                        }
+                        #page-action-menu {
+                            display:inline-block;
+                            position:relative
+                        }
+                        #page-action-menu ul {
+                            /* display:none; */
+                            list-style:none;
+                            border:1px solid #dfdfdf;
+                            background-color:#fff;
+                            border-radius:3px;
+                            text-align:left;
+                            padding:0;
+                            position:relative;
+                            box-shadow:0 0 5px #dfdfdf;
+                            position:absolute;
+                            right:0;
+                            width:auto;
+                            white-space:nowrap;
+                            margin:12px 0
+                        }
+                        #page-action-menu ul::before {
+                            content:"";
+                            position:absolute;
+                            bottom:calc(100% - 1px);
+                            right:12px;
+                            width:0;
+                            height:0;
+                            border-bottom:12px solid #fff;
+                            border-left:6px solid transparent;
+                            border-right:6px solid transparent
+                        }
+                        #page-action-menu ul::after {
+                            content:"";
+                            position:absolute;
+                            bottom:calc(100% - 1px);
+                            right:11px;
+                            width:0;
+                            height:0;
+                            border-bottom:14px solid #dfdfdf;
+                            border-left:7px solid transparent;
+                            border-right:7px solid transparent;
+                            z-index:-1
+                        }
+                        #page-action-menu ul a,
+                        #page-action-menu ul .inactive {
+                            padding:6px 12px 5px;
+                            display:block;
+                            position:relative
+                        }
+                        #page-action-menu ul .inactive {
+                            color:#dfdfdf
+                        }
+                    </style>
+                    <div id="page-actions">
+                        <div id="page-action-menu">
+                            <a class="button" href="$urlAdd">$stringAdd</a>
+                            <a href="#" class="expand button expand-more" aria-label="$stringExpand>"></a>
+                            <ul class="collapsible">
+                                $stringButtons
+                            </ul>
+                        </div>
+                    </div>
+                    HTML,
+                $html,
+                1
+            );
+        }
+
+        $vars->offsetSet('content', $html);
+    }
+
+    protected function handleViewLayoutResourceShow(PhpRenderer $view, string $resourceType, int $id): void
+    {
+        $services = $this->getServiceLocator();
+        $settings = $services->get('Omeka\Settings');
+
+        $interface = $settings->get('easyadmin_interface') ?: [];
+        $buttonPublicView = in_array('resource_public_view', $interface);
+        $buttonPreviousNext = in_array('resource_previous_next', $interface);
+        if (!$buttonPublicView && !$buttonPreviousNext) {
             return;
         }
 
         /** @var \Omeka\Api\Representation\AbstractResourceEntityRepresentation $resource */
+
+        // Normally, the current resource should be present in vars.
         $vars = $view->vars();
         if ($vars->offsetExists('resource')) {
             $resource = $vars->offsetGet('resource');
         } else {
-            // Normally, the current resource should be present in vars.
-            $api = $plugins->get('api');
             try {
-                $resource = $api->read($controllers[$controller], ['id' => $id], ['initialize' => false, 'finalize' => false])->getContent();
+                $resource = $services->get('Omeka\ApiManager')->read($resourceType, ['id' => $id], ['initialize' => false, 'finalize' => false])->getContent();
             } catch (\Exception $e) {
                 return;
             }
@@ -339,28 +920,37 @@ class Module extends AbstractModule
 
         $html = $vars->offsetGet('content');
 
-        if ($publicView) {
-            $defaultSite = $plugins->get('defaultSite');
-            $defaultSiteSlug = $defaultSite('slug');
-            if ($defaultSiteSlug) {
-                $url = $resource->siteUrl($defaultSiteSlug);
-                if ($url) {
-                    $linkPublicView = $view->hyperlink(
-                        $view->translate('Public view'), // @translate
-                        $url,
-                        ['class' => 'button', 'target' => '_blank']
-                    );
-                    $html = preg_replace(
-                        '~<div id="page-actions">(.*?)</div>~s',
-                        '<div id="page-actions">' . $linkPublicView . ' $1 ' . '</div>',
-                        $html,
-                        1
-                    );
+        // Add public view only when there is no site, since they are added in
+        // Omeka S v4.1 for items. But only for items: so for consistent ux, set
+        // the button in the new place for all resources.
+        if ($buttonPublicView) {
+            $isOldOmeka = version_compare(\Omeka\Module::VERSION, '4.1', '<');
+            $skip = !$isOldOmeka && $resourceType === 'items' && count($resource->sites());
+            if (!$skip) {
+                $plugins = $services->get('ViewHelperManager');
+                $translate = $plugins->get('translate');
+                $htmlSites = $this->prepareSitesResource($resource);
+                if ($resourceType === 'item_sets' && count($resource->sites())) {
+                    $translated = $translate('Sites');
+                    $htmlRegex = <<<REGEX
+                        <div class="meta-group[\w _-]*">\s*<h4>$translated</h4>.*</div>\s*<div class="meta-group
+                        REGEX;
+                    $html = preg_replace('~' . $htmlRegex . '~s', $htmlSites . '<div class="meta-group', $html, 1);
+                } else {
+                    $translated = $resourceType === 'item_sets' ? $translate('Items') : $translate('Created');
+                    $htmlPost = <<<REGEX
+                        <div class="meta-group">
+                                <h4>$translated</h4>
+                        REGEX;
+                    $htmlRegex = <<<REGEX
+                        <div class="meta-group">\s*<h4>$translated</h4>
+                        REGEX;
+                    $html = preg_replace('~' . $htmlRegex . '~s', $htmlSites . $htmlPost, $html, 1);
                 }
             }
         }
 
-        if ($previousNext) {
+        if ($buttonPreviousNext) {
             /** @see \EasyAdmin\View\Helper\PreviousNext */
             $linkBrowseView = $view->previousNext($resource, [
                 'source_query' => 'session',
@@ -377,6 +967,108 @@ class Module extends AbstractModule
         }
 
         $vars->offsetSet('content', $html);
+    }
+
+    public function handleViewDetailsResource(Event $event): void
+    {
+        /** @var \Omeka\Api\Representation\AbstractResourceEntityRepresentation $resource */
+        $resource = $event->getParam('entity');
+
+        $services = $this->getServiceLocator();
+        $settings = $services->get('Omeka\Settings');
+
+        $interface = $settings->get('easyadmin_interface') ?: [];
+        $buttonPublicView = in_array('resource_public_view', $interface);
+        if ($buttonPublicView) {
+            // Omeka shows public view links natively for resources with sites:
+            // - Items: since omeka s v4.1
+            // - Item sets: since omeka s v4.2
+            $resourceName = $resource->resourceName();
+            $skip = false;
+            if ($resourceName === 'items' && count($resource->sites())) {
+                $skip = version_compare(\Omeka\Module::VERSION, '4.1', '>=');
+            } elseif ($resourceName === 'item_sets' && count($resource->sites())) {
+                $skip = version_compare(\Omeka\Module::VERSION, '4.2', '>=');
+            }
+            if (!$skip) {
+                $htmlSites = $this->prepareSitesResource($resource);
+                echo $htmlSites;
+            }
+        }
+
+        if ($resource instanceof \Omeka\Api\Representation\MediaRepresentation) {
+            $view = $event->getTarget();
+            echo $view->partial('omeka/admin/media/show-details-renderer', [
+                'media' => $resource,
+                'resource' => $resource,
+            ]);
+        }
+    }
+
+    protected function prepareSitesResource(AbstractResourceEntityRepresentation $resource): string
+    {
+        $services = $this->getServiceLocator();
+        $plugins = $services->get('ViewHelperManager');
+
+        $defaultSite = $plugins->get('defaultSite');
+        $defaultSiteSlug = $defaultSite('slug');
+
+        $resourceType = $resource->resourceName();
+        $res = $resourceType === 'media' ? $resource->item() : $resource;
+
+        $sites = $res->sites();
+        $hasSites = count($sites);
+        if (!$hasSites && $defaultSiteSlug) {
+            $sites = [$defaultSite()];
+        } elseif (!count($sites)) {
+            return '';
+        }
+
+        // See application/view/omeka/admin/item/show.phtml.
+
+        /** @var \Common\Stdlib\EasyMeta $easyMeta */
+        $url = $plugins->get('url');
+        $translate = $plugins->get('translate');
+        $hyperlink = $plugins->get('hyperlink');
+        $easyMeta = $services->get('Common\EasyMeta');
+
+        $controller = $resource->getControllerName();
+        $resourceId = $resource->id();
+
+        $htmlSites = '';
+
+        $htmlSite = <<<'HTML'
+            <div class="value">
+                __SITE_TITLE__
+                __RESOURCE_LINK__
+            </div>
+            HTML . "\n";
+        foreach ($sites as $site) {
+            $siteTitle = $site->title();
+            $externalLinkText = new PsrMessage(
+                'View this {resource_type} in "{site}"', // @translate
+                ['resource_type' => $easyMeta->resourceLabel($resourceType), 'site' => $siteTitle]
+            );
+            $replace = [
+                '__SITE_TITLE__' => $site->link($siteTitle) . ($hasSites ? '' : ' ' . $translate('[not in site]')), // @translate
+                '__RESOURCE_LINK__' => $hyperlink(
+                    '',
+                    $url('site/resource-id', ['site-slug' => $site->slug(), 'controller' => $controller, 'id' => $resourceId]),
+                    ['class' => 'o-icon-external', 'target' => '_blank', 'aria-label' => $externalLinkText, 'title' => $externalLinkText]
+                ),
+            ];
+            $htmlSites .= strtr($htmlSite, $replace);
+        }
+
+        // The class item-sites is kept for css.
+        $translatedSites = $translate('Sites'); // @translate
+        $html = <<<HTML
+            <div class="meta-group $controller-sites item-sites">
+                <h4>$translatedSites</h4>
+                $htmlSites
+            </div>
+            HTML . "\n";
+        return $html;
     }
 
     /**
@@ -401,527 +1093,671 @@ class Module extends AbstractModule
         $session->lastQuery[$ui]['items'] = $params->fromQuery();
     }
 
-    public function contentLockingOnEdit(Event $event): void
+    public function addHeadersAdmin(Event $event): void
     {
-        /**
-         * @var \Laminas\ServiceManager\ServiceLocatorInterface $services
-         * @var \Omeka\Api\Representation\AbstractEntityRepresentation $resource
-         * @var \Omeka\Entity\User $user
-         * @var \Doctrine\ORM\EntityManager $entityManager
-         * @var \EasyAdmin\Entity\ContentLock $contentLock
-         * @var \Laminas\View\Renderer\PhpRenderer $view
-         * @var \Omeka\Mvc\Controller\Plugin\Messenger $messenger
-         */
         $view = $event->getTarget();
-        $resource = $view->resource;
-        if (!$resource) {
+        $assetUrl = $view->plugin('assetUrl');
+        $view->headLink()
+            ->appendStylesheet($assetUrl('css/bulk-upload.css', 'EasyAdmin'));
+        $view->headScript()
+            ->appendFile($assetUrl('vendor/flow.js/flow.min.js', 'EasyAdmin'), 'text/javascript', ['defer' => 'defer'])
+            ->appendFile($assetUrl('js/bulk-upload.js', 'EasyAdmin'), 'text/javascript', ['defer' => 'defer']);
+    }
+
+    public function addHeadersSettings(Event $event): void
+    {
+        $view = $event->getTarget();
+        $assetUrl = $view->plugin('assetUrl');
+        $view->headLink()
+            ->appendStylesheet($assetUrl('css/easy-admin.css', 'EasyAdmin'));
+        $view->headScript()
+            ->appendFile($assetUrl('vendor/sortablejs/Sortable.min.js', 'Omeka'))
+            ->appendFile($assetUrl('js/chosen-sortable.js', 'EasyAdmin'), 'text/javascript', ['defer' => 'defer']);
+    }
+
+    public function handleMainSettings(Event $event): void
+    {
+        $fieldset = $this->handleAnySettings($event, 'settings');
+        if (!$fieldset) {
             return;
         }
 
+        // Add data attributes for sortable chosen-selects.
         $services = $this->getServiceLocator();
         $settings = $services->get('Omeka\Settings');
-        if (!$settings->get('easyadmin_content_lock')) {
-            return;
-        }
-
-        // This mapping is needed because the api name is not available in the
-        // representation.
-        $resourceNames = [
-            \Omeka\Api\Representation\ItemRepresentation::class => 'items',
-            \Omeka\Api\Representation\ItemSetRepresentation::class => 'item_sets',
-            \Omeka\Api\Representation\MediaRepresentation::class => 'media',
-            'o:Item' => 'items',
-            'o:ItemSet' => 'item_sets',
-            'o:Media' => 'media',
+        $sortableElements = [
+            'easyadmin_quick_template',
+            'easyadmin_quick_class',
         ];
-
-        $entityId = $resource->id();
-        $entityName = $resourceNames[get_class($resource)] ?? $resourceNames[$resource->getJsonLdType()] ?? null;
-        if (!$entityId || !$entityName) {
-            return;
-        }
-
-        $this->removeExpiredContentLocks();
-
-        $user = $services->get('Omeka\AuthenticationService')->getIdentity();
-        $entityManager = $services->get('Omeka\EntityManager');
-
-        $contentLock = $entityManager->getRepository(ContentLock::class)
-            ->findOneBy(['entityId' => $entityId, 'entityName' => $entityName]);
-
-        if (!$contentLock) {
-            $contentLock = new ContentLock($entityId, $entityName);
-            $contentLock
-                ->setUser($user)
-                ->setCreated(new DateTIme('now'));
-            $entityManager->persist($contentLock);
-            try {
-                // Flush is needed because the event does not run it.
-                $entityManager->flush($contentLock);
-                return;
-            } catch (\Doctrine\DBAL\Exception\UniqueConstraintViolationException $e) {
-                // Sometime a duplicate entry occurs even if checked just above.
-                try {
-                    $entityManager->remove($contentLock);
-                    $contentLock = $entityManager->getRepository(ContentLock::class)
-                        ->findOneBy(['entityId' => $entityId, 'entityName' => $entityName]);
-                } catch (\Exception $e) {
-                    return;
+        foreach ($sortableElements as $name) {
+            if ($fieldset->has($name)) {
+                $element = $fieldset->get($name);
+                $element->setAttribute('data-sortable', '1');
+                $savedValues = $settings->get($name, []);
+                if ($savedValues) {
+                    $element->setAttribute('data-values-order', json_encode($savedValues, JSON_UNESCAPED_UNICODE));
                 }
-            } catch (\Exception $e) {
-                // No content lock when there is an issue.
-                $entityManager->remove($contentLock);
-                return;
             }
         }
-
-        $messenger = $services->get('ControllerPluginManager')->get('messenger');
-
-        $contentLockUser = $contentLock->getUser();
-        $isCurrentUser = $user->getId() === $contentLockUser->getId();
-
-        if ($isCurrentUser) {
-            $message = new PsrMessage(
-                'You edit already this resource somewhere since {date}.', // @translate
-                ['date' => $view->i18n()->dateFormat($contentLock->getCreated(), 'long', 'short')]
-            );
-            $messenger->addWarning($message);
-            // Refresh the content lock: this is a new edition or a
-            // submitted one. So the previous lock should be removed and a
-            // a new one created, but it's simpler to override first one.
-            $contentLock->setCreated(new DateTIme('now'));
-            $entityManager->persist($contentLock);
-            $entityManager->flush($contentLock);
-            return;
-        }
-
-        $controllerNames = [
-            'items' => 'item',
-            'item_sets' => 'item-set',
-            'media' => 'media',
-        ];
-
-        // TODO Add rights to bypass.
-
-        /** @var \Laminas\Http\PhpEnvironment\Request $request */
-        $request = $services->get('Application')->getMvcEvent()->getRequest();
-
-        $isPost = $request->isPost();
-
-        $message = new PsrMessage(
-            'This content is being edited by the user {user_name} and is therefore locked to prevent other users changes. This lock is in place since {date}.', // @translate
-            [
-                'user_name' => $contentLockUser->getName(),
-                'date' => $view->i18n()->dateFormat($contentLock->getCreated(), 'long', 'short'),
-            ]
-        );
-        $messenger->add($isPost ? \Omeka\Mvc\Controller\Plugin\Messenger::ERROR : \Omeka\Mvc\Controller\Plugin\Messenger::WARNING, $message);
-
-        $html = <<<'HTML'
-<label><input type="checkbox" name="bypass_content_lock" class="bypass-content-lock" value="1" form="edit-{entity_name}"/>{message_bypass}</label>
-<div class="easy-admin confirm-delete">
-    <label><input type="checkbox" name="bypass_content_lock" class="bypass-content-lock" value="1" form="confirmform"/>{message_bypass}</label>
-    <script>
-        $(document).ready(function() {
-            $('.easy-admin.confirm-delete').prependTo('#delete.sidebar #confirmform');
-            const buttonPageAction = $('#page-actions button[type=submit]');
-            const buttonSidebar = $('#delete.sidebar #confirmform input[name=submit]');
-            buttonPageAction.prop('disabled', true);
-            buttonSidebar.prop('disabled', true);
-            $('.bypass-content-lock').on('change', function () {
-                const button = $(this).parent().parent().hasClass('confirm-delete') ? buttonSidebar : buttonPageAction;
-                button.prop('disabled', !$(this).is(':checked'));
-            });
-        });
-    </script>
-</div>
-HTML;
-        $message = $view->translate('Bypass the lock'); // @translate
-        $message = new PsrMessage($html, ['entity_name' => $controllerNames[$entityName], 'message_bypass' => $message]);
-        $message->setEscapeHtml(false);
-        $messenger->add($isPost ? \Omeka\Mvc\Controller\Plugin\Messenger::ERROR : \Omeka\Mvc\Controller\Plugin\Messenger::WARNING, $message);
     }
 
-    public function contentLockingOnDeleteConfirm(Event $event): void
+    public function handleResourceForm(Event $event): void
     {
         /**
-         * @var \Laminas\ServiceManager\ServiceLocatorInterface $services
-         * @var \Omeka\Api\Representation\AbstractEntityRepresentation $resource
          * @var \Omeka\Mvc\Status $status
-         * @var \Omeka\Entity\User $user
-         * @var \Doctrine\ORM\EntityManager $entityManager
-         * @var \EasyAdmin\Entity\ContentLock $contentLock
-         * @var \Laminas\View\Renderer\PhpRenderer $view
-         * @var \Omeka\Mvc\Controller\Plugin\Messenger $messenger
+         * @var \Omeka\Form\ResourceForm $form
+         */
+        $services = $this->getServiceLocator();
+
+        $status = $services->get('Omeka\Status');
+        if (!$status->isAdminRequest()) {
+            return;
+        }
+
+        /**
+         * Set resource template and class ids from query for a new resource.
+         * Else, it will be the user setting one.
+         *
+         * This feature is managed by modules Advanced Resource Template and
+         * Easy Admin, but in a different way (internally or via settings).
+         *
+         * This feature requires to override file appliction/view/common/resource-fields.phtml.
+         *
+         * @see \AdvancedResourceTemplate\Module::handleResourceForm()
+         * @see \EasyAdmin\Module::handleResourceForm()
          */
 
-        // In the view show-details, the action is not known.
+        if ($status->getRouteParam('action') === 'add') {
+            $form = $event->getTarget();
+            $params = $services->get('ControllerPluginManager')->get('Params');
+            $resourceTemplateId = $params->fromQuery('resource_template_id');
+            if ($resourceTemplateId && $form->has('o:resource_template[o:id]')) {
+                /** @var \Omeka\Form\Element\ResourceTemplateSelect $templateSelect */
+                $templateSelect = $form->get('o:resource_template[o:id]');
+                if (in_array($resourceTemplateId, array_keys($templateSelect->getValueOptions()))) {
+                    $templateSelect->setValue($resourceTemplateId);
+                }
+            }
+            $resourceClassId = $params->fromQuery('resource_class_id');
+            if ($resourceClassId && $form->has('o:resource_class[o:id]')) {
+                /** @var \Omeka\Form\Element\ResourceClassSelect $templateSelect */
+                $classSelect = $form->get('o:resource_class[o:id]');
+                if (in_array($resourceClassId, array_keys($classSelect->getValueOptions()))) {
+                    $classSelect->setValue($resourceClassId);
+                }
+            }
+        }
+    }
+
+    public function handleItemApiHydratePre(Event $event): void
+    {
         $services = $this->getServiceLocator();
-        $status = $services->get('Omeka\Status');
-        $routeMatch = $status->getRouteMatch();
-        if (!$status->isAdminRequest()
-            || $routeMatch->getMatchedRouteName() !== 'admin/id'
-            || $routeMatch->getParam('action') !== 'delete-confirm'
-        ) {
+        $tempDir = $services->get('Config')['temp_dir'] ?: sys_get_temp_dir();
+        $tempDir = rtrim($tempDir, '/\\');
+
+        /** @var \Omeka\Api\Request $request */
+        $request = $event->getParam('request');
+        $data = $request->getContent();
+
+        if (empty($data['o:media'])) {
             return;
         }
 
-        $view = $event->getTarget();
-        $resource = $view->resource;
-        if (!$resource) {
+        // Remove removed files.
+        $filesData = $data['filesData'] ?? [];
+        if (empty($filesData['file'])) {
             return;
         }
 
+        foreach ($filesData['file'] ?? [] as $key => $fileData) {
+            $filesData['file'][$key] = json_decode($fileData, true) ?: [];
+        }
+
+        /**
+         * @var \Omeka\Stdlib\ErrorStore $errorStore
+         * @var \Omeka\File\TempFileFactory $tempFileFactory
+         * @var \Omeka\File\Validator $validator
+         */
+        $errorStore = $event->getParam('errorStore');
         $settings = $services->get('Omeka\Settings');
-        if (!$settings->get('easyadmin_content_lock')) {
-            return;
-        }
+        $validator = $services->get(\Omeka\File\Validator::class);
+        $tempFileFactory = $services->get(\Omeka\File\TempFileFactory::class);
+        $disableFileValidation = (bool) $settings->get('disable_file_validation', false);
+        $allowEmptyFiles = (bool) $settings->get('easyadmin_allow_empty_files', false);
 
-        // This mapping is needed because the api name is not available in the
-        // representation.
-        $resourceNames = [
-            \Omeka\Api\Representation\ItemRepresentation::class => 'items',
-            \Omeka\Api\Representation\ItemSetRepresentation::class => 'item_sets',
-            \Omeka\Api\Representation\MediaRepresentation::class => 'media',
-            'o:Item' => 'items',
-            'o:ItemSet' => 'item_sets',
-            'o:Media' => 'media',
+        $uploadErrorCodes = [
+            UPLOAD_ERR_OK => 'File successfuly uploaded.', // @translate
+            UPLOAD_ERR_INI_SIZE => 'The total of file sizes exceeds the the server limit directive.', // @translate
+            UPLOAD_ERR_FORM_SIZE => 'The file size exceeds the specified limit.', // @translate
+            UPLOAD_ERR_PARTIAL => 'The file was only partially uploaded.', // @translate
+            UPLOAD_ERR_NO_FILE => 'No file was uploaded.', // @translate
+            UPLOAD_ERR_NO_TMP_DIR => 'The temporary folder to store the file is missing.', // @translate
+            UPLOAD_ERR_CANT_WRITE => 'Failed to write file to disk.', // @translate
+            UPLOAD_ERR_EXTENSION => 'A PHP extension stopped the file upload.', // @translate
         ];
 
-        $entityId = $resource->id();
-        $entityName = $resourceNames[get_class($resource)] ?? $resourceNames[$resource->getJsonLdType()] ?? null;
-        if (!$entityId || !$entityName) {
-            return;
-        }
+        $newDataMedias = [];
+        foreach ($data['o:media'] as $dataMedia) {
+            $newDataMedias[] = $dataMedia;
 
-        $this->removeExpiredContentLocks();
-
-        $user = $services->get('Omeka\AuthenticationService')->getIdentity();
-        $entityManager = $services->get('Omeka\EntityManager');
-
-        $contentLock = $entityManager->getRepository(ContentLock::class)
-            ->findOneBy(['entityId' => $entityId, 'entityName' => $entityName]);
-
-        // Don't create or refresh a content lock on confirm delete.
-        if (!$contentLock) {
-            return;
-        }
-
-        // TODO Add rights to bypass.
-
-        $contentLockUser = $contentLock->getUser();
-        $isCurrentUser = $user->getId() === $contentLockUser->getId();
-
-        $html = <<<'HTML'
-<div class="easy-admin confirm-delete">
-    <p class="error">
-        <strong>%1$s</strong>
-        %2$s
-    </p>
-    %3$s
-    <script>
-        $(document).ready(function() {
-            $('.easy-admin.confirm-delete').prependTo('#sidebar .sidebar-content #confirmform');
-            if (!$('.easy-admin.confirm-delete .bypass-content-lock').length) {
-                return;
+            if (empty($dataMedia['o:ingester'])
+                || $dataMedia['o:ingester'] !== 'bulk_upload'
+            ) {
+                continue;
             }
-            const buttonSidebar = $('.sidebar #sidebar-confirm input[name=submit]');
-            buttonSidebar.prop('disabled', true);
-            $('.bypass-content-lock').on('change', function () {
-                buttonSidebar.prop('disabled', !$(this).is(':checked'));
-            });
-        });
-    </script>
-</div>
-HTML;
 
-        $translator = $services->get('MvcTranslator');
+            $index = $dataMedia['file_index'] ?? null;
+            if ($index === null || !isset($filesData['file'][$index])) {
+                $errorStore->addError('upload', 'There is no uploaded files.'); // @translate
+                continue;
+            }
 
-        $messageWarn = new PsrMessage('Warning:'); // @translate
-        if ($isCurrentUser) {
-            $message = new PsrMessage(
-                'You edit this resource somewhere since {date}.', // @translate
-                ['date' => $view->i18n()->dateFormat($contentLock->getCreated(), 'long', 'short')]
-            );
-            $messageInput = new PsrMessage('');
+            if (empty($filesData['file'][$index])) {
+                $errorStore->addError('upload', 'There is no uploaded files.'); // @translate
+                continue;
+            }
+
+            // Convert the media to a list of media for the item hydration.
+            // Check errors first to indicate issues to user early.
+            $listFiles = [];
+            $hasError = false;
+            foreach ($filesData['file'][$index] as $subIndex => $fileData) {
+                // The user selected "allow partial upload", so no data for this
+                // index.
+                if (empty($fileData)) {
+                    continue;
+                }
+                // Fix strict type issues in case of an issue on a file.
+                $fileData['name'] ??= '';
+                $fileData['tmp_name'] ??= '';
+                if (!empty($fileData['error'])) {
+                    $errorStore->addError('upload', new PsrMessage(
+                        'File #{index} "{filename}" has an error: {error}.',  // @translate
+                        ['index' => ++$subIndex, 'filename' => $fileData['name'], 'error' => $uploadErrorCodes[$fileData['error']]]
+                    ));
+                    $hasError = true;
+                    continue;
+                } elseif (substr($fileData['name'], 0, 1) === '.') {
+                    $errorStore->addError('upload', new PsrMessage(
+                        'File #{index} "{filename}" must not start with a ".".', // @translate
+                        ['index' => ++$subIndex, 'filename' => $fileData['name']]
+                    ));
+                    $hasError = true;
+                    continue;
+                } elseif (!preg_match('/^[^\/\\\\{}$?!<>]+$/', $fileData['name'])) {
+                    $errorStore->addError('upload', new PsrMessage(
+                        'File #{index} "{filename}" must not contain a reserved character.', // @translate
+                        ['index' => ++$subIndex, 'filename' => $fileData['name']]
+                    ));
+                    $hasError = true;
+                    continue;
+                } elseif (!preg_match('/^[^\/\\\\{}$?!<>]+$/', $fileData['tmp_name'])) {
+                    $errorStore->addError('upload', new PsrMessage(
+                        'File #{index} temp name "{filename}" must not contain a reserved character.', // @translate
+                        ['index' => ++$subIndex, 'filename' => $fileData['tmp_name']]
+                    ));
+                    $hasError = true;
+                    continue;
+                } elseif (empty($fileData['size'])) {
+                    if (!$disableFileValidation && !$allowEmptyFiles) {
+                        $errorStore->addError('upload', new PsrMessage(
+                            'File #{index} "{filename}" is an empty file.', // @translate
+                            ['index' => ++$subIndex, 'filename' => $fileData['name']]
+                        ));
+                        $hasError = true;
+                        continue;
+                    }
+                } else {
+                    // Don't use uploader::upload(), because the file would be
+                    // renamed, so use temp file validator directly.
+                    // Don't check media-type directly, because it should manage
+                    // derivative media-types ("application/tei+xml", etc.) that
+                    // may not be extracted by system.
+                    $tempFile = $tempFileFactory->build();
+                    $tempFile->setSourceName($fileData['name']);
+                    $tempFile->setTempPath($tempDir . DIRECTORY_SEPARATOR . $fileData['tmp_name']);
+                    if (!$validator->validate($tempFile, $errorStore)) {
+                        // Errors are already stored.
+                        continue;
+                    }
+                }
+                $listFiles[] = $fileData;
+            }
+            if ($hasError) {
+                continue;
+            }
+
+            // Remove the added media directory from list of media.
+            array_pop($newDataMedias);
+            foreach ($listFiles as $index => $fileData) {
+                $dataMedia['ingest_file_data'] = $fileData;
+                $newDataMedias[] = $dataMedia;
+            }
+        }
+
+        $data['o:media'] = $newDataMedias;
+        $request->setContent($data);
+    }
+
+    public function handleAfterSaveItem(Event $event): void
+    {
+        // Prepare thumbnailing only if needed.
+        $needThumbnailing = false;
+
+        /**
+         * @var \Omeka\Entity\Item $item
+         * @var \Omeka\Entity\Media $media
+         */
+        $item = $event->getParam('response')->getContent();
+        foreach ($item->getMedia() as $media) {
+            if (!$media->hasThumbnails()
+                && $media->getMediaType()
+                && $media->getIngester() === 'bulk_upload'
+            ) {
+                $needThumbnailing = true;
+                break;
+            }
+        }
+
+        if (!$needThumbnailing) {
+            return;
+        }
+
+        $services = $this->getServiceLocator();
+
+        // Create the thumbnails for the media ingested with "bulk_upload" via a
+        // job to avoid the 30 seconds issue with numerous files.
+        $args = [
+            'item_id' => $item->getId(),
+            'ingester' => 'bulk_upload',
+            'only_missing' => true,
+        ];
+        // When already in a background process (in particular bulk import), run
+        // synchronously without dispatching a new job. Using synchronous
+        // strategy causes Doctrine cascade issues with job owner, so create
+        // a "fake job" (not persisted).
+        // @todo Refactor to use a dedicated service class instead of fake job.
+        if ($this->isBackgroundProcess()) {
+            $job = new \Omeka\Entity\Job();
+            $job->setPid(null);
+            $job->setStatus(\Omeka\Entity\Job::STATUS_IN_PROGRESS);
+            $job->setClass(\EasyAdmin\Job\FileDerivativeBulkUpload::class);
+            $job->setArgs($args);
+            $job->setOwner($services->get('Omeka\AuthenticationService')->getIdentity());
+            $job->setStarted(new \DateTime('now'));
+            $jobClass = new \EasyAdmin\Job\FileDerivativeBulkUpload($job, $services);
+            $jobClass->perform();
         } else {
-            $message = new PsrMessage(
-                'This content is being edited by the user {user_name} and is therefore locked to prevent other users changes. This lock is in place since {date}.', // @translate
-                [
-                    'user_name' => $contentLockUser->getName(),
-                    'date' => $view->i18n()->dateFormat($contentLock->getCreated(), 'long', 'short'),
-                ]
-            );
-            $messageInput = new PsrMessage('Bypass the lock'); // @translate
-            $messageInput = new PsrMessage('<label><input type="checkbox" name="bypass_content_lock" class="bypass-content-lock" value="1" form="confirmform"/>{message_bypass}</label>', ['message_bypass' => $messageInput->setTranslator($translator)]);
+            // Dispatch as background job for web requests to avoid timeout.
+            $strategy = null;
+            /** @var \Omeka\Job\Dispatcher $dispatcher */
+            $dispatcher = $services->get(\Omeka\Job\Dispatcher::class);
+            $dispatcher->dispatch(\EasyAdmin\Job\FileDerivativeBulkUpload::class, $args, $strategy);
         }
-
-        echo sprintf($html, $messageWarn->setTranslator($translator), $message->setTranslator($translator), $messageInput->setTranslator($translator));
     }
 
-    public function contentLockingOnSave(Event $event): void
+    public function handleAfterSaveAsset(Event $event): void
     {
         /**
-         * @var \Laminas\ServiceManager\ServiceLocatorInterface $services
-         * @var \Omeka\Entity\User $user
-         * @var \Doctrine\ORM\EntityManager $entityManager
-         * @var \EasyAdmin\Entity\ContentLock $contentLock
+         * @var \Omeka\Entity\Asset $asset
          * @var \Omeka\Api\Request $request
          */
-        $services = $this->getServiceLocator();
-        $settings = $services->get('Omeka\Settings');
-        if (!$settings->get('easyadmin_content_lock')) {
-            return;
-        }
-
         $request = $event->getParam('request');
 
-        $entityId = $request->getId();
-        $entityName = $request->getResource();
-        if (!$entityId || !$entityName) {
+        $asset = $event->getParam('response')->getContent();
+        if (!$asset) {
             return;
         }
 
-        $this->removeExpiredContentLocks();
+        $fileData = $request->getFileData();
+        $hasFileError = !empty($fileData['file']['error'] ?? null);
 
-        $entityManager = $services->get('Omeka\EntityManager');
+        $storeOriginalName = $request->getValue('store_original_name');
+        if ($storeOriginalName && !$hasFileError) {
+            $this->storeAssetWithOriginalName($asset);
+        }
 
-        $contentLock = $entityManager->getRepository(ContentLock::class)
-            ->findOneBy(['entityId' => $entityId, 'entityName' => $entityName]);
-        if (!$contentLock) {
+        $optimize = $request->getValue('optimize');
+        if (!$optimize || $hasFileError) {
             return;
         }
 
-        $user = $services->get('Omeka\AuthenticationService')->getIdentity();
-        $contentLockUser = $contentLock->getUser();
-        if ($user->getId() === $contentLockUser->getId()) {
-            // The content lock won't be removed in case of a validation
-            // exception.
-            $entityManager->remove($contentLock);
-            return;
-        }
+        // Process the optimization.
 
-        $i18n = $services->get('ViewHelperManager')->get('i18n');
-
-        // When a lock is bypassed, keep it for the original user.
-        if ($request->getValue('bypass_content_lock')) {
-            $messenger = $services->get('ControllerPluginManager')->get('messenger');
-            $message = new PsrMessage(
-                'The lock in place since {date} has been bypassed, but the user {user_name} can override it on save.', // @translate
-                [
-                    'date' => $i18n->dateFormat($contentLock->getCreated(), 'long', 'short'),
-                    'user_name' => $contentLockUser->getName(),
-                ]
-            );
-            $messenger->addWarning($message);
-            return;
-        }
-
-        // Keep the message for backend api process.
-        $message = new PsrMessage(
-            'User {user} (#{userid}) tried to save {resource_name} #{resource_id} edited by the user {user_name} (#{user_id}) since {date}.', // @translate
-            [
-                'user' => $user->getName(),
-                'userid' => $user->getId(),
-                'resource_name' => $entityName,
-                'resource_id' => $entityId,
-                'user_name' => $contentLockUser->getName(),
-                'user_id' => $contentLockUser->getId(),
-                'date' => $i18n->dateFormat($contentLock->getCreated(), 'long', 'short'),
-            ]
-        );
-        $services->get('Omeka\Logger')->err($message);
-
-        $message = new PsrMessage(
-            'This content is being edited by the user {user_name} and is therefore locked to prevent other users changes. This lock is in place since {date}.', // @translate
-            [
-                'user_name' => $contentLockUser->getName(),
-                'date' => $i18n->dateFormat($contentLock->getCreated(), 'long', 'short'),
-            ]
-        );
-
-        // Throw exception for frontend and backend.
-        throw new \Omeka\Api\Exception\ValidationException((string) $message);
-    }
-
-    /**
-     * Remove content lock on resource deletion.
-     *
-     * The primary key is not a join column, so old deleted record can remain.
-     */
-    public function contentLockingOnDelete(Event $event): void
-    {
         /**
+         * @var \Laminas\Log\Logger $logger
+         * @var \Omeka\File\TempFile $tempFile
+         * @var \Omeka\File\Downloader $downloader
+         * @var \Omeka\File\Store\StoreInterface $store
          * @var \Doctrine\ORM\EntityManager $entityManager
-         * @var \EasyAdmin\Entity\ContentLock $contentLock
-         * @var \Omeka\Api\Request $request
+         * @var \Omeka\Api\Adapter\AssetAdapter $assetAdapter
+         * @var \Omeka\File\ThumbnailManager $thumbnailManager
+         * @var \Omeka\Mvc\Controller\Plugin\Messenger $messenger
+         * @var \Omeka\Api\Representation\AssetRepresentation $assetRepresentation
          */
         $services = $this->getServiceLocator();
-        $settings = $services->get('Omeka\Settings');
-        // Remove the content lock on delete even when the feature is disabled.
-        $isContentLockEnabled = $settings->get('easyadmin_content_lock');
+        $store = $services->get('Omeka\File\Store');
+        $logger = $services->get('Omeka\Logger');
+        $messenger = $services->get('ControllerPluginManager')->get('messenger');
+        $downloader = $services->get('Omeka\File\Downloader');
+        $assetAdapter = $services->get('Omeka\ApiAdapterManager')->get('assets');
+        $thumbnailManager = $services->get('Omeka\File\ThumbnailManager');
+        $assetRepresentation = $assetAdapter->getRepresentation($asset);
 
-        $request = $event->getParam('request');
-
-        $entityId = $request->getId();
-        $entityName = $request->getResource();
-        if (!$entityId || !$entityName) {
+        // Get asset as a temp file.
+        $assetUrl = $assetRepresentation->assetUrl();
+        $errorStore = new \Omeka\Stdlib\ErrorStore;
+        $tempFile = $downloader->download($assetUrl, $errorStore);
+        if (!$tempFile) {
+            $logger->err(new PsrMessage(
+                'An error occurred when fetching asset "{asset_filename}" (#{asset_id}): {errors}', // @translate
+                ['asset_filename' => $asset->getName(), 'asset_id' => $asset->getId(), 'errors' => $errorStore->getErrors()]
+            ));
+            $messenger->addErrors($errorStore->getErrors());
             return;
         }
 
-        $entityManager = $services->get('Omeka\EntityManager');
-
-        $contentLock = $entityManager->getRepository(ContentLock::class)
-            ->findOneBy(['entityId' => $entityId, 'entityName' => $entityName]);
-        if (!$contentLock) {
-            return;
-        }
-
-        if (!$isContentLockEnabled) {
-            // The content lock won't be removed in case of a validation
-            // exception.
-            $entityManager->remove($contentLock);
-            return;
-        }
-
-        $i18n = $services->get('ViewHelperManager')->get('i18n');
-
-        $user = $services->get('Omeka\AuthenticationService')->getIdentity();
-        $contentLockUser = $contentLock->getUser();
-
-        if ($user->getId() === $contentLockUser->getId()) {
-            $messenger = $services->get('ControllerPluginManager')->get('messenger');
+        $thumbnailer = $thumbnailManager->buildThumbnailer();
+        $thumbnailer->setSource($tempFile);
+        // SetOptions() is required to set the path for ImageMagick when used.
+        $thumbnailer->setOptions([]);
+        try {
+            $newFilePath = $thumbnailer->create('default', 800);
+        } catch (\Exception $e) {
             $message = new PsrMessage(
-                'You removed the resource you are editing somewhere since {date}.', // @translate
-                ['date' => $i18n->dateFormat($contentLock->getCreated(), 'long', 'short')]
+                'An error occurred when optimizing asset "{asset_filename}" (#{asset_id}): {error}', // @translate
+                ['asset_filename' => $asset->getName(), 'asset_id' => $asset->getId(), 'error' => $e->getMessage()]
             );
-            $messenger->addWarning($message);
-            // The content lock won't be removed in case of a validation
-            // exception.
-            $entityManager->remove($contentLock);
+            $logger->err($message->getMessage(), $message->getContext());
+            $messenger->addError($message);
+            $tempFile->delete();
             return;
         }
 
-        // When lock is bypassed on delete, don't keep it for the user editing.
+        // Check if the new size is really smaller: minimum 90% to keep quality.
+        $originalFileSize = $tempFile->getSize();
+        $newFileSize = filesize($newFilePath);
+        $gain = 100 - ($newFileSize * 100 / $originalFileSize);
 
-        // TODO Find a better way to check bypass content lock.
-        if ($request->getValue('bypass_content_lock')
-            || $request->getOption('bypass_content_lock')
-            || !empty($_POST['bypass_content_lock'])
+        // Remove the downloaded file.
+        $tempFile->delete();
+
+        if ($gain < 10) {
+            unlink($newFilePath);
+            return;
+        }
+
+        // Store the file with the new extension.
+        try {
+            $tempFile->setStorageId($asset->getStorageId());
+            $tempFile->setTempPath($newFilePath);
+            $tempFile->store('asset', 'jpg');
+        } catch (\Omeka\File\Exception\RuntimeException $e) {
+            $message = new PsrMessage(
+                'An error occurred when storing asset "{asset_filename}" (#{asset_id}): {error}', // @translate
+                ['asset_filename' => $asset->getName(), 'asset_id' => $asset->getId(), 'error' => $e->getMessage()]
+            );
+            $logger->err($message->getMessage(), $message->getContext());
+            $messenger->addError($message);
+            @unlink($newFilePath);
+            return;
+        }
+
+        // The temporary new file is moved by store(), so no cleanup needed.
+
+        // Remove the original file if the extension was different.
+        if ($asset->getExtension() !== 'jpg') {
+            $store->delete('asset/' . $asset->getFilename());
+        }
+
+        // Update the asset in database with the new media type and extension.
+        if ($asset->getExtension() !== 'jpg'
+            || $asset->getMediaType() !== 'image/jpeg'
         ) {
-            $messenger = $services->get('ControllerPluginManager')->get('messenger');
-            $message = new PsrMessage(
-                'You removed a resource currently locked in edition by {user_name} since {date}.', // @translate
-                [
-                    'user_name' => $contentLockUser->getName(),
-                    'date' => $i18n->dateFormat($contentLock->getCreated(), 'long', 'short'),
-                ]
-            );
-            $messenger->addWarning($message);
-            // Will be flushed automatically in post.
-            $entityManager->remove($contentLock);
+            // Update the original name with the new extension only when there
+            // was one.
+            $assetName = $asset->getName();
+            $assetExtension = $asset->getExtension();
+            if (!strcasecmp((string) pathinfo($assetName, PATHINFO_EXTENSION), $assetExtension)) {
+                $asset->setName(mb_substr($assetName, 0, - mb_strlen($assetExtension) - 1) . '.jpg');
+            }
+            // Use entity manager to avoid a loop of events.
+            $asset->setExtension('jpg');
+            $asset->setMediaType('image/jpeg');
+            $entityManager = $services->get('Omeka\EntityManager');
+            $entityManager->persist($asset);
+            $entityManager->flush();
+        }
+
+        $message = new PsrMessage(
+            'The asset "{asset_filename}" (#{asset_id}) has been successfully optimized by {percent}%, from {size_1} to {size_2} bytes.', // @translate
+            ['asset_filename' => $asset->getName(), 'asset_id' => $asset->getId(), 'percent' => (int) $gain, 'size_1' => $originalFileSize, 'size_2' => $newFileSize]
+        );
+        $logger->notice($message->getMessage(), $message->getContext());
+        $messenger->addSuccess($message);
+    }
+
+    /**
+     * Rename the stored asset file to use the original name instead of hash.
+     *
+     * If the name already exists in the store, a numeric suffix is appended.
+     */
+    protected function storeAssetWithOriginalName(\Omeka\Entity\Asset $asset): void
+    {
+        $services = $this->getServiceLocator();
+        $logger = $services->get('Omeka\Logger');
+
+        // This feature only works with the local file store.
+        $store = $services->get('Omeka\File\Store');
+        if (!$store instanceof \Omeka\File\Store\Local) {
             return;
         }
 
-        // Keep the message for backend api process.
-        $message = new PsrMessage(
-            'User {user} (#{userid}) tried to delete {resource_name} #{resource_id} edited by the user {user_name} (#{user_id}) since {date}.', // @translate
-            [
-                'user' => $user->getName(),
-                'userid' => $user->getId(),
-                'resource_name' => $entityName,
-                'resource_id' => $entityId,
-                'user_name' => $contentLockUser->getName(),
-                'user_id' => $contentLockUser->getId(),
-                'date' => $i18n->dateFormat($contentLock->getCreated(), 'long', 'short'),
-            ]
-        );
-        $services->get('Omeka\Logger')->err($message);
+        $config = $services->get('Config');
+        $basePath = $config['file_store']['local']['base_path'] ?: (OMEKA_PATH . '/files');
+        $assetDir = $basePath . '/asset';
 
-        $message = new PsrMessage(
-            'This content is being edited by the user {user_name} and is therefore locked to prevent other users changes. This lock is in place since {date}.', // @translate
-            [
-                'user_name' => $contentLockUser->getName(),
-                'date' => $i18n->dateFormat($contentLock->getCreated(), 'long', 'short'),
-            ]
-        );
+        $originalName = $asset->getName();
+        if (!$originalName) {
+            $logger->warn('Asset #{asset_id}: cannot rename, asset has no name.', ['asset_id' => $asset->getId()]);
+            return;
+        }
 
-        // Throw exception for frontend and backend.
-        // TODO Redirect to browse or show view instead of displaying the error.
-        throw new \Omeka\Api\Exception\ValidationException((string) $message);
+        // Sanitize the name for safe filesystem usage: keep only basename.
+        $originalName = basename($originalName);
+        // Remove characters that are problematic on filesystems.
+        $originalName = preg_replace('/[^\w.\-]/', '_', $originalName);
+        if (!strlen($originalName) || $originalName === '.' || $originalName === '..') {
+            $logger->warn('Asset #{asset_id}: cannot rename, sanitized name is empty.', ['asset_id' => $asset->getId()]);
+            return;
+        }
+
+        $extension = $asset->getExtension();
+        $currentFilename = $asset->getStorageId()
+            . ($extension ? '.' . $extension : '');
+        $currentPath = $assetDir . '/' . $currentFilename;
+        if (!file_exists($currentPath)) {
+            $logger->warn(new PsrMessage(
+                'Asset #{asset_id}: cannot rename, file "{filename}" not found in asset directory.', // @translate
+                ['asset_id' => $asset->getId(), 'filename' => $currentFilename]
+            ));
+            return;
+        }
+
+        // Build the new storage id from the original name without extension.
+        $nameInfo = pathinfo($originalName);
+        $baseName = $nameInfo['filename'];
+        $nameExt = isset($nameInfo['extension']) ? $nameInfo['extension'] : $extension;
+
+        // If the original name has no filename part (e.g. ".jpg"), use the
+        // current storage id.
+        if (!strlen($baseName)) {
+            return;
+        }
+
+        // Limit to 190 characters for database storage_id column.
+        $maxLength = 190;
+        if (mb_strlen($baseName) > $maxLength) {
+            $baseName = mb_substr($baseName, 0, $maxLength);
+        }
+
+        // Check uniqueness: if the file already exists, append _1, _2, etc.
+        $newStorageId = $baseName;
+        $newFilename = $newStorageId . ($nameExt ? '.' . $nameExt : '');
+        $newPath = $assetDir . '/' . $newFilename;
+        $index = 0;
+        while (file_exists($newPath) && $newPath !== $currentPath) {
+            $index++;
+            $suffix = '_' . $index;
+            // Truncate base name to leave room for suffix.
+            $truncatedBase = mb_substr($baseName, 0, $maxLength - mb_strlen($suffix));
+            $newStorageId = $truncatedBase . $suffix;
+            $newFilename = $newStorageId . ($nameExt ? '.' . $nameExt : '');
+            $newPath = $assetDir . '/' . $newFilename;
+        }
+
+        // Nothing to do if it already has the right name.
+        if ($newPath === $currentPath) {
+            return;
+        }
+
+        if (!@rename($currentPath, $newPath)) {
+            $error = error_get_last();
+            $logger->err(new PsrMessage(
+                'Unable to rename asset file from "{old}" to "{new}": {error}. Check that the web server has write permission on the directory "{dir}".', // @translate
+                ['old' => $currentFilename, 'new' => $newFilename, 'error' => $error['message'] ?? 'unknown error', 'dir' => $assetDir]
+            ));
+            return;
+        }
+
+        // Update the entity with the new storage id and extension.
+        $asset->setStorageId($newStorageId);
+        if ($nameExt && $nameExt !== $extension) {
+            $asset->setExtension($nameExt);
+        }
+        $entityManager = $services->get('Omeka\EntityManager');
+        $entityManager->persist($asset);
+        $entityManager->flush();
     }
 
-    protected function removeExpiredContentLocks(): void
+    /**
+     * Add search by asset name (issue Common #3).
+     *
+     * @see https://github.com/Daniel-KM/Omeka-S-module-Common/issues/3
+     */
+    public function handleAssetSearchQuery(Event $event): void
+    {
+        $query = $event->getParam('request')->getContent();
+
+        if (empty($query['search'])) {
+            return;
+        }
+
+        $search = trim((string) $query['search']);
+        if ($search === '') {
+            return;
+        }
+
+        /** @var \Doctrine\ORM\QueryBuilder $qb */
+        $qb = $event->getParam('queryBuilder');
+        $expr = $qb->expr();
+
+        $qb->andWhere($expr->like(
+            'omeka_root.name',
+            $qb->createNamedParameter('%' . addcslashes($search, '%_') . '%')
+        ));
+    }
+
+    public function handleFormAsset(Event $event): void
+    {
+        /** @var \Omeka\Form\AssetEditForm $form */
+        $form = $event->getTarget();
+        $element = new \Laminas\Form\Element\Checkbox();
+        $element
+            ->setName('optimize')
+            ->setLabel('Optimize size for web (may degrade quality)'); // @translate
+        $form->add($element);
+
+        $element = new \Laminas\Form\Element\Checkbox();
+        $element
+            ->setName('store_original_name')
+            ->setLabel('Store with original name'); // @translate
+        $form->add($element);
+    }
+
+    /**
+     * Check if the current process is a background one.
+     *
+     * The library to get status manages only admin, site or api requests.
+     * A background process is none of them.
+     */
+    protected function isBackgroundProcess(): bool
+    {
+        // Warning: there is a matched route ("site") for backend processes.
+        /** @var \Omeka\Mvc\Status $status */
+        $status = $this->getServiceLocator()->get('Omeka\Status');
+        return !$status->isApiRequest()
+            && !$status->isAdminRequest()
+            && !$status->isSiteRequest()
+            && (!method_exists($status, 'isKeyauthRequest') || !$status->isKeyauthRequest());
+    }
+
+    public function checkAddonVersions(Event $event): void
     {
         $services = $this->getServiceLocator();
         $settings = $services->get('Omeka\Settings');
-        $duration = (int) $settings->get('easyadmin_content_lock_duration');
-        if (!$duration) {
+        if (!$settings->get('version_notifications')) {
             return;
         }
 
-        // Use connection, because entity manager won't remove values and will
-        // cause complex flush process/sync.
-        /** @var \Doctrine\DBAL\Connection $connection */
-        $connection = $services->get('Omeka\Connection');
-        $connection->executeStatement(
-            'DELETE FROM content_lock WHERE created < DATE_SUB(NOW(), INTERVAL :duration SECOND)',
-            ['duration' => $duration]
-        );
+        /** @var \Laminas\View\Renderer\PhpRenderer $view */
+        $view = $event->getTarget();
+
+        $json = [];
+        foreach ($view->modules ?? [] as $module) {
+            if ($module->getState() !== \Omeka\Module\Manager::STATE_ACTIVE) {
+                $moduleId = $module->getId();
+                $moduleName = $module->getName();
+                $moduleVersion = $module->getIni('version') ?: $module->getDb('version');
+                if ($moduleId && $moduleName && $moduleVersion) {
+                    $json[$moduleName] = [
+                        'id' => $moduleId,
+                        'version' => $moduleVersion,
+                    ];
+                }
+            }
+        }
+
+        $style = '.version-notification.new-version-is-dev { background-color:#fff6e6; color: orange; }'
+            . '.version-notification.new-version-is-dev::after { content: " (dev)"; color: red; }';
+
+        $view->headStyle()
+            ->appendStyle($style);
+
+        $notifyVersionInactive = (bool) $settings->get('easyadmin_addon_notify_version_inactive');
+        $notifyVersionDev = (bool) $settings->get('easyadmin_addon_notify_version_dev');
+
+        $script = 'const notifyVersionInactive = ' . json_encode($notifyVersionInactive) . ";\n"
+            . 'const notifyVersionDev = ' . json_encode($notifyVersionDev) . ";\n"
+            // Keep original translation.
+            . 'const msgNewVersion = ' . json_encode(trim(sprintf($view->translate('A new version of this module is available. %s'), ''))) . ';'
+            . 'const unmanagedAddons = ' . json_encode($json, 320) . ";\n";
+
+        $view->headScript()
+            ->appendScript($script)
+            ->appendFile($view->assetUrl('js/check-versions.js', 'EasyAdmin'), 'text/javascript', ['defer' => 'defer']);
     }
 
     /**
-     * Check or create the destination folder.
-     *
-     * @param string $dirPath Absolute path.
-     * @return string|null
+     * Avoid to display ingester in item edit, because it's an internal one.
      */
-    protected function checkDestinationDir($dirPath): ?string
+    public function handleMediaIngesterRegisteredNames(Event $event): void
     {
-        if (file_exists($dirPath)) {
-            if (!is_dir($dirPath) || !is_readable($dirPath) || !is_writeable($dirPath)) {
-                $this->getServiceLocator()->get('Omeka\Logger')->err(
-                    'The directory "{path}" is not writeable.', // @translate
-                    ['path' => $dirPath]
-                );
-                return null;
-            }
-            return $dirPath;
+        $names = $event->getParam('registered_names');
+        $key = array_search('bulk_uploaded', $names);
+        if ($key !== false) {
+            unset($names[$key]);
+            $event->setParam('registered_names', $names);
         }
-
-        $result = @mkdir($dirPath, 0775, true);
-        if (!$result) {
-            $this->getServiceLocator()->get('Omeka\Logger')->err(
-                'The directory "{path}" is not writeable: {error}.', // @translate
-                ['path' => $dirPath, 'error' => error_get_last()['message']]
-            );
-            return null;
-        }
-        return $dirPath;
-    }
-
-    /**
-     * Remove a dir from filesystem.
-     *
-     * @param string $dirpath Absolute path.
-     */
-    private function rmDir(string $dirPath): bool
-    {
-        if (!file_exists($dirPath)) {
-            return true;
-        }
-        if (strpos($dirPath, '/..') !== false || substr($dirPath, 0, 1) !== '/') {
-            return false;
-        }
-        $files = array_diff(scandir($dirPath), ['.', '..']);
-        foreach ($files as $file) {
-            $path = $dirPath . '/' . $file;
-            if (is_dir($path)) {
-                $this->rmDir($path);
-            } else {
-                unlink($path);
-            }
-        }
-        return rmdir($dirPath);
     }
 }

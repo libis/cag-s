@@ -2,7 +2,7 @@
 
 /*
  * Copyright BibLibre, 2017
- * Copyright Daniel Berthereau, 2017-2021
+ * Copyright Daniel Berthereau, 2017-2023
  *
  * This software is governed by the CeCILL license under French law and abiding
  * by the rules of distribution of free software.  You can use, modify and/ or
@@ -30,6 +30,7 @@
 
 namespace SearchSolr\Form\Admin;
 
+use AdvancedSearch\Form\Element as AdvancedSearchElement;
 use Laminas\Form\Element;
 use Laminas\Form\Fieldset;
 use Laminas\Form\Form;
@@ -98,7 +99,7 @@ class SolrMapForm extends Form
                 'name' => 'filter_resources',
                 'type' => Element\Text::class,
                 'options' => [
-                    'label' => 'Index only resources matching this standard query', // @translate
+                    'label' => 'Only values of resources matching this standard query', // @translate
                 ],
                 'attributes' => [
                     'id' => 'filter_resources',
@@ -106,10 +107,32 @@ class SolrMapForm extends Form
                 ],
             ])
             ->add([
+                'name' => 'filter_values',
+                'type' => Element\Text::class,
+                'options' => [
+                    'label' => 'Only values matching this regex', // @translate
+                ],
+                'attributes' => [
+                    'id' => 'filter_values',
+                    'required' => false,
+                ],
+            ])
+            ->add([
+                'name' => 'filter_uris',
+                'type' => Element\Text::class,
+                'options' => [
+                    'label' => 'Only uris matching this regex', // @translate
+                ],
+                'attributes' => [
+                    'id' => 'filter_uris',
+                    'required' => false,
+                ],
+            ])
+            ->add([
                 'name' => 'filter_value_resources',
                 'type' => Element\Text::class,
                 'options' => [
-                    'label' => 'Index only value resources matching this standard query', // @translate
+                    'label' => 'Only linked resources matching this standard query', // @translate
                 ],
                 'attributes' => [
                     'id' => 'filter_value_resources',
@@ -120,7 +143,7 @@ class SolrMapForm extends Form
                 'name' => 'data_types',
                 'type' => SearchSolrElement\DataTypeSelect::class,
                 'options' => [
-                    'label' => 'Index only these data types', // @translate
+                    'label' => 'Only these data types', // @translate
                 ],
                 'attributes' => [
                     'id' => 'data_types',
@@ -141,10 +164,50 @@ class SolrMapForm extends Form
                     'multiple' => true,
                     'required' => false,
                 ],
+            ])
+            ->add([
+                'name' => 'filter_languages',
+                'type' => AdvancedSearchElement\ArrayText::class,
+                'options' => [
+                    'label' => 'Only languages', // @translate
+                    'value_separator' => ' ',
+                ],
+                'attributes' => [
+                    'id' => 'filter_languages',
+                    'required' => false,
+                ],
+            ])
+            ->add([
+                'name' => 'filter_visibility',
+                'type' => Element\Radio::class,
+                'options' => [
+                    'label' => 'Only visibility', // @translate
+                    'value_options' => [
+                        '' => 'All', // @translate
+                        'public' => 'Public', // @translate
+                        'private' => 'Private', // @translate
+                    ],
+                ],
+                'attributes' => [
+                    'id' => 'filter_visibility',
+                    'required' => false,
+                    'value' => '',
+                ],
             ]);
 
         $settingsFieldset = new Fieldset('o:settings');
         $settingsFieldset
+            ->add([
+                'name' => 'label',
+                'type' => Element\Text::class,
+                'options' => [
+                    'label' => 'Default label', // @translate
+                    'info' => 'The label is automatically translated if it exists in Omeka.', // @translate
+                ],
+                'attributes' => [
+                    'id' => 'label',
+                ],
+            ])
             ->add([
                 'name' => 'formatter',
                 'type' => Element\Radio::class,
@@ -157,24 +220,93 @@ class SolrMapForm extends Form
                     'id' => 'formatter',
                     'value' => '',
                 ],
-            ])
-            ->add([
-                'name' => 'label',
-                'type' => Element\Text::class,
-                'options' => [
-                    'label' => 'Default label', // @translate
-                    'info' => 'The label is automatically translated if it exists in Omeka.', // @translate
-                ],
-                'attributes' => [
-                    'id' => 'label',
-                ],
             ]);
+        if (class_exists('Table\Form\Element\TablesSelect')) {
+            $settingsFieldset
+                ->add([
+                    'name' => 'table',
+                    'type' => \Table\Form\Element\TablesSelect::class,
+                    'options' => [
+                        'label' => 'Table for formatter "Table"', // @translate
+                        'disable_group_by_owner' => true,
+                        'empty_option' => '',
+                    ],
+                    'attributes' => [
+                        'id' => 'table',
+                        'class' => 'chosen-select',
+                        'required' => false,
+                        'data-placeholder' => 'Select a table…', // @translate
+                        'value' => '',
+                        // Setting for formatter "table" only.
+                        'data-formatter' => 'table',
+                    ],
+                ])
+                ->add([
+                    'name' => 'table_mode',
+                    'type' => Element\Radio::class,
+                    'options' => [
+                        'label' => 'Table: Mode of normalization', // @translate
+                        'info' => 'If the value is displayed (facets, filters…), it is recommended to index label only.', // @translate
+                        'value_options' => [
+                            'label' => 'Label only', // @translate
+                            'code' => 'Code only', // @translate
+                            'both' => 'Label and code ', // @translate
+                        ],
+                    ],
+                    'attributes' => [
+                        'id' => 'table_mode',
+                        'required' => false,
+                        'value' => 'label',
+                        'data-formatter' => 'table',
+                    ],
+                ])
+                ->add([
+                    'name' => 'table_index_original',
+                    'type' => Element\Checkbox::class,
+                    'options' => [
+                        'label' => 'Table: index original value too', // @translate
+                    ],
+                    'attributes' => [
+                        'id' => 'table_index_original',
+                        'required' => false,
+                        'data-formatter' => 'table',
+                    ],
+                ])
+                ->add([
+                    'name' => 'table_check_strict',
+                    'type' => Element\Checkbox::class,
+                    'options' => [
+                        'label' => 'Table: strict check (same case, same diacritics)', // @translate
+                    ],
+                    'attributes' => [
+                        'id' => 'table_check_strict',
+                        'required' => false,
+                        'data-formatter' => 'table',
+                    ],
+                ]);
+
+            // TODO Why the fieldset does not use form manager to load and init form element?
+            $settingsFieldset->get('table')
+                ->setApiManager($this->apiManager);
+        }
+
         $this->add($settingsFieldset);
 
         $inputFilter = $this->getInputFilter();
-        $inputFilter->get('o:settings')
+        $inputFilter
+            ->get('o:pool')
+            ->add([
+                'name' => 'filter_visibility',
+                'required' => false,
+            ]);
+        $inputFilter
+            ->get('o:settings')
             ->add([
                 'name' => 'formatter',
+                'required' => false,
+            ])
+            ->add([
+                'name' => 'table_mode',
                 'required' => false,
             ]);
     }
@@ -225,9 +357,15 @@ class SolrMapForm extends Form
 
     protected function getFormatterOptions(): array
     {
+        $noTableModule = !class_exists('Table\Form\Element\TablesSelect');
+
         $options = [];
         foreach ($this->valueFormatterManager->getRegisteredNames() as $name) {
             $valueFormatter = $this->valueFormatterManager->get($name);
+            if ($noTableModule && $name === 'table') {
+                $options[$name] = sprintf('%s (require module Table)', $valueFormatter->getLabel());
+                continue;
+            }
             $options[$name] = $valueFormatter->getLabel();
         }
         return $options;

@@ -20,6 +20,27 @@ class DbResourceTitle extends AbstractCheck
      */
     protected $repository;
 
+    /**
+     * @var bool
+     */
+    protected $reportFull = false;
+
+    /**
+     * @var array
+     */
+    protected $templateTitleTerms = [];
+
+    /**
+     * Fallback property ids per template (from AdvancedResourceTemplate).
+     * @var array
+     */
+    protected $templateFallbackTerms = [];
+
+    /**
+     * @var bool
+     */
+    protected $hasAdvancedResourceTemplate = false;
+
     public function perform(): void
     {
         parent::perform();
@@ -29,6 +50,9 @@ class DbResourceTitle extends AbstractCheck
 
         $process = $this->getArg('process');
         $processFix = $process === 'db_resource_title_fix';
+
+        // Report type: 'full' lists all resources, 'partial' lists only different.
+        $this->reportFull = $this->getArg('report_type') === 'full';
 
         $this->checkDbResourceTitle($processFix);
 
@@ -60,28 +84,266 @@ class DbResourceTitle extends AbstractCheck
             return true;
         }
 
-        $totalToProcess = $totalResources;
+        $totalToProcess = (int) $totalResources;
 
         // For quick process, get all the title terms of all templates one time.
         $sql = <<<'SQL'
-SELECT id, IFNULL(title_property_id, 1) AS "title_property_id"
-FROM resource_template
-ORDER BY id ASC;
-SQL;
-        $templateTitleTerms = $this->connection->executeQuery($sql)->fetchAllKeyValue();
+            SELECT id, IFNULL(title_property_id, 1) AS "title_property_id"
+            FROM resource_template
+            ORDER BY id ASC;
+            SQL;
+        $this->templateTitleTerms = $this->connection->executeQuery($sql)->fetchAllKeyValue();
 
-        // It's possible to do the process with some not so complex sql queries,
-        // but it's done manually for now. May be complicate with the title of
-        // the linked resources.
+        // Check for AdvancedResourceTemplate fallback properties.
+        $this->prepareAdvancedResourceTemplateFallbacks();
 
-        // Do the process.
+        // Use SQL for check mode (faster), entities or API for fix mode.
+        if ($fix) {
+            $mode = $this->getArg('mode', 'direct');
+            if ($mode === 'api') {
+                $this->logger->info(
+                    'Using API mode: triggers all Omeka events and modules.' // @translate
+                );
+                return $this->checkDbResourceTitleWithApi($totalToProcess);
+            }
+            return $this->checkDbResourceTitleWithEntities($totalToProcess);
+        }
 
+        return $this->checkDbResourceTitleWithSql($totalToProcess);
+    }
+
+    /**
+     * Prepare fallback properties from AdvancedResourceTemplate if available.
+     */
+    protected function prepareAdvancedResourceTemplateFallbacks(): void
+    {
+        $services = $this->getServiceLocator();
+        $moduleManager = $services->get('Omeka\ModuleManager');
+        $module = $moduleManager->getModule('AdvancedResourceTemplate');
+        $this->hasAdvancedResourceTemplate = $module
+            && $module->getState() === \Omeka\Module\Manager::STATE_ACTIVE;
+
+        if (!$this->hasAdvancedResourceTemplate) {
+            return;
+        }
+
+        // Get fallback properties from resource_template_data table.
+        $sql = <<<'SQL'
+            SELECT resource_template_id, data
+            FROM resource_template_data
+            SQL;
+        $rows = $this->connection->executeQuery($sql)->fetchAllAssociative();
+
+        $easyMeta = $services->get('Common\EasyMeta');
+
+        foreach ($rows as $row) {
+            $templateId = (int) $row['resource_template_id'];
+            $data = json_decode($row['data'], true);
+            if (!$data || empty($data['title_fallback_properties'])) {
+                continue;
+            }
+            // Convert property terms to ids.
+            $fallbackIds = [];
+            foreach ($data['title_fallback_properties'] as $term) {
+                $propId = $easyMeta->propertyId($term);
+                if ($propId) {
+                    $fallbackIds[] = $propId;
+                }
+            }
+            if ($fallbackIds) {
+                $this->templateFallbackTerms[$templateId] = $fallbackIds;
+            }
+        }
+
+        if (count($this->templateFallbackTerms)) {
+            $this->logger->info(
+                '{count} templates have fallback title properties.', // @translate
+                ['count' => count($this->templateFallbackTerms)]
+            );
+        }
+    }
+
+    /**
+     * Check titles using raw SQL (faster, for check-only mode).
+     */
+    protected function checkDbResourceTitleWithSql(int $totalToProcess): bool
+    {
         $translator = $this->getServiceLocator()->get('MvcTranslator');
         $yes = $translator->translate('Yes'); // @translate
+
+        // Use larger batch for scalar queries.
+        $batchSize = self::SQL_LIMIT_LARGE;
+
+        // SQL to get resources with their current title and template.
+        $sqlBase = <<<'SQL'
+            SELECT r.id, r.resource_type, r.title, r.resource_template_id
+            FROM resource r
+            ORDER BY r.id ASC
+            SQL;
+
+        // SQL to get the first value for a property (title) per resource.
+        // This handles literal values, URIs, but not linked resources recursively.
+        $sqlValues = <<<'SQL'
+            SELECT v.resource_id,
+                   COALESCE(v.value, v.uri) AS computed_title
+            FROM value v
+            WHERE v.resource_id IN (:ids)
+              AND v.property_id = :prop
+            ORDER BY v.resource_id, v.id
+            SQL;
 
         $offset = 0;
         $totalProcessed = 0;
         $totalSucceed = 0;
+
+        while (true) {
+            $sql = $sqlBase . ' LIMIT ' . (int) $batchSize . ' OFFSET ' . (int) $offset;
+            $rows = $this->connection->executeQuery($sql)->fetchAllAssociative();
+            if (!count($rows) || $totalProcessed >= $totalToProcess) {
+                break;
+            }
+
+            if ($this->shouldStop()) {
+                $this->logger->warn(
+                    'The job was stopped.' // @translate
+                );
+                return false;
+            }
+
+            if ($totalProcessed) {
+                $this->logger->info(
+                    '{processed}/{total} resources processed.', // @translate
+                    ['processed' => $totalProcessed, 'total' => $totalToProcess]
+                );
+            }
+
+            // Group resources by title property to batch value queries.
+            $resourcesByTitleProp = [];
+            $resourceData = [];
+            foreach ($rows as $row) {
+                $resourceId = (int) $row['id'];
+                $templateId = $row['resource_template_id'];
+                $titlePropId = ($templateId && isset($this->templateTitleTerms[$templateId]))
+                    ? (int) $this->templateTitleTerms[$templateId]
+                    : 1;
+                $resourcesByTitleProp[$titlePropId][] = $resourceId;
+                $resourceData[$resourceId] = [
+                    'type' => $row['resource_type'],
+                    'title' => $row['title'],
+                    'title_prop_id' => $titlePropId,
+                    'template_id' => $templateId,
+                ];
+            }
+
+            // Fetch computed titles for each title property group.
+            $computedTitles = [];
+            foreach ($resourcesByTitleProp as $titlePropId => $resourceIds) {
+                $result = $this->connection->executeQuery(
+                    $sqlValues,
+                    ['ids' => $resourceIds, 'prop' => $titlePropId],
+                    ['ids' => \Doctrine\DBAL\Connection::PARAM_INT_ARRAY, 'prop' => \PDO::PARAM_INT]
+                )->fetchAllAssociative();
+                // Keep only first value per resource.
+                foreach ($result as $valueRow) {
+                    $resId = (int) $valueRow['resource_id'];
+                    if (!isset($computedTitles[$resId])) {
+                        $computedTitles[$resId] = $valueRow['computed_title'];
+                    }
+                }
+            }
+
+            // Handle fallback properties from AdvancedResourceTemplate.
+            if ($this->hasAdvancedResourceTemplate) {
+                $this->applyFallbackTitles($resourceData, $computedTitles, $sqlValues);
+            }
+
+            // Compare titles.
+            foreach ($resourceData as $resourceId => $data) {
+                $existingTitle = $data['title'];
+                $realTitle = $computedTitles[$resourceId] ?? null;
+
+                // Normalize titles like Omeka does.
+                if ($existingTitle === '' || $existingTitle === null) {
+                    $existingTitle = null;
+                    $shortExistingTitle = '';
+                } else {
+                    $shortExistingTitle = strtr(mb_substr($existingTitle, 0, 1000), ["\n" => ' ', "\r" => ' ', "\v" => ' ', "\t" => ' ']);
+                }
+
+                if ($realTitle === null || $realTitle === '' || trim($realTitle) === '') {
+                    $realTitle = null;
+                    $shortRealTitle = '';
+                } else {
+                    $realTitle = trim($realTitle);
+                    $shortRealTitle = strtr(mb_substr($realTitle, 0, 1000), ["\n" => ' ', "\r" => ' ', "\v" => ' ', "\t" => ' ']);
+                }
+
+                $different = $existingTitle !== $realTitle;
+
+                if ($different) {
+                    ++$totalSucceed;
+                    $row = [
+                        'type' => $data['type'],
+                        'resource' => $resourceId,
+                        'existing' => $shortExistingTitle,
+                        'real' => $shortRealTitle,
+                        'different' => $yes,
+                        'fixed' => '',
+                    ];
+                    $this->writeRow($row);
+                } elseif ($this->reportFull) {
+                    $row = [
+                        'type' => $data['type'],
+                        'resource' => $resourceId,
+                        'existing' => $shortExistingTitle,
+                        'real' => $shortRealTitle,
+                        'different' => '',
+                        'fixed' => '',
+                    ];
+                    $this->writeRow($row);
+                }
+
+                ++$totalProcessed;
+            }
+
+            unset($rows, $resourcesByTitleProp, $resourceData, $computedTitles);
+            $offset += $batchSize;
+        }
+
+        $this->logger->notice(
+            'End of process: {processed}/{total} processed, {total_succeed} different.', // @translate
+            [
+                'processed' => $totalProcessed,
+                'total' => $totalToProcess,
+                'total_succeed' => $totalSucceed,
+            ]
+        );
+
+        return true;
+    }
+
+    /**
+     * Check and fix titles using Doctrine entities (for fix mode).
+     */
+    protected function checkDbResourceTitleWithEntities(int $totalToProcess): bool
+    {
+        $translator = $this->getServiceLocator()->get('MvcTranslator');
+        $yes = $translator->translate('Yes'); // @translate
+
+        // SQL to batch-fetch title values, avoiding N+1 from entity lazy-load.
+        $sqlValues = <<<'SQL'
+            SELECT v.resource_id,
+                   COALESCE(v.value, v.uri) AS computed_title
+            FROM value v
+            WHERE v.resource_id IN (:ids)
+              AND v.property_id = :prop
+            ORDER BY v.resource_id, v.id
+            SQL;
+
+        $offset = 0;
+        $totalProcessed = 0;
+        $totalSucceed = 0;
+
         while (true) {
             /** @var \Omeka\Entity\Resource[] $resources */
             $resources = $this->resourceRepository->findBy([], ['id' => 'ASC'], self::SQL_LIMIT, $offset);
@@ -90,7 +352,7 @@ SQL;
             }
 
             if ($offset) {
-                $this->logger->notice(
+                $this->logger->info(
                     '{processed}/{total} resources processed.', // @translate
                     ['processed' => $offset, 'total' => $totalToProcess]
                 );
@@ -103,104 +365,260 @@ SQL;
                 }
             }
 
+            // Group resources by title property to batch value queries.
+            $resourcesByTitleProp = [];
+            $resourceIndex = [];
             foreach ($resources as $resource) {
+                $resourceId = $resource->getId();
                 $template = $resource->getResourceTemplate();
-                $titleTermId = $template && isset($templateTitleTerms[$template->getId()])
-                    ? (int) $templateTitleTerms[$template->getId()]
+                $templateId = $template ? $template->getId() : null;
+                $titleTermId = $templateId && isset($this->templateTitleTerms[$templateId])
+                    ? (int) $this->templateTitleTerms[$templateId]
                     : 1;
+                $resourcesByTitleProp[$titleTermId][] = $resourceId;
+                $resourceIndex[$resourceId] = [
+                    'entity' => $resource,
+                    'title_prop_id' => $titleTermId,
+                    'template_id' => $templateId,
+                ];
+            }
 
+            // Batch-fetch computed titles via DBAL (one query per title property).
+            $computedTitles = [];
+            foreach ($resourcesByTitleProp as $titlePropId => $resourceIds) {
+                $result = $this->connection->executeQuery(
+                    $sqlValues,
+                    ['ids' => $resourceIds, 'prop' => $titlePropId],
+                    ['ids' => \Doctrine\DBAL\Connection::PARAM_INT_ARRAY, 'prop' => \PDO::PARAM_INT]
+                )->fetchAllAssociative();
+                foreach ($result as $valueRow) {
+                    $resId = (int) $valueRow['resource_id'];
+                    if (!isset($computedTitles[$resId])) {
+                        $computedTitles[$resId] = $valueRow['computed_title'];
+                    }
+                }
+            }
+
+            // Handle fallback properties from AdvancedResourceTemplate.
+            if ($this->hasAdvancedResourceTemplate) {
+                // Build resourceData array matching applyFallbackTitles signature.
+                $resourceData = [];
+                foreach ($resourceIndex as $resourceId => $info) {
+                    $resourceData[$resourceId] = [
+                        'template_id' => $info['template_id'],
+                    ];
+                }
+                $this->applyFallbackTitles($resourceData, $computedTitles, $sqlValues);
+            }
+
+            foreach ($resourceIndex as $resourceId => $info) {
+                $resource = $info['entity'];
                 $existingTitle = $resource->getTitle();
-                $realTitle = $this->getValueFromResource($resource, $titleTermId);
+                $realTitle = $computedTitles[$resourceId] ?? null;
 
                 if ($existingTitle === '' || $existingTitle === null) {
                     $existingTitle = null;
                     $shortExistingTitle = '';
                 } else {
-                    $shortExistingTitle = str_replace(["\n", "\r", "\v", "\t"], [' ', ' ', ' ', ' '], mb_substr($existingTitle, 0, 1000));
+                    $shortExistingTitle = strtr(mb_substr($existingTitle, 0, 1000), ["\n" => ' ', "\r" => ' ', "\v" => ' ', "\t" => ' ']);
                 }
 
-                // Real title is trimmed too, like in Omeka.
                 if ($realTitle === null || $realTitle === '' || trim($realTitle) === '') {
                     $realTitle = null;
                     $shortRealTitle = '';
                 } else {
                     $realTitle = trim($realTitle);
-                    $shortRealTitle = str_replace(["\n", "\r", "\v", "\t"], [' ', ' ', ' ', ' '], mb_substr($realTitle, 0, 1000));
+                    $shortRealTitle = strtr(mb_substr($realTitle, 0, 1000), ["\n" => ' ', "\r" => ' ', "\v" => ' ', "\t" => ' ']);
                 }
 
                 $different = $existingTitle !== $realTitle;
 
-                $row = [
-                    'type' => $resource->getResourceName(),
-                    'resource' => $resource->getId(),
-                    'existing' => $shortExistingTitle,
-                    'real' => $shortRealTitle,
-                    'different' => '',
-                    'fixed' => '',
-                ];
-
                 if ($different) {
                     ++$totalSucceed;
-                    $row['different'] = $yes;
-                    if ($fix) {
-                        $resource->setTitle($realTitle);
-                        $this->entityManager->persist($resource);
-                        $this->logger->info(
-                            'Fixed title for resource "{resource_type}" #{resource_id}.', // @translate
-                            ['resource_id' => $resource->getId(), 'resource_type' => $resource->getResourceName(), 'resource_id' => $resource->getId()]
-                        );
-                        $row['fixed'] = $yes;
-                    } else {
-                        if ($realTitle === null) {
-                            $this->logger->info(
-                                'Title for resource "{resource_type}" #{resource_id} should be empty.', // @translate
-                                ['resource_type' => $resource->getResourceName(), 'resource_id' => $resource->getId()]
-                            );
-                        } else {
-                            $this->logger->info(
-                                'Title for resource "{resource_type}" #{resource_id} should be "{title}".', // @translate
-                                ['resource_type' => $resource->getResourceName(), 'resource_id' => $resource->getId(), 'title' => $shortRealTitle]
-                            );
-                        }
-                    }
+                    $resource->setTitle($realTitle);
+                    $this->entityManager->persist($resource);
+                    $row = [
+                        'type' => $resource->getResourceName(),
+                        'resource' => $resource->getId(),
+                        'existing' => $shortExistingTitle,
+                        'real' => $shortRealTitle,
+                        'different' => $yes,
+                        'fixed' => $yes,
+                    ];
+                    $this->writeRow($row);
+                } elseif ($this->reportFull) {
+                    $row = [
+                        'type' => $resource->getResourceName(),
+                        'resource' => $resource->getId(),
+                        'existing' => $shortExistingTitle,
+                        'real' => $shortRealTitle,
+                        'different' => '',
+                        'fixed' => '',
+                    ];
+                    $this->writeRow($row);
                 }
-
-                $this->writeRow($row);
-
-                // Avoid memory issue.
-                unset($resource);
 
                 ++$totalProcessed;
             }
 
-            unset($resources);
+            unset($resources, $resourceIndex, $resourcesByTitleProp, $computedTitles);
             $this->entityManager->flush();
             $this->entityManager->clear();
 
             $offset += self::SQL_LIMIT;
         }
 
-        if ($fix) {
-            $this->logger->notice(
-                'End of process: {processed}/{total} processed, {total_succeed} updated.', // @translate
-                [
-                    'processed' => $totalProcessed,
-                    'total' => $totalToProcess,
-                    'total_succeed' => $totalSucceed,
-                ]
-                );
-        } else {
-            $this->logger->notice(
-                'End of process: {processed}/{total} processed, {total_succeed} different.', // @translate
-                [
-                    'processed' => $totalProcessed,
-                    'total' => $totalToProcess,
-                    'total_succeed' => $totalSucceed,
-                ]
-            );
-        }
+        $this->logger->notice(
+            'End of process: {processed}/{total} processed, {total_succeed} updated.', // @translate
+            [
+                'processed' => $totalProcessed,
+                'total' => $totalToProcess,
+                'total_succeed' => $totalSucceed,
+            ]
+        );
 
         return true;
+    }
+
+    /**
+     * Fix titles using Omeka API (triggers all events and modules).
+     *
+     * This mode is slower but ensures full consistency by triggering all Omeka
+     * events, including modules like AdvancedResourceTemplate.
+     */
+    protected function checkDbResourceTitleWithApi(int $totalToProcess): bool
+    {
+        $translator = $this->getServiceLocator()->get('MvcTranslator');
+        $yes = $translator->translate('Yes'); // @translate
+
+        // Get all resource ids grouped by type.
+        $sqlIds = <<<'SQL'
+            SELECT id, resource_type, title
+            FROM resource
+            ORDER BY id ASC
+            SQL;
+
+        $offset = 0;
+        $totalProcessed = 0;
+        $totalSucceed = 0;
+        $batchSize = self::SQL_LIMIT;
+
+        while (true) {
+            $sql = $sqlIds . ' LIMIT ' . (int) $batchSize . ' OFFSET ' . (int) $offset;
+            $rows = $this->connection->executeQuery($sql)->fetchAllAssociative();
+            if (!count($rows)) {
+                break;
+            }
+
+            if ($this->shouldStop()) {
+                $this->logger->warn(
+                    'The job was stopped.' // @translate
+                );
+                return false;
+            }
+
+            if ($offset) {
+                $this->logger->info(
+                    '{processed}/{total} resources processed.', // @translate
+                    ['processed' => $offset, 'total' => $totalToProcess]
+                );
+            }
+
+            foreach ($rows as $row) {
+                $resourceId = (int) $row['id'];
+                $resourceType = $row['resource_type'];
+                $existingTitle = $row['title'];
+
+                // Map resource_type to API resource name.
+                $resourceName = $this->mapResourceTypeToName($resourceType);
+                if (!$resourceName) {
+                    ++$totalProcessed;
+                    continue;
+                }
+
+                try {
+                    // Partial update triggers all events without changing data.
+                    $this->api->update($resourceName, $resourceId, [], ['isPartial' => true]);
+
+                    // Re-read the resource to get the new title.
+                    $newTitle = $this->connection->executeQuery(
+                        'SELECT title FROM resource WHERE id = ?',
+                        [$resourceId]
+                    )->fetchOne();
+
+                    $different = $existingTitle !== $newTitle;
+
+                    if ($different) {
+                        ++$totalSucceed;
+                        $shortExistingTitle = $existingTitle !== null && $existingTitle !== ''
+                            ? strtr(mb_substr($existingTitle, 0, 1000), ["\n" => ' ', "\r" => ' ', "\v" => ' ', "\t" => ' '])
+                            : '';
+                        $shortNewTitle = $newTitle !== null && $newTitle !== ''
+                            ? strtr(mb_substr($newTitle, 0, 1000), ["\n" => ' ', "\r" => ' ', "\v" => ' ', "\t" => ' '])
+                            : '';
+                        $row = [
+                            'type' => $resourceType,
+                            'resource' => $resourceId,
+                            'existing' => $shortExistingTitle,
+                            'real' => $shortNewTitle,
+                            'different' => $yes,
+                            'fixed' => $yes,
+                        ];
+                        $this->writeRow($row);
+                    } elseif ($this->reportFull) {
+                        $shortTitle = $existingTitle !== null && $existingTitle !== ''
+                            ? strtr(mb_substr($existingTitle, 0, 1000), ["\n" => ' ', "\r" => ' ', "\v" => ' ', "\t" => ' '])
+                            : '';
+                        $row = [
+                            'type' => $resourceType,
+                            'resource' => $resourceId,
+                            'existing' => $shortTitle,
+                            'real' => $shortTitle,
+                            'different' => '',
+                            'fixed' => '',
+                        ];
+                        $this->writeRow($row);
+                    }
+                } catch (\Exception $e) {
+                    $this->logger->err(
+                        'Error updating resource #{resource_id}: {error}', // @translate
+                        ['resource_id' => $resourceId, 'error' => $e->getMessage()]
+                    );
+                }
+
+                ++$totalProcessed;
+            }
+
+            // Clear entity manager to free memory.
+            $this->entityManager->clear();
+            $offset += $batchSize;
+        }
+
+        $this->logger->notice(
+            'End of process: {processed}/{total} processed, {total_succeed} updated via API.', // @translate
+            [
+                'processed' => $totalProcessed,
+                'total' => $totalToProcess,
+                'total_succeed' => $totalSucceed,
+            ]
+        );
+
+        return true;
+    }
+
+    /**
+     * Map resource_type column to API resource name.
+     */
+    protected function mapResourceTypeToName(string $resourceType): ?string
+    {
+        $map = [
+            'Omeka\Entity\Item' => 'items',
+            'Omeka\Entity\ItemSet' => 'item_sets',
+            'Omeka\Entity\Media' => 'media',
+            // Annotation module.
+            'Annotate\Entity\Annotation' => 'annotations',
+        ];
+        return $map[$resourceType] ?? null;
     }
 
     /**
@@ -214,15 +632,14 @@ SQL;
 
         /** @var \Omeka\Entity\Value[] $values */
         $values = $resource->getValues()->toArray();
-        $values = array_filter($values, function (\Omeka\Entity\Value $v) use ($termId) {
-            return $v->getProperty()->getId() === $termId;
-        });
+        $values = array_filter($values, fn (\Omeka\Entity\Value $v) => $v->getProperty()->getId() === $termId);
         if (!count($values)) {
             return null;
         }
 
         /** @var \Omeka\Entity\Value $value */
         $value = reset($values);
+        unset($values);
         $val = (string) $value->getValue();
         if ($val !== '') {
             return $val;
@@ -238,5 +655,65 @@ SQL;
         }
 
         return $this->getValueFromResource($valueResource, $termId, ++$loop);
+    }
+
+    /**
+     * Apply fallback title properties from AdvancedResourceTemplate.
+     *
+     * For resources with empty computed titles, check fallback properties in order.
+     */
+    protected function applyFallbackTitles(array $resourceData, array &$computedTitles, string $sqlValues): void
+    {
+        // Find resources with empty titles that have fallback properties configured.
+        $resourcesNeedingFallback = [];
+        foreach ($resourceData as $resourceId => $data) {
+            $templateId = $data['template_id'];
+            if ($templateId
+                && isset($this->templateFallbackTerms[$templateId])
+                && (!isset($computedTitles[$resourceId]) || $computedTitles[$resourceId] === null || $computedTitles[$resourceId] === '')
+            ) {
+                $resourcesNeedingFallback[$resourceId] = $templateId;
+            }
+        }
+
+        if (!count($resourcesNeedingFallback)) {
+            return;
+        }
+
+        // Group resources by template to batch queries.
+        $byTemplate = [];
+        foreach ($resourcesNeedingFallback as $resourceId => $templateId) {
+            $byTemplate[$templateId][] = $resourceId;
+        }
+
+        // For each template, try fallback properties in order.
+        foreach ($byTemplate as $templateId => $resourceIds) {
+            $fallbackProps = $this->templateFallbackTerms[$templateId];
+
+            // Try each fallback property in order.
+            foreach ($fallbackProps as $propId) {
+                // Find resources still needing a title.
+                $stillNeeding = array_filter($resourceIds, fn ($id) => !isset($computedTitles[$id]) || $computedTitles[$id] === null || $computedTitles[$id] === '');
+                if (!count($stillNeeding)) {
+                    break;
+                }
+
+                // Query values for this fallback property.
+                $result = $this->connection->executeQuery(
+                    $sqlValues,
+                    ['ids' => array_values($stillNeeding), 'prop' => $propId],
+                    ['ids' => \Doctrine\DBAL\Connection::PARAM_INT_ARRAY, 'prop' => \PDO::PARAM_INT]
+                )->fetchAllAssociative();
+
+                // Apply first non-empty value per resource.
+                foreach ($result as $valueRow) {
+                    $resId = (int) $valueRow['resource_id'];
+                    $val = $valueRow['computed_title'];
+                    if ($val !== null && $val !== '' && (!isset($computedTitles[$resId]) || $computedTitles[$resId] === null || $computedTitles[$resId] === '')) {
+                        $computedTitles[$resId] = $val;
+                    }
+                }
+            }
+        }
     }
 }

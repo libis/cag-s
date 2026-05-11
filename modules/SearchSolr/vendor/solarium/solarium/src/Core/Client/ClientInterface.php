@@ -21,6 +21,10 @@ use Solarium\QueryType\Analysis\Query\Document as AnalysisQueryDocument;
 use Solarium\QueryType\Analysis\Query\Field as AnalysisQueryField;
 use Solarium\QueryType\Extract\Query as ExtractQuery;
 use Solarium\QueryType\Extract\Result as ExtractResult;
+use Solarium\QueryType\Graph\Query as GraphQuery;
+use Solarium\QueryType\ManagedResources\Query\Resources as ManagedResourcesQuery;
+use Solarium\QueryType\ManagedResources\Query\Stopwords as ManagedStopwordsQuery;
+use Solarium\QueryType\ManagedResources\Query\Synonyms as ManagedSynonymsQuery;
 use Solarium\QueryType\MoreLikeThis\Query as MoreLikeThisQuery;
 use Solarium\QueryType\MoreLikeThis\Result as MoreLikeThisResult;
 use Solarium\QueryType\Ping\Query as PingQuery;
@@ -31,10 +35,12 @@ use Solarium\QueryType\Select\Query\Query as SelectQuery;
 use Solarium\QueryType\Select\Result\Result as SelectResult;
 use Solarium\QueryType\Server\Api\Query as ApiQuery;
 use Solarium\QueryType\Server\Collections\Query\Query as CollectionsQuery;
+use Solarium\QueryType\Server\Configsets\Query\Query as ConfigsetsQuery;
 use Solarium\QueryType\Server\CoreAdmin\Query\Query as CoreAdminQuery;
 use Solarium\QueryType\Server\CoreAdmin\Result\Result as CoreAdminResult;
 use Solarium\QueryType\Spellcheck\Query as SpellcheckQuery;
 use Solarium\QueryType\Spellcheck\Result\Result as SpellcheckResult;
+use Solarium\QueryType\Stream\Query as StreamQuery;
 use Solarium\QueryType\Suggester\Query as SuggesterQuery;
 use Solarium\QueryType\Suggester\Result\Result as SuggesterResult;
 use Solarium\QueryType\Terms\Query as TermsQuery;
@@ -47,12 +53,13 @@ use Solarium\QueryType\Update\Result as UpdateResult;
  *
  * The client is the main interface for usage of the Solarium library.
  * You can use it to get query instances and to execute them.
- * It also allows to register plugins and querytypes to customize Solarium.
+ * It also allows to register plugins and query types to customize Solarium.
+ * It gives access to the event dispatcher so that you can add listeners.
  * Finally, it also gives access to the adapter, which holds the Solr connection settings.
  *
  * Example usage with default settings:
  * <code>
- * $client = new Solarium\Client;
+ * $client = new Solarium\Client($adapter, $eventDispatcher);
  * $query = $client->createSelect();
  * $result = $client->select($query);
  * </code>
@@ -176,9 +183,9 @@ interface ClientInterface
     public function getAdapter(): AdapterInterface;
 
     /**
-     * Register a querytype.
+     * Register a query type.
      *
-     * You can also use this method to override any existing querytype with a new mapping.
+     * You can also use this method to override any existing query type with a new mapping.
      * This requires the availability of the classes through autoloading or a manual
      * require before calling this method.
      *
@@ -190,7 +197,7 @@ interface ClientInterface
     public function registerQueryType(string $type, string $queryClass): self;
 
     /**
-     * Register multiple querytypes.
+     * Register multiple query types.
      *
      * @param array $queryTypes
      *
@@ -199,7 +206,7 @@ interface ClientInterface
     public function registerQueryTypes(array $queryTypes): self;
 
     /**
-     * Get all registered querytypes.
+     * Get all registered query types.
      *
      * @return array
      */
@@ -418,8 +425,8 @@ interface ClientInterface
      * @internal this is a convenience method that forwards the query to the
      *  execute method, thus allowing for an easy to use and clean API
      *
-     * @param QueryInterface|AnalysisQueryDocument|AnalysisQueryField $query
-     * @param Endpoint|string|null                                    $endpoint
+     * @param QueryInterface|\Solarium\QueryType\Analysis\Query\Document|\Solarium\QueryType\Analysis\Query\Field $query
+     * @param Endpoint|string|null                                                                                $endpoint
      *
      * @return ResultInterface|\Solarium\QueryType\Analysis\Result\Document|\Solarium\QueryType\Analysis\Result\Field
      */
@@ -491,6 +498,19 @@ interface ClientInterface
     public function realtimeGet(QueryInterface $query, $endpoint = null): RealtimeGetResult;
 
     /**
+     * Execute a CoreAdmin query.
+     *
+     * @internal this is a convenience method that forwards the query to the
+     *  execute method, thus allowing for an easy to use and clean API
+     *
+     * @param QueryInterface|\Solarium\QueryType\Server\CoreAdmin\Query\Query $query
+     * @param Endpoint|string|null                                            $endpoint
+     *
+     * @return ResultInterface|\Solarium\QueryType\Server\CoreAdmin\Result\Result
+     */
+    public function coreAdmin(QueryInterface $query, $endpoint = null): CoreAdminResult;
+
+    /**
      * Execute a Collections API query.
      *
      * @internal this is a convenience method that forwards the query to the
@@ -504,17 +524,17 @@ interface ClientInterface
     public function collections(QueryInterface $query, $endpoint = null): ResultInterface;
 
     /**
-     * Execute a CoreAdmin query.
+     * Execute a Configsets API query.
      *
      * @internal this is a convenience method that forwards the query to the
      *  execute method, thus allowing for an easy to use and clean API
      *
-     * @param QueryInterface|\Solarium\QueryType\Server\CoreAdmin\Query\Query $query
-     * @param Endpoint|string|null                                            $endpoint
+     * @param QueryInterface|\Solarium\QueryType\Server\Configsets\Query\Query $query
+     * @param Endpoint|string|null                                             $endpoint
      *
-     * @return ResultInterface|\Solarium\QueryType\Server\CoreAdmin\Result\Result
+     * @return ResultInterface|\Solarium\QueryType\Server\Configsets\Result\ListConfigsetsResult
      */
-    public function coreAdmin(QueryInterface $query, $endpoint = null): CoreAdminResult;
+    public function configsets(QueryInterface $query, $endpoint = null): ResultInterface;
 
     /**
      * Create a query instance.
@@ -619,6 +639,24 @@ interface ClientInterface
     public function createExtract(array $options = null): ExtractQuery;
 
     /**
+     * Create a stream query instance.
+     *
+     * @param array $options
+     *
+     * @return \Solarium\QueryType\Stream\Query
+     */
+    public function createStream(array $options = null): StreamQuery;
+
+    /**
+     * Create a graph query instance.
+     *
+     * @param array $options
+     *
+     * @return \Solarium\QueryType\Graph\Query
+     */
+    public function createGraph(array $options = null): GraphQuery;
+
+    /**
      * Create a RealtimeGet query instance.
      *
      * @param array $options
@@ -628,6 +666,8 @@ interface ClientInterface
     public function createRealtimeGet(array $options = null): RealtimeGetQuery;
 
     /**
+     * Create a CoreAdmin query instance.
+     *
      * @param array $options
      *
      * @return \Solarium\QueryType\Server\CoreAdmin\Query\Query
@@ -635,6 +675,8 @@ interface ClientInterface
     public function createCoreAdmin(array $options = null): CoreAdminQuery;
 
     /**
+     * Create a Collections API query instance.
+     *
      * @param array $options
      *
      * @return \Solarium\QueryType\Server\Collections\Query\Query
@@ -642,9 +684,47 @@ interface ClientInterface
     public function createCollections(array $options = null): CollectionsQuery;
 
     /**
+     * Create a Configsets API query instance.
+     *
+     * @param array $options
+     *
+     * @return \Solarium\QueryType\Server\Configsets\Query\Query
+     */
+    public function createConfigsets(array $options = null): ConfigsetsQuery;
+
+    /**
+     * Create an API query instance.
+     *
      * @param array $options
      *
      * @return \Solarium\QueryType\Server\Api\Query
      */
     public function createApi(array $options = null): ApiQuery;
+
+    /**
+     * Create a managed resources query instance.
+     *
+     * @param array $options
+     *
+     * @return \Solarium\QueryType\ManagedResources\Query\Resources
+     */
+    public function createManagedResources(array $options = null): ManagedResourcesQuery;
+
+    /**
+     * Create a managed stopwords query instance.
+     *
+     * @param array $options
+     *
+     * @return \Solarium\QueryType\ManagedResources\Query\Stopwords
+     */
+    public function createManagedStopwords(array $options = null): ManagedStopwordsQuery;
+
+    /**
+     * Create a managed synonyms query instance.
+     *
+     * @param array $options
+     *
+     * @return \Solarium\QueryType\ManagedResources\Query\Synonyms
+     */
+    public function createManagedSynonyms(array $options = null): ManagedSynonymsQuery;
 }

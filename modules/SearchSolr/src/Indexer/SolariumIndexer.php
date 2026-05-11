@@ -2,7 +2,7 @@
 
 /*
  * Copyright BibLibre, 2016-2017
- * Copyright Daniel Berthereau, 2017-2022
+ * Copyright Daniel Berthereau, 2017-2023
  *
  * This software is governed by the CeCILL license under French law and abiding
  * by the rules of distribution of free software.  You can use, modify and/ or
@@ -75,11 +75,6 @@ class SolariumIndexer extends AbstractIndexer
      * @var \SearchSolr\ValueFormatter\Manager
      */
     protected $valueFormatterManager;
-
-    /**
-     * @var \Solarium\Core\Query\Helper
-     */
-    protected $solariumHelpers;
 
     /**
      * @var array
@@ -193,7 +188,7 @@ class SolariumIndexer extends AbstractIndexer
     }
 
     /**
-     * @var \Omeka\Entity\AbstractEntity[] $resources
+     * @param \Omeka\Entity\AbstractEntity[] $resources
      */
     public function indexResources(array $resources): IndexerInterface
     {
@@ -208,19 +203,26 @@ class SolariumIndexer extends AbstractIndexer
             }
         }
 
+        $resources = $this->filterResources($resources);
+        if (!count($resources)) {
+            return $this;
+        }
+
         $resourceNames = [
             'items' => 'item',
             'item_sets' => 'item set',
+            'media' => 'media',
         ];
 
         $resourcesIds = [];
         foreach ($resources as $resource) {
             $resourcesIds[] = $resourceNames[$resource->getResourceName()] . ' #' . $resource->getId();
         }
-        /*$this->getLogger()->info(new Message(
+
+        $this->getLogger()->info(new Message(
             'Indexing in Solr core "%1$s": %2$s', // @translate
             $this->solrCore->name(), implode(', ', $resourcesIds)
-        ));*/
+        ));
 
         foreach ($resources as $resource) {
             $this->addResource($resource);
@@ -279,9 +281,6 @@ class SolariumIndexer extends AbstractIndexer
             return null;
         }
 
-        $doc = new SolariumInputDocument();
-        $this->solariumHelpers = $doc->getHelper();
-
         $this->mainLocale = $services->get('Omeka\Settings')->get('locale');
 
         return $this;
@@ -292,6 +291,7 @@ class SolariumIndexer extends AbstractIndexer
         // Adapted Drupal convention to be used for any single or multi-index.
         // @link https://git.drupalcode.org/project/search_api_solr/-/blob/4.x/solr-conf-templates/8.x/schema.xml#L131-141
         // The 0-formatted id allows to sort quickly on id.
+        // TODO Maybe propose a second version with id first, that is quicker to search for very big base. See Solr too.
         if (empty($this->serverId)) {
             return empty($this->indexField)
                 ? sprintf('%s/%07s', $resourceName, $resourceId)
@@ -310,9 +310,25 @@ class SolariumIndexer extends AbstractIndexer
         /** @var \SearchSolr\ValueExtractor\ValueExtractorInterface $valueExtractor */
         $valueExtractor = $this->valueExtractorManager->get($resourceName);
 
+        // This shortcut is not working on some databases: the representation is
+        // not fully loaded, so when getting resource values ($representation->values()),
+        // an error occurs when getting the property term: the vocabulary is not
+        // loaded and the prefix cannot be get.
+        /** @see \Omeka\Api\Representation\AbstractResourceEntityRepresentation::values() */
+
         /** @var \Omeka\Api\Representation\AbstractResourceRepresentation $representation */
-        $adapter = $this->apiAdapters->get($resourceName);
-        $representation = $adapter->getRepresentation($resource);
+        // $adapter = $this->apiAdapters->get($resourceName);
+        // $representation = $adapter->getRepresentation($resource);
+
+        try {
+            $representation = $this->api->read($resourceName, $resourceId)->getContent();
+        } catch (\Exception $e) {
+            $this->getLogger()->notice(
+                new Message('The %1$s #%2$d is no more available and cannot be indexed.', // @translate
+                $resourceName, $resourceId
+            ));
+            return;
+        }
 
         $isSingleFieldFilled = [];
 
@@ -432,6 +448,7 @@ class SolariumIndexer extends AbstractIndexer
     {
         /** @var \SearchSolr\ValueFormatter\ValueFormatterInterface $valueFormatter */
         $valueFormatter = $this->formatters[$solrMap->setting('formatter', '')] ?: $this->formatters['standard'];
+        $valueFormatter->setSettings($solrMap->settings());
         $result = [];
         foreach ($values as $value) {
             $formattedResult = $valueFormatter->format($value);
@@ -528,9 +545,9 @@ class SolariumIndexer extends AbstractIndexer
                                 }
                                 try {
                                     $update = $client
-                                    ->createUpdate()
-                                    ->addDocument($document)
-                                    ->addCommit();
+                                        ->createUpdate()
+                                        ->addDocument($document)
+                                        ->addCommit();
                                     $client->update($update);
                                 } catch (\Exception $e) {
                                     $dId = explode('-', $documentId);
@@ -569,7 +586,8 @@ class SolariumIndexer extends AbstractIndexer
             $this->getLogger()->err($message);
             return $this;
         }
-        $error = method_exists($exception, 'getBody')? json_decode((string) $exception->getBody(), true) : null;
+
+        $error = method_exists($exception, 'getBody') ? json_decode((string) $exception->getBody(), true) : null;
         $message = is_array($error) && isset($error['error']['msg'])
             ? $error['error']['msg']
             : $exception->getMessage();
@@ -578,8 +596,9 @@ class SolariumIndexer extends AbstractIndexer
             $message = new Message('Invalid document (wrong field type or missing required field).'); // @translate
         } elseif ($message === 'Solr HTTP error: HTTP request failed') {
             $message = new Message('Solr HTTP error: HTTP request failed due to network or certificate issue.'); // @translate
+        } else {
+            $message = new Message('Indexing of resource %1$s failed: %2$s', $dId, $message);
         }
-        $message = new Message('Indexing of resource %1$s failed: %2$s', $dId, $message);
         $this->getLogger()->err($message);
         return $this;
     }
@@ -667,7 +686,9 @@ class SolariumIndexer extends AbstractIndexer
     {
         $this->formatters = ['' => null];
         foreach ($this->valueFormatterManager->getRegisteredNames() as $formatter) {
-            $this->formatters[$formatter] = $this->valueFormatterManager->get($formatter);
+            $valueFormatter = $this->valueFormatterManager->get($formatter);
+            $valueFormatter->setServiceLocator($this->services);
+            $this->formatters[$formatter] = $valueFormatter;
         }
         $this->formatters[''] = $this->formatters['standard'];
     }
@@ -825,9 +846,30 @@ class SolariumIndexer extends AbstractIndexer
     }
 
     /**
-     * @return \SearchSolr\Api\Representation\SolrCoreRepresentation
+     * @param array \Omeka\Entity\Resource[]
      */
-    protected function getSolrCore()
+    protected function filterResources(array $resources): array
+    {
+        $query = $this->getSolrCore()->setting('filter_resources');
+        if (!$query || !$resources) {
+            return $resources;
+        }
+
+        $resourceIds = [];
+        foreach ($resources as $resource) {
+            $resourceIds[] = $resource->getId();
+        }
+
+        $query['id'] = array_unique(array_merge($query['id'] ?? [], $resourceIds));
+
+        // TODO Search api is currently unavailable for resources (wait v4.1)
+        // For now, use the first resource.
+        $first = reset($resources);
+        $resourceName = $first->getResourceName();
+        return $this->api->search($resourceName, $query, ['responseContent' => 'resource'])->getContent();
+    }
+
+    protected function getSolrCore(): SolrCoreRepresentation
     {
         if (!isset($this->solrCore)) {
             $solrCoreId = $this->engine->settingAdapter('solr_core_id');
@@ -838,13 +880,16 @@ class SolariumIndexer extends AbstractIndexer
                 $this->solariumClient = $this->solrCore->solariumClient();
             }
         }
+
+        // Throw an exception if unavailable.
+        if (!$this->solrCore->status()) {
+            throw new \Omeka\Mvc\Exception\RuntimeException('Solr core is not available.'); // @translate
+        }
+
         return $this->solrCore;
     }
 
-    /**
-     * @return SolariumClient
-     */
-    protected function getClient()
+    protected function getClient(): SolariumClient
     {
         if (!isset($this->solariumClient)) {
             $this->solariumClient = $this->getSolrCore()->solariumClient();

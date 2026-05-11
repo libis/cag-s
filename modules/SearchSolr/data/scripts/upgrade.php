@@ -3,28 +3,26 @@
 namespace SearchSolr;
 
 use Omeka\Module\Exception\ModuleCannotInstallException;
-use Omeka\Mvc\Controller\Plugin\Messenger;
 use Omeka\Stdlib\Message;
 
 /**
  * @var Module $this
- * @var \Laminas\ServiceManager\ServiceLocatorInterface $serviceLocator
- * @var string $oldVersion
+ * @var \Laminas\ServiceManager\ServiceLocatorInterface $services
  * @var string $newVersion
- */
-$services = $serviceLocator;
-
-/**
+ * @var string $oldVersion
+ *
+ * @var \Omeka\Api\Manager $api
  * @var \Omeka\Settings\Settings $settings
  * @var \Doctrine\DBAL\Connection $connection
- * @var \Omeka\Api\Manager $api
- * @var array $config
+ * @var \Doctrine\ORM\EntityManager $entityManager
+ * @var \Omeka\Mvc\Controller\Plugin\Messenger $messenger
  */
+$plugins = $services->get('ControllerPluginManager');
+$api = $plugins->get('api');
 $settings = $services->get('Omeka\Settings');
 $connection = $services->get('Omeka\Connection');
-$api = $services->get('Omeka\ApiManager');
-$config = require dirname(__DIR__, 2) . '/config/module.config.php';
-$messenger = $services->get('ControllerPluginManager')->get('messenger');
+$messenger = $plugins->get('messenger');
+$entityManager = $services->get('Omeka\EntityManager');
 
 if (version_compare($oldVersion, '3.5.15.2', '<')) {
     $sql = <<<SQL
@@ -53,12 +51,15 @@ SQL;
     $connection->executeStatement($sql);
 
     $sql = <<<SQL
-UPDATE `solr_map` SET `data_types` = "[]";
+UPDATE `solr_map`
+SET `data_types` = "[]";
 SQL;
     $connection->executeStatement($sql);
 
     $sql = <<<SQL
-UPDATE `solr_map` SET `source` = REPLACE(`source`, "item_set", "item_sets") WHERE `source` LIKE "%item_set%";
+UPDATE `solr_map`
+SET `source` = REPLACE(`source`, "item_set", "item_sets")
+WHERE `source` LIKE "%item_set%";
 SQL;
     $connection->executeStatement($sql);
 
@@ -74,17 +75,21 @@ SQL;
     $connection->executeStatement($sql);
 
     $sql = <<<SQL
-ALTER TABLE `solr_map` ADD `data_types` LONGTEXT NOT NULL COMMENT '(DC2Type:json_array)' AFTER `source`;
+ALTER TABLE `solr_map`
+ADD `data_types` LONGTEXT NOT NULL COMMENT '(DC2Type:json_array)' AFTER `source`;
 SQL;
     try {
         $connection->executeStatement($sql);
         $sql = <<<SQL
-UPDATE `solr_map` SET `data_types` = "[]";
+UPDATE `solr_map`
+SET `data_types` = "[]";
 SQL;
         $connection->executeStatement($sql);
 
         $sql = <<<SQL
-UPDATE `solr_map` SET `source` = REPLACE(`source`, "item_set", "item_sets") WHERE `source` LIKE "%item_set%";
+UPDATE `solr_map`
+SET `source` = REPLACE(`source`, "item_set", "item_sets")
+WHERE `source` LIKE "%item_set%";
 SQL;
         $connection->executeStatement($sql);
     } catch (\Exception $e) {
@@ -389,22 +394,115 @@ if (version_compare($oldVersion, '3.5.33.3', '<')) {
 
 if (version_compare($oldVersion, '3.5.37.3', '<')) {
     $translator = $services->get('MvcTranslator');
-
-    /** @var \Omeka\Module\Manager $moduleManager */
-    $moduleManager = $services->get('Omeka\ModuleManager');
-    $advancedSearchModule = $moduleManager->getModule('AdvancedSearch');
-    if (!$advancedSearchModule) {
+    if (!$this->isModuleActive('AdvancedSearch')) {
         $message = new Message(
-            $translator->translate('This module requires module "%s" version "%s" or greater.'), // @translate
+            $translator->translate('This module requires module "%1$s" version "%2$s" or greater.'), // @translate
             'Advanced Search', '3.3.6.16'
         );
         throw new ModuleCannotInstallException((string) $message);
     }
-    $advancedSearchVersion = $advancedSearchModule->getIni('version');
-    if (version_compare($advancedSearchVersion, '3.3.6.16', '<')) {
+    /** @var \Omeka\Module\Manager $moduleManager */
+    $moduleManager = $services->get('Omeka\ModuleManager');
+    $module = $moduleManager->getModule('AdvancedSearch');
+    $moduleVersion = $module->getIni('version');
+    if (version_compare($moduleVersion, '3.3.6.16', '<')) {
         $message = new Message(
-            $translator->translate('This module requires module "%s" version "%s" or greater.'), // @translate
+            $translator->translate('This module requires module "%1$s" version "%2$s" or greater.'), // @translate
             'Advanced Search', '3.3.6.16'
+        );
+        throw new ModuleCannotInstallException((string) $message);
+    }
+}
+
+if (version_compare($oldVersion, '3.5.42', '<')) {
+    // Force to use module Table to manage tables if there is a table.
+    $translator = $services->get('MvcTranslator');
+    $config = $services->get('Config');
+    if (!empty($config['searchsolr']['table'])) {
+        if (!$this->isModuleActive('Table')) {
+            $message = new Message(
+                $translator->translate('To use a table, this module requires module "%1$s" version "%2$s" or greater. Upgrade is automatic.'), // @translate
+                'Table', '3.4.1'
+            );
+            throw new ModuleCannotInstallException((string) $message);
+        }
+        $table = $config['searchsolr']['table'];
+        /** @var \Table\Api\Representation\TableRepresentation $table */
+        $table = $api->create('tables', [
+            'o:title' => 'Advanced Search Solr',
+            'o:codes' => $table,
+        ])->getContent();
+        $tableId = (int) $table->id();
+        $sql = <<<SQL
+UPDATE `solr_map`
+SET `settings` = REPLACE(`settings`, '"formatter":"table"', '"formatter":"table","table":$tableId')
+WHERE `settings` LIKE '%"formatter":"table"%';
+SQL;
+        $connection->executeStatement($sql);
+
+        $message = new Message(
+            'It is now possible to filter values to index via a regex, a list of languages or a visibility.' // @translate
+        );
+        $messenger->addSuccess($message);
+
+        $message = new Message(
+            'It is now possible to filter resources to index, for example an item set, a template, an owner, a visibility, etc.' // @translate
+        );
+        $messenger->addSuccess($message);
+
+        $message = new Message(
+            'It is now possible to use module Table to manage tables for normalization of indexation.' // @translate
+        );
+        $messenger->addSuccess($message);
+
+        $message = new Message(
+            $translator->translate('The table used for indexation has been converted into a standard %1$stable%2$s. It is recommended to remove the old one from the config.'), // @translate
+            sprintf('<a href="%s">', $table->url()), '</a>'
+        );
+        $message->setEscapeHtml(false);
+        $messenger->addWarning($message);
+    }
+}
+
+if (version_compare($oldVersion, '3.5.44', '<')) {
+    $sql = <<<SQL
+UPDATE `solr_map`
+SET
+    `field_name` = REPLACE(`field_name`, 'access_source', 'access_level'),
+    `source` = REPLACE(`source`, 'access_source', 'access_level')
+;
+SQL;
+    $connection->executeStatement($sql);
+
+    $translator = $services->get('MvcTranslator');
+    $message = new Message(
+        $translator->translate('The support of module Access Resource has been removed. Support of module Access has been added.') // @translate
+    );
+    $messenger->addSuccess($message);
+
+    $message = new Message(
+        $translator->translate('A reindexing is needed.') // @translate
+    );
+    $messenger->addWarning($message);
+}
+
+if (version_compare($oldVersion, '3.5.45', '<')) {
+    $translator = $services->get('MvcTranslator');
+    if (!$this->isModuleActive('AdvancedSearch')) {
+        $message = new Message(
+            $translator->translate('This module requires module "%1$s" version "%2$s" or greater.'), // @translate
+            'Advanced Search', '3.4.15'
+        );
+        throw new ModuleCannotInstallException((string) $message);
+    }
+    /** @var \Omeka\Module\Manager $moduleManager */
+    $moduleManager = $services->get('Omeka\ModuleManager');
+    $module = $moduleManager->getModule('AdvancedSearch');
+    $moduleVersion = $module->getIni('version');
+    if (version_compare($moduleVersion, '3.4.15', '<')) {
+        $message = new Message(
+            $translator->translate('This module requires module "%1$s" version "%2$s" or greater.'), // @translate
+            'Advanced Search', '3.4.15.'
         );
         throw new ModuleCannotInstallException((string) $message);
     }

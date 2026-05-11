@@ -1,0 +1,87 @@
+<?php
+/**
+ * @var \Laminas\View\Renderer\PhpRenderer $this
+ * @var \EasyAdmin\Form\CronForm $form
+ * @var int|null $lastRun
+ * @var string $cronCommand
+ * @var array $registeredTasks
+ * @var bool $cronModuleMissing
+ */
+
+$plugins = $this->getHelperPluginManager();
+$assetUrl = $plugins->get('assetUrl');
+$translate = $plugins->get('translate');
+$escapeHtml = $plugins->get('escapeHtml');
+$i18n = $plugins->get('i18n');
+
+$form->prepare();
+
+$this->htmlElement('body')->appendAttribute('class', 'easy-admin cron browse');
+
+$this->headLink()
+    ->appendStylesheet($assetUrl('css/easy-admin.css', 'EasyAdmin'));
+$this->headScript()
+    ->appendFile($assetUrl('js/easy-admin.js', 'EasyAdmin'), 'text/javascript', ['defer' => 'defer'])
+;
+?>
+
+<?= $this->pageTitle($translate('Regular tasks'), 1, $translate('Easy Admin')) ?>
+
+<nav class="section-nav">
+    <?= $this->navigation('Laminas\Navigation\EasyAdmin')->menu() ?>
+</nav>
+
+<?php if (!empty($cronModuleMissing)): ?>
+<div class="messages">
+    <div class="warning">
+        <p>
+            <?= sprintf(
+                $translate('For advanced cron features, install the %sCron module%s.'), // @translate
+                '<a href="https://gitlab.com/Daniel-KM/Omeka-S-module-Cron" target="_blank">',
+                '</a>'
+            ) ?>
+        </p>
+        <p>
+            <?= $translate('This page provides basic session cleanup functionality only.') ?>
+        </p>
+    </div>
+</div>
+<?php endif; ?>
+
+<div class="cron-info">
+    <h2><?= $translate('Status') ?></h2>
+    <dl>
+        <dt><?= $translate('Last execution') ?></dt>
+        <dd>
+            <?php if ($lastRun): ?>
+                <?= $escapeHtml($i18n->dateFormat((new DateTime())->setTimestamp($lastRun), 'long', 'medium')) ?>
+            <?php else: ?>
+                <em><?= $translate('Never') ?></em>
+            <?php endif; ?>
+        </dd>
+    </dl>
+</div>
+
+<div class="cron-help">
+    <h2><?= $translate('Server cron command') ?></h2>
+    <p class="explanation">
+        <?= $translate('For best results, configure a server cron job. This ensures tasks run reliably, even when no one visits the site.') ?>
+    </p>
+    <pre class="cron-command"><?= $escapeHtml($cronCommand) ?></pre>
+    <p class="explanation">
+        <?= $translate('Without server cron, tasks will run on page load (at most once per hour).') ?>
+    </p>
+</div>
+
+<?= $this->form()->openTag($form) ?>
+<div id="page-actions">
+    <button type="submit" name="run_now" value="1" class="button"><?= $translate('Run now') ?></button>
+    <button type="submit" class="button"><?= $translate('Save') ?></button>
+</div>
+
+<fieldset id="cron-tasks-fieldset">
+    <legend><?= $translate('Task configuration') ?></legend>
+    <?= $this->formCollection($form) ?>
+</fieldset>
+
+<?= $this->form()->closeTag() ?>

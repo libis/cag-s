@@ -4,6 +4,15 @@ namespace EasyAdmin\Job;
 
 use Doctrine\Common\Collections\Criteria;
 
+/**
+ * Create thumbnails/derivatives for media files.
+ *
+ * This is a general-purpose job for creating derivatives. For bulk upload
+ * specific handling, see FileDerivativeBulkUpload which can run as a "fake job"
+ * (not persisted) during background imports.
+ *
+ * @see \EasyAdmin\Job\FileDerivativeBulkUpload
+ */
 class FileDerivative extends AbstractCheck
 {
     /**
@@ -17,7 +26,7 @@ class FileDerivative extends AbstractCheck
         'item' => 'Item', // @translate
         'media' => 'Media', // @translate
         'filename' => 'Filename', // @translate
-        'extension' => 'Extension', // @translate,
+        'extension' => 'Extension', // @translate
         'exists' => 'Exists', // @translate
         'has_thumbnails' => 'Has thumbnails', // @translate
         'fixed' => 'Fixed', // @translate
@@ -55,15 +64,15 @@ class FileDerivative extends AbstractCheck
         // Always true expression to simplify process.
         $criteria->where($expr->gt('id', 0));
 
-        $itemSets = $this->getArg('item_sets', []);
+        $itemSets = array_values($this->getArg('item_sets') ?: []);
         if ($itemSets) {
             // TODO Include dql as a subquery.
-            $dql = <<<DQL
-SELECT item.id
-FROM Omeka\Entity\Item item
-JOIN item.itemSets item_set
-WHERE item_set.id IN (:item_set_ids)
-DQL;
+            $dql = <<<'DQL'
+                SELECT item.id
+                FROM Omeka\Entity\Item item
+                JOIN item.itemSets item_set
+                WHERE item_set.id IN (:item_set_ids)
+                DQL;
             $query = $this->entityManager->createQuery($dql);
             $query->setParameter('item_set_ids', $itemSets, \Doctrine\DBAL\Connection::PARAM_INT_ARRAY);
             $itemIds = array_map('intval', array_column($query->getArrayResult(), 'id'));
@@ -93,6 +102,8 @@ DQL;
             }
         }
 
+        $skipExisting = $this->getArg('thumbnails_to_create') === 'missing';
+
         $withoutThumbnails = $this->getArg('original_without_thumbnails');
         if ($withoutThumbnails) {
             $criteria->andWhere($expr->eq('hasThumbnails', 0));
@@ -100,8 +111,8 @@ DQL;
 
         $totalResources = $this->api->search('media', ['limit' => 0])->getTotalResults();
 
-        // TODO Manage creation of thumbnails for media without original (youtube…).
-        // Check only media with an original file.
+        // Only process media with original files.
+        // TODO Manage creation of thumbnails for media without original (youtube…) via omeka ingesters.
         $criteria
             ->andWhere($expr->eq('hasOriginal', 1))
             ->orderBy(['id' => 'ASC'])
@@ -128,21 +139,21 @@ DQL;
         $translator = $this->getServiceLocator()->get('MvcTranslator');
         $yes = $translator->translate('Yes'); // @translate
         $no = $translator->translate('No'); // @translate
+        $skipped = $translator->translate('Skipped'); // @translate
         $notReadable = $translator->translate('Not readable'); // @translate
         $notWriteable = $translator->translate('Not writeable'); // @translate
         $failed = $translator->translate('Failed'); // @translate
 
         $offset = 0;
-        $key = 0;
         $totalProcessed = 0;
         $totalSucceed = 0;
+        $totalExisting = 0;
         $totalFailed = 0;
-        $count = 0;
-        while (++$count <= $totalToProcess) {
+        while (true) {
             $criteria
                 ->setFirstResult($offset);
             $medias = $this->mediaRepository->matching($criteria);
-            if (!$medias->count() || $offset >= $medias->count()) {
+            if (!$medias->count()) {
                 break;
             }
 
@@ -190,19 +201,33 @@ DQL;
                     continue;
                 }
 
-                // Check the current files.
+                // Check if the current files are writeable.
+                // If one of the thumbnails are missing, recreate all.
+                // If all thumbnails exist and option is to create only missing, skip the media.
+                $missingThumbnail = false;
                 foreach ($types as $type) {
                     $derivativePath = $basePath . '/' . $type . '/' . $filename;
-                    if (file_exists($derivativePath) && !is_writeable($derivativePath)) {
+                    if (!file_exists($derivativePath)) {
+                        $missingThumbnail = true;
+                    } elseif (!is_writeable($derivativePath)) {
                         $this->logger->warn(
                             'Media #{media_id} ({index}/{total}): derivative file "{filename}" is not writeable (type "{type}").', // @translate
                             ['media_id' => $media->getId(), 'index' => $offset + $key + 1, 'total' => $totalToProcess, 'filename' => $filename, 'type' => $type]
                         );
-                        $offset += self::SQL_LIMIT;
                         $row['exists'] = $notWriteable;
                         $this->writeRow($row);
                         continue 2;
                     }
+                }
+
+                // Skip if all thumbnails exist and we only want to create missing ones.
+                if (!$missingThumbnail && $skipExisting) {
+                    $row['exists'] = $yes;
+                    $row['has_thumbnails'] = $yes;
+                    $row['fixed'] = $skipped;
+                    $this->writeRow($row);
+                    ++$totalExisting;
+                    continue;
                 }
 
                 $this->logger->info(
@@ -272,6 +297,20 @@ DQL;
                 unset($media);
             }
 
+            if ($totalProcessed % 100 === 0) {
+                if ($skipExisting) {
+                    $this->logger->info(
+                        'Progress: {processed}/{total} media processed, {existing} existing, {succeed} succeed, {failed} failed so far.', // @translate
+                        ['processed' => $totalProcessed, 'total' => $totalToProcess, 'existing' => $totalExisting, 'succeed' => $totalSucceed, 'failed' => $totalFailed]
+                    );
+                } else {
+                    $this->logger->info(
+                        'Progress: {processed}/{total} media processed, {succeed} succeed, {failed} failed so far.', // @translate
+                        ['processed' => $totalProcessed, 'total' => $totalToProcess, 'succeed' => $totalSucceed, 'failed' => $totalFailed]
+                    );
+                }
+            }
+
             // Avoid memory issue.
             unset($medias);
             $this->entityManager->flush();
@@ -280,10 +319,17 @@ DQL;
             $offset += self::SQL_LIMIT;
         }
 
-        $this->logger->info(
-            'End of the creation of derivative files: {count}/{total} processed, {skipped} skipped, {succeed} succeed, {failed} failed.', // @translate
-            ['count' => $totalProcessed, 'total' => $totalToProcess, 'skipped' => $totalToProcess - $totalProcessed, 'succeed' => $totalSucceed, 'failed' => $totalFailed]
-        );
+        if ($skipExisting) {
+            $this->logger->info(
+                'End of the creation of derivative files: {count}/{total} processed, {skipped} skipped, {existing} existing,  {succeed} succeed, {failed} failed.', // @translate
+                ['count' => $totalProcessed, 'total' => $totalToProcess, 'skipped' => $totalToProcess - $totalProcessed, 'existing' => $totalExisting, 'succeed' => $totalSucceed, 'failed' => $totalFailed]
+            );
+        } else {
+            $this->logger->info(
+                'End of the creation of derivative files: {count}/{total} processed, {skipped} skipped, {succeed} succeed, {failed} failed.', // @translate
+                ['count' => $totalProcessed, 'total' => $totalToProcess, 'skipped' => $totalToProcess - $totalProcessed, 'succeed' => $totalSucceed, 'failed' => $totalFailed]
+            );
+        }
 
         $this->finalizeOutput();
     }
@@ -343,8 +389,6 @@ DQL;
             : explode(' ', $clean($ids));
 
         // Skip empty ranges, fake ranges  and ranges with multiple "-".
-        return array_values(array_filter($ids, function ($v) {
-            return !empty($v) && $v !== '-' && substr_count($v, '-') <= 1;
-        }));
+        return array_values(array_filter($ids, fn ($v) => !empty($v) && $v !== '-' && substr_count($v, '-') <= 1));
     }
 }

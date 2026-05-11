@@ -1,0 +1,41 @@
+<?php return array(
+    'root' => array(
+        'name' => 'daniel-km/omeka-s-module-common',
+        'pretty_version' => 'dev-master',
+        'version' => 'dev-master',
+        'reference' => '7e7cd46d5c655e56f4667fb438e3f07dc4576e0e',
+        'type' => 'omeka-s-module',
+        'install_path' => __DIR__ . '/../../',
+        'aliases' => array(),
+        'dev' => false,
+    ),
+    'versions' => array(
+        'daniel-km/omeka-s-module-common' => array(
+            'pretty_version' => 'dev-master',
+            'version' => 'dev-master',
+            'reference' => '7e7cd46d5c655e56f4667fb438e3f07dc4576e0e',
+            'type' => 'omeka-s-module',
+            'install_path' => __DIR__ . '/../../',
+            'aliases' => array(),
+            'dev_requirement' => false,
+        ),
+        'sempia/common-symlink' => array(
+            'pretty_version' => '1.0.0',
+            'version' => '1.0.0.0',
+            'reference' => '95bb4c24ac23bd4a424a8d62285b948dff0c7e86',
+            'type' => 'composer-plugin',
+            'install_path' => __DIR__ . '/../sempia/common-symlink',
+            'aliases' => array(),
+            'dev_requirement' => false,
+        ),
+        'sempia/external-assets' => array(
+            'pretty_version' => '1.0.1',
+            'version' => '1.0.1.0',
+            'reference' => '3c101e7edb043daabfcc45871a3b048bf8a38e96',
+            'type' => 'composer-plugin',
+            'install_path' => __DIR__ . '/../sempia/external-assets',
+            'aliases' => array(),
+            'dev_requirement' => false,
+        ),
+    ),
+);

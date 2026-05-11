@@ -8,15 +8,20 @@ Easy Admin (module for Omeka S)
 [Easy Admin] is a module for [Omeka S] that allows to manage Omeka from the
 admin interface:
 
-- buttons to public view and previous/next resources in admin resource show page;
-- content lock to avoid concurrent edition;
-- install modules;
-- update modules (in a future version);
-- maintenance state for public and admin even when no migration;
-- checks database and files;
-- backup install;
-- clear php caches;
-- launch simple tasks, that can be any job of any module.
+- bulk upload multiple files in item form, bypassing any server post limits
+- per-user private directories for uploads and imports
+- buttons to public view and previous/next resources in admin resource show page
+- install modules and themes
+- install [curated selection of modules]
+- update modules (in a future version)
+- add more asset media types
+- maintenance state for public and admin even when no migration
+- checks database and files
+- backup install
+- clear php caches
+- launch simple tasks, that can be any job of any module
+- allow (or not) reviewer to delete any resources
+- allow more file types for assets
 
 Checks and fixes that are doable:
 
@@ -28,6 +33,7 @@ Checks and fixes that are doable:
 - copy original files from a directory, for example after a disk crash or an
   inadvertent deletion; files are copied via the hash, and they can be anywhere
   in the directory or in subdirectories of the source path.
+- re-hash storage file names, for example after import or for security.
 - rebuild derivative files
 - remove empty directories in file system (original and thumbnails, mainly for
   module [Archive Repertory])
@@ -35,7 +41,7 @@ Checks and fixes that are doable:
   Omeka 1.2 ([omeka/omeka-s#1257]), or after a hard update of files)
 - check and fix sha256 hashes of files
 - check and fix positions of media (start from 1, without missing number)
-- check and set pre^cise media types (for example application/alto+xml instead of text/xml)
+- check and set precise media types (for example application/alto+xml instead of text/xml)
 - check and prepare dimensions of medias for module [Iiif Server]
 - check and fix the encoding (iso-8859 to utf-8) of resource values and page
   contents (fix Windows issues)
@@ -46,46 +52,75 @@ Checks and fixes that are doable:
 - check the size of the database table of logs and remove them
 - backup install
 - clear php caches
+- loop resources, for example to update them when a new settings is set
 
 And many more.
+
+The feature "content lock" to avoid concurrent edition was moved to the module
+[Lock Edit] since version 3.4.31.
+
+Modules that add tasks:
+
+- [Compilatio]
+  - Send files to https://compilatio.net, an anti-plagiarism app.
+  - Append urls to https://compilatio.net for files checked by Compilatio.
+- [Guest]
+  - Reset acceptation of conditions.
+- [Iiif Server]
+  - Convert old three-columns table contents to new four columns.
+- [Lock Edit]
+  - Check and reset content locks.
+- [Reference]
+  - Reindex references.
+- [Thesaurus]
+  - Reindex thesaurus.
+- [Zip]
+  - Create zips.
 
 
 Installation
 ------------
 
-This module requires the module [Log] and the optional module [Generic].
+See general end user documentation for [installing a module].
 
-* From the zip
+This module requires the module [Common], that should be installed first.
+
+The module [Cron] is recommended for advanced scheduling, but not required: the
+module can clean sessions and run scheduled tasks independently via page loads.
+
+The module uses external libraries, so use the release zip to install it, or use
+and init the source.
+
+- From the zip
 
 Download the last release [EasyAdmin.zip] from the list of releases, and
 uncompress it in the `modules` directory.
 
-* From the source and for development
+- From the source and for development
 
 If the module was installed from the source, rename the name of the folder of
-the module to `EasyAdmin`.
+the module to `EasyAdmin`, go to the root of the module, and run:
 
-Uncompress files and rename module folder `EasyAdmin`.
+```sh
+composer install --no-dev
+```
 
 Then install it like any other Omeka module and follow the config instructions.
 
-See general end user documentation for [installing a module].
+- For test
+
+The module includes a comprehensive test suite with unit and functional tests.
+Run them from the root of Omeka:
+
+```sh
+vendor/bin/phpunit -c modules/EasyAdmin/phpunit.xml --testdox
+```
+
+- Proxy issue
 
 In some cases, in particular when the server is behind a proxy, a firewall or a
 specific infrastructure, your may need to add credentials in your config (omeka
 file "config/local.config.php"), depending on your linux distribution:
-
-```php
-    'http_client' => [
-        // 'adapter' => \Laminas\Http\Client\Adapter\Curl::class,
-        'sslcapath' => '/usr/local/etc/ssl/certs/',
-        'sslcafile' => 'ca.crt',
-        // 'sslcapath' => '/etc/pki/tls/certs/',
-        // 'sslcafile' => 'ca-bundle.crt',
-    ],
-```
-
-In some cases, the path should be absolute:
 
 ```php
     'http_client' => [
@@ -97,11 +132,77 @@ In some cases, the path should be absolute:
     ],
 ```
 
-You can find more information on the params in [Laminas help].
+In some cases, the path should be relative:
+
+```php
+    'http_client' => [
+        // 'adapter' => \Laminas\Http\Client\Adapter\Curl::class,
+        'sslcapath' => '/usr/local/etc/ssl/certs/',
+        'sslcafile' => 'ca.crt',
+        // 'sslcapath' => '/etc/pki/tls/certs/',
+        // 'sslcafile' => 'ca-bundle.crt',
+    ],
+```
+
+You can find more information on the params in [Laminas help] and [curl].
 
 
 Usage
 -----
+
+### Various settings
+
+Some options are added in main settings:
+
+- Display previous/next button in resource page.
+- Allow the reviewer to delete any resource.
+- Manage the maintenance.
+- Display a quick button to create a resource template
+
+### Bulk Upload in item form and in separate form
+
+The module adds a way to bulk upload files manually without limit of [size or number of files]
+in resource form and via a separate bulk upload form for future imports.
+
+Simply select "Files" in the media list in item form.
+
+For security, some characters are forbidden in filenames. Media-types and
+extensions are checked according to main settings too.
+
+To list files in this directory and to delete them, use the file manager, via
+the link Easy admin in the left sidebar, then tab File manager.
+
+Not all directories can be browsed: only the list of paths set in main settings
+can be browsed. Furthermore, by default, only paths inside directory files/ and
+that are not managed by Omeka are allowed. To bypass this limit, an option in
+the config form allows to use any path inside files/.
+
+Another option allows to use any other writeable directory. For this one, update
+the file local.config.php for key "easyadmin_local_path_any".
+**Warning**: there are security implications with this option, so check access
+rights or use it only temporarily.
+
+### Per-user directories
+
+An option in settings allows to enable private directories for each user who can
+create items (author, reviewer, editor, and administrators). When enabled:
+
+- Each user gets a personal directory at `/files/userdata/{userId}/`.
+- The directory is created automatically on first access.
+- Administrators can browse and download files in all user directories, but
+  cannot upload or delete files in another user's directory.
+- Non-admin users (editors, reviewers, authors) can only see and use their own
+  directory.
+- Researchers do not have access to user directories (they cannot create items).
+- The `/files/userdata/` directory is protected by `.htaccess` to deny direct
+  HTTP access. The `.htaccess` is created automatically and recreated if deleted.
+- Files can still be imported via their filesystem path (sideload), since PHP
+  reads the disk directly and is not affected by the `.htaccess`. The filesystem
+  path is displayed in the file manager interface.
+- Download in the file manager works via a dedicated controller action that
+  streams the file after verifying authentication.
+- When the setting is disabled, existing directories remain on disk but no longer
+  appear in the dropdown.
 
 ### Buttons in resource page
 
@@ -110,7 +211,10 @@ The option can be enabled in main settings.
 #### Button "Public view"
 
 Display a button "Public view" in resource show pages. The link is the resource
-page of  the default user site or the default site.
+page of the default user site or the default site.
+
+This feature has been integrated partially in Omeka S v4.1, but only for items
+integrated in a site, not for item sets or media.
 
 #### Buttons to previous next resources
 
@@ -122,20 +226,24 @@ in Omeka Classic.
 Go to the menu "Bulk Check", select your process, set your options if needed,
 and click the submit buttons. The results are available in logs currently.
 
-
 ### Install and update modules and themes
 
 Simply select either the desired module or the desired theme and click "upload".
 
 See more details on [modules] and [themes].
 
-### Content lock
+### Content lock (Easy Admin until version 3.4.30)
+
+The feature was moved to the module [Lock Edit] since version 3.4.31.
 
 This feature is inspired by Drupal [Content Lock] mechanism and allows to block
 concurrent editing: when a user is editing a resource, other users cannot edit
 it until submission.
 
 ### Tasks and cron tasks
+
+Cron tasks are now managed via module [Cron]. Nevertheless, it is still possible
+to run any tasks (jobs) from this module.
 
 A script allows to run any job of any module from the command line, even if they
 are not initialized in the admin interface. It’s useful to run one time tasks or
@@ -169,27 +277,30 @@ sudo -u www-data php '/path/to/omeka/modules/EasyAdmin/data/scripts/task.php' --
 ```
 
 Required arguments are:
-  - `-t` `--task` [Name]
-    May be the full class of a job ("EasyAdmin\Job\LoopItems") or its basename
-    ("LoopItems"). You should take care of case sensitivity and escaping "\" or
-    quoting name on cli.
-  - `-u` `--user-id` [#id]
-    The Omeka user id is required, else the job won’t have any rights.
+
+- `-t` `--task` [Name]
+  May be the full class of a job ("EasyAdmin\Job\LoopItems") or its basename
+  ("LoopItems"). You should take care of case sensitivity and escaping "\" or
+  quoting name on cli.
+- `-u` `--user-id` [#id]
+  The Omeka user id is required, else the job won’t have any rights.
 
 Recommended arguments:
-  - `-s` `--server-url` [url] (default: "http://localhost")
-  - `-b` `--base-path` [path] (default: "/")
-    The url path to complete the server url.
+
+- `-s` `--server-url` [url] (default: "http://localhost")
+- `-b` `--base-path` [path] (default: "/")
+  The url path to complete the server url.
 
 Optional arguments:
-  - `-a` `--args` [json]
-    Arguments to pass to the task. Arguments are specific to each job. To find
-    them, check the code, or run a job manually then check the job page in admin
-    interface.
-  - `-k` `--as-task`
-    Process a a simple task and do not create a job. May be used for tasks that
-    do not need to be checked as a job. This is the inverse of the deprecated
-    argument `--job`.
+
+- `-a` `--args` [json]
+  Arguments to pass to the task. Arguments are specific to each job. To find
+  them, check the code, or run a job manually then check the job page in admin
+  interface.
+- `-k` `--as-task`
+  Process a a simple task and do not create a job. May be used for tasks that
+  do not need to be checked as a job. This is the inverse of the deprecated
+  argument `--job`.
 
 As an example, you can try the included job/task, for example "LoopItems" that
 loops all items to save them. This task allows to update all items, so all the
@@ -216,6 +327,7 @@ php '/path/to/omeka/modules/EasyAdmin/data/scripts/task.php' --task 'BulkExport\
 ```
 
 Another example: reindex statistics after import of hits:
+
 ```sh
 sudo -u www-data php '/path/to/omeka/modules/EasyAdmin/data/scripts/task.php' --task 'Statistics\Job\AggregateHits' --user-id 1 --server-url 'https://example.org' --base-path '/'
 ```
@@ -229,16 +341,33 @@ php '/path/to/omeka/application/data/scripts/perform-job.php' --job-id 1 --serve
 ```
 
 
+Development
+-----------
+
+To append a new task:
+
+- Add the name and label of the task via event `form.add_elements` on `\EasyAdmin\Form\JobsForm`.
+- Eventually add a fieldset with specific options.
+- Add the name of the job class and its params via event `easyadmin.job`, on
+  class `\EasyAdmin\Controller\JobController`.
+
+See an example in [Compilatio], [Reference], [Thesaurus], etc.
+
+
 TODO
 ----
 
-- [ ] Output results as tsv (`/files/check/tsv_date_time.tsv`) as BulkExport or in
-  a table (done for missing file; to do for all processors).
+- [ ] Output results as tsv (`/files/check/tsv_date_time.tsv`) as BulkExport or in a table (done for missing file; to do for all processors).
+- [ ] Output results as ods.
 - [ ] Check files with the wrong extension.
-- [ ] Add width/height/duration as data for image/audio/video to avoid to get them
-  each time (ready in modules [Iiif Server] and [Image Server]).
-- [ ] Remove old logs.
+- [x] Add width/height/duration as data for image/audio/video to avoid to get them each time (ready in modules [Iiif Server] and [Image Server]).
+- [x] Remove old logs.
 - [ ] A main cleaning task.
+- [ ] Add a checkbox in page assets to optimise assets in batch.
+- [ ] Add a deduplicator for assets (and replace assets used as resource thumbnails and in pages).
+- [x] Dump database: see adminer.
+- [x] Find a way to increase duration of csrf when there are very a large number of files to upload, instead of skipping csrf.
+- [ ] Add a module setting for the csrf lifetime for bulk uploads and for main resource edit page.
 
 
 Warning
@@ -248,6 +377,11 @@ Use it at your own risk.
 
 It’s always recommended to backup your files and your databases and to check
 your archives regularly so you can roll back if needed.
+
+```sh
+# database dump example
+mysqldump -u omeka -p omeka | gzip > "omeka.$(date +%Y%m%d_%H%M%S).sql.gz"
+```
 
 
 Troubleshooting
@@ -289,30 +423,44 @@ of the CeCILL license and that you accept its terms.
 Copyright
 ---------
 
-* Copyright Daniel Berthereau, 2017-2023 (see [Daniel-KM] on GitLab)
+- Copyright Daniel Berthereau, 2017-2026 (see [Daniel-KM] on GitLab)
 
 This module is a merge and improvement of previous modules [Easy Install], [Next],
-[Maintenance] and [Bulk Check].
-The idea of [Easy Install] comes from the plugin [Escher] for [Omeka Classic].
+[Maintenance], [Bulk Check] and [Generic]. The idea of [Easy Install] comes from
+the plugin [Escher] for [Omeka Classic].
+
+The curated selections of modules was implemented for the [digital library Manioc]
+of the [Université des Antilles et de la Guyane].
 
 
 [Easy Admin]: https://gitlab.com/Daniel-KM/Omeka-S-module-EasyAdmin
 [Omeka S]: https://omeka.org/s
+[curated selection of modules]: https://daniel-km.github.io/UpgradeToOmekaS/omeka_s_selections.html
 [Easy Install]: https://gitlab.com/Daniel-KM/Omeka-S-module-EasyInstall
 [Bulk Check]: https://gitlab.com/Daniel-KM/Omeka-S-module-BulkCheck
 [Next]: https://gitlab.com/Daniel-KM/Omeka-S-module-Next
 [Maintenance]: https://gitlab.com/Daniel-KM/Omeka-S-module-Maintenance
-[Installing a module]: https://omeka.org/s/docs/user-manual/modules/
+[installing a module]: https://omeka.org/s/docs/user-manual/modules/
+[Compilatio]: https://gitlab.com/Daniel-KM/Omeka-S-module-Compilatio
+[Guest]: https://gitlab.com/Daniel-KM/Omeka-S-module-Guest
+[Iiif Server]: https://gitlab.com/Daniel-KM/Omeka-S-module-IiifServer
+[Lock Edit]: https://gitlab.com/Daniel-KM/Omeka-S-module-LockEdit
+[Reference]: https://gitlab.com/Daniel-KM/Omeka-S-module-Reference
+[Thesaurus]: https://gitlab.com/Daniel-KM/Omeka-S-module-Thesaurus
+[Zip]: https://gitlab.com/Daniel-KM/Omeka-S-module-Zip
+[Cron]: https://gitlab.com/Daniel-KM/Omeka-S-module-Cron
+[installing a module]: https://omeka.org/s/docs/user-manual/modules/
 [EasyAdmin.zip]: https://github.com/Daniel-KM/Omeka-S-module-EasyAdmin/releases
+[size or number of files]: https://github.com/omeka/omeka-s/issues/1785
 [Laminas help]: https://docs.laminas.dev/laminas-http/client/adapters
+[curl]: https://curl.se/libcurl/c/curl_easy_setopt.html
 [module issues]: https://gitlab.com/Daniel-KM/Omeka-S-module-EasyAdmin/issues
 [Archive Repertory]: https://gitlab.com/Daniel-KM/Omeka-S-module-ArchiveRepertory
 [Iiif Server]: https://gitlab.com/Daniel-KM/Omeka-S-module-IiifServer
 [omeka/omeka-s#1257]: https://github.com/omeka/omeka-s/pull/1257
+[Common]: https://gitlab.com/Daniel-KM/Omeka-S-module-Common
 [Generic]: https://gitlab.com/Daniel-KM/Omeka-S-module-Generic
-[Log]: https://gitlab.com/Daniel-KM/Omeka-S-module-Log
 [Content Lock]: https://www.drupal.org/project/content_lock
-[Iiif Server]: https://gitlab.com/Daniel-KM/Omeka-S-module-IiifServer
 [Image Server]: https://gitlab.com/Daniel-KM/Omeka-S-module-ImageServer
 [modules]: https://daniel-km.github.io/UpgradeToOmekaS/omeka_s_modules.html
 [themes]: https://daniel-km.github.io/UpgradeToOmekaS/omeka_s_themes.html
@@ -322,5 +470,7 @@ The idea of [Easy Install] comes from the plugin [Escher] for [Omeka Classic].
 [OSI]: http://opensource.org
 [Escher]: https://github.com/AcuGIS/Escher
 [Omeka Classic]: https://omeka.org/classic
+[digital library Manioc]: http://www.manioc.org
+[Université des Antilles et de la Guyane]: http://www.univ-ag.fr
 [GitLab]: https://gitlab.com/Daniel-KM
 [Daniel-KM]: https://gitlab.com/Daniel-KM "Daniel Berthereau"

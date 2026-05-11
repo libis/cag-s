@@ -2,7 +2,7 @@
 
 /*
  * Copyright BibLibre, 2016-2017
- * Copyright Daniel Berthereau, 2017-2022
+ * Copyright Daniel Berthereau, 2017-2023
  *
  * This software is governed by the CeCILL license under French law and abiding
  * by the rules of distribution of free software.  You can use, modify and/ or
@@ -49,7 +49,9 @@ class Module extends AbstractModule
 {
     const NAMESPACE = __NAMESPACE__;
 
-    protected $dependency = 'AdvancedSearch';
+    protected $dependencies = [
+        'AdvancedSearch',
+     ];
 
     public function init(ModuleManager $moduleManager): void
     {
@@ -82,7 +84,7 @@ class Module extends AbstractModule
 
         // Manage the dependency upon Search, in particular when upgrading.
         // Once disabled, this current method and other ones are no more called.
-        if (!$this->isModuleActive($this->dependency)) {
+        if (!$this->isModuleActive('AdvancedSearch')) {
             $this->disableModule(__NAMESPACE__);
             return;
         }
@@ -109,10 +111,10 @@ class Module extends AbstractModule
 
         // Module AdvancedSearch is already checked as dependency.
         $advancedSearchVersion = $moduleManager->getModule('AdvancedSearch')->getIni('version');
-        if (version_compare($advancedSearchVersion, '3.3.6.16', '<')) {
+        if (version_compare($advancedSearchVersion, '3.4.15', '<')) {
             $message = new \Omeka\Stdlib\Message(
                 $translator->translate('This module requires module "%s" version "%s" or greater.'), // @translate
-                'Advanced Search', '3.3.6.16'
+                'Advanced Search', '3.4.15'
             );
             throw new ModuleCannotInstallException((string) $message);
         }
@@ -149,7 +151,7 @@ class Module extends AbstractModule
         $this->installResources();
     }
 
-    protected function preUninstall(): void
+    protected function postUninstall(): void
     {
         $serviceLocator = $this->getServiceLocator();
         $moduleManager = $serviceLocator->get('Omeka\ModuleManager');
@@ -161,9 +163,9 @@ class Module extends AbstractModule
             $sql = <<<'SQL'
 DELETE FROM `search_engine` WHERE `adapter` = 'solarium';
 SQL;
+            $connection = $serviceLocator->get('Omeka\Connection');
+            $connection->executeStatement($sql);
         }
-        $connection = $serviceLocator->get('Omeka\Connection');
-        $connection->executeStatement($sql);
     }
 
     /**
@@ -181,6 +183,12 @@ SQL;
 
     public function attachListeners(SharedEventManagerInterface $sharedEventManager): void
     {
+        $sharedEventManager->attach(
+            \AdvancedSearch\Controller\Admin\IndexController::class,
+            'view.browse.after',
+            [$this, 'appendBrowseCores']
+        );
+
         $sharedEventManager->attach(
             Api\Adapter\SolrCoreAdapter::class,
             'api.delete.post',
@@ -206,6 +214,17 @@ SQL;
             'api.delete.post',
             [$this, 'deletePostSolrMap']
         );
+    }
+
+    public function appendBrowseCores(Event $event): void
+    {
+        $view = $event->getTarget();
+        $api = $this->getServiceLocator()->get('Omeka\ApiManager');
+        $response = $api->search('solr_cores');
+        $cores = $response->getContent();
+        echo $view->partial('search-solr/admin/core/browse-table', [
+            'cores' => $cores,
+        ]);
     }
 
     public function deletePostSolrCore(Event $event): void
@@ -362,9 +381,6 @@ SQL;
         $this->createDefaultSolrConfig();
     }
 
-    /**
-     * @todo Replace this method by the standard InstallResources() when the upgrade from Search will be removed.
-     */
     protected function createDefaultSolrConfig(): void
     {
         // Note: during installation or upgrade, the api may not be available
@@ -382,7 +398,7 @@ SQL;
         $sqlSolrCoreId = <<<'SQL'
 SELECT `id`
 FROM `solr_core`
-ORDER BY `id`
+ORDER BY `id` ASC
 SQL;
         $solrCoreId = (int) $connection->fetchColumn($sqlSolrCoreId);
         if ($solrCoreId) {
@@ -424,7 +440,7 @@ SQL;
         }
 
         $message = new \Omeka\Stdlib\Message(
-            'The default core is available. Configure it in the %ssearch manager%s.', // @translate
+            'The default core can be configured in the %1$ssearch manager%2$s.', // @translate
             // Don't use the url helper, the route is not available during install.
             sprintf('<a href="%s">', $urlHelper('admin') . '/search-manager/solr/core/' . $solrCoreId . '/edit'),
             '</a>'

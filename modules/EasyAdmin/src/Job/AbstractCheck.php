@@ -18,25 +18,16 @@ abstract class AbstractCheck extends AbstractJob
     const SQL_LIMIT = 100;
 
     /**
-     * Max number of rows to output in spreadsheet.
-     * @var integer
+     * Higher limit for read-only operations (no entity modifications).
+     *
+     * @var int
      */
-    const SPREADSHEET_ROW_LIMIT = 1000000;
-
-    /**
-     * @var \Laminas\Log\Logger
-     */
-    protected $logger;
+    const SQL_LIMIT_LARGE = 1000;
 
     /**
      * @var \Omeka\Api\Manager
      */
     protected $api;
-
-    /**
-     * @var \Doctrine\ORM\EntityManager
-     */
-    protected $entityManager;
 
     /**
      * @var \Doctrine\DBAL\Connection
@@ -46,19 +37,29 @@ abstract class AbstractCheck extends AbstractJob
     /**
      * @var \Doctrine\DBAL\Connection
      */
-    protected $dbalConnection;
+    protected $connectionDbal;
 
     /**
      * @var \Doctrine\DBAL\Connection
      */
-    protected $ormConnection;
+    protected $connectionOrm;
 
     /**
-     * @var \Doctrine\ORM\EntityRepository
+     * @var \Doctrine\ORM\EntityManager
      */
-    protected $resourceRepository;
+    protected $entityManager;
 
-        /**
+    /**
+     * @var \Laminas\Log\Logger
+     */
+    protected $logger;
+
+    /**
+     * @var \Laminas\Mvc\I18n\Translator
+     */
+    protected $translator;
+
+    /**
      * @var \Doctrine\ORM\EntityRepository
      */
     protected $itemRepository;
@@ -67,6 +68,11 @@ abstract class AbstractCheck extends AbstractJob
      * @var \Doctrine\ORM\EntityRepository
      */
     protected $mediaRepository;
+
+    /**
+     * @var \Doctrine\ORM\EntityRepository
+     */
+    protected $resourceRepository;
 
     /**
      * @var array
@@ -106,6 +112,13 @@ abstract class AbstractCheck extends AbstractJob
      */
     protected $columns = [];
 
+    /**
+     * List of translatable columns.
+     *
+     * @var array
+     */
+    protected $columnsTranslatable = [];
+
     public function perform(): void
     {
         $services = $this->getServiceLocator();
@@ -117,11 +130,12 @@ abstract class AbstractCheck extends AbstractJob
         $this->logger = $services->get('Omeka\Logger');
         $this->logger->addProcessor($referenceIdProcessor);
         $this->api = $services->get('ControllerPluginManager')->get('api');
+        $this->translator = $services->get('MvcTranslator');
         $this->entityManager = $services->get('Omeka\EntityManager');
         // These two connections are not the same in doctrine.
-        $this->dbalConnection = $services->get('Omeka\Connection');
-        $this->ormConnection = $this->entityManager->getConnection();
-        $this->connection = $this->dbalConnection;
+        $this->connectionDbal = $services->get('Omeka\Connection');
+        $this->connectionOrm = $this->entityManager->getConnection();
+        $this->connection = $this->connectionDbal;
         $this->resourceRepository = $this->entityManager->getRepository(\Omeka\Entity\Resource::class);
         $this->itemRepository = $this->entityManager->getRepository(\Omeka\Entity\Item::class);
         $this->mediaRepository = $this->entityManager->getRepository(\Omeka\Entity\Media::class);
@@ -134,10 +148,12 @@ abstract class AbstractCheck extends AbstractJob
         }
 
         $process = $this->getArg('process');
-        $this->logger->notice(
-            'Starting "{process}".', // @translate
-            ['process' => $process]
-        );
+        if ($process) {
+            $this->logger->notice(
+                'Starting "{process}".', // @translate
+                ['process' => $process]
+            );
+        }
     }
 
     /**
@@ -178,10 +194,9 @@ abstract class AbstractCheck extends AbstractJob
             $this->options['escape'] = chr(0);
         }
 
-        $translator = $this->getServiceLocator()->get('MvcTranslator');
         $row = [];
         foreach ($this->columns as $column) {
-            $row[] = $translator->translate($column);
+            $row[] = $this->translator->translate($column);
         }
         $this->writeRow($row);
 
@@ -195,28 +210,31 @@ abstract class AbstractCheck extends AbstractJob
     {
         static $columnKeys;
         static $total = 0;
-        static $skipNext = false;
 
-        ++$total;
-        if ($total > self::SPREADSHEET_ROW_LIMIT) {
-            if ($skipNext) {
-                return $this;
-            }
-            $skipNext = true;
-            $this->logger->err(
-                'Trying to output more than %d messages. Next messages are skipped.', // @translate
-                self::SPREADSHEET_ROW_LIMIT
-            );
+        if (!$this->handle) {
             return $this;
         }
 
-        if (is_null($columnKeys)) {
+        ++$total;
+        if ($total === 1048577) {
+            $this->logger->err(
+                'The spreadsheet has more than 1048576 messages, so it will be truncated when opened in LibreOffice or Excel.', // @translate
+            );
+        }
+
+        if ($columnKeys === null) {
             $columnKeys = array_fill_keys(array_keys($this->columns), null);
         }
 
         // Order row according to the columns when associative array.
         if (array_values($row) !== $row) {
             $row = array_replace($columnKeys, array_intersect_key($row, $columnKeys));
+        }
+
+        foreach ($this->columnsTranslatable as $translatable) {
+            if (!empty($row[$translatable])) {
+                $row[$translatable] = $this->translator->translate($row[$translatable]);
+            }
         }
 
         fputcsv($this->handle, $row, $this->options['delimiter'], $this->options['enclosure'], $this->options['escape']);
@@ -279,7 +297,7 @@ abstract class AbstractCheck extends AbstractJob
 
         $label = $this->getArg('process', '');
         $base = preg_replace('/[^A-Za-z0-9]/', '_', $label);
-        $base = $base ? substr(preg_replace('/_+/', '_', $base), 0, 20) . '-' : '';
+        $base = $base ? substr(preg_replace('/_+/', '_', $base), 0, 30) . '-' : '';
         $date = (new \DateTime())->format('Ymd-His');
         $extension = 'tsv';
 
@@ -318,6 +336,19 @@ abstract class AbstractCheck extends AbstractJob
     }
 
     /**
+     * Get translated Yes/No strings.
+     *
+     * @return array ['yes' => string, 'no' => string]
+     */
+    protected function getYesNo(): array
+    {
+        return [
+            'yes' => $this->translator->translate('Yes'), // @translate
+            'no' => $this->translator->translate('No'), // @translate
+        ];
+    }
+
+    /**
      * Check if a module is active.
      *
      * @param string $module
@@ -343,24 +374,62 @@ abstract class AbstractCheck extends AbstractJob
     {
         if (file_exists($dirPath)) {
             if (!is_dir($dirPath) || !is_readable($dirPath) || !is_writeable($dirPath)) {
-                $this->getServiceLocator()->get('Omeka\Logger')->err(
+                $this->logger->err(
                     'The directory "{path}" is not writeable.', // @translate
                     ['path' => $dirPath]
                 );
                 return null;
+            }
+            // Ensure .htaccess exists for backup directories.
+            if (basename($dirPath) === 'backup') {
+                $this->createBackupHtaccess($dirPath);
             }
             return $dirPath;
         }
 
         $result = @mkdir($dirPath, 0775, true);
         if (!$result) {
-            $this->getServiceLocator()->get('Omeka\Logger')->err(
+            $this->logger->err(
                 'The directory "{path}" is not writeable: {error}.', // @translate
                 ['path' => $dirPath, 'error' => error_get_last()['message']]
             );
             return null;
         }
 
+        // Create .htaccess for backup directories.
+        if (basename($dirPath) === 'backup') {
+            $this->createBackupHtaccess($dirPath);
+        }
+
         return $dirPath;
+    }
+
+    /**
+     * Create .htaccess to deny direct web access to backup files.
+     *
+     * Backups contain sensitive information and must only be downloaded
+     * via the admin controller which checks authentication.
+     */
+    protected function createBackupHtaccess(string $dirPath): void
+    {
+        $htaccessPath = $dirPath . '/.htaccess';
+        if (file_exists($htaccessPath)) {
+            return;
+        }
+
+        $htaccessContent = <<<'HTACCESS'
+            # Deny direct access to backup files.
+            # Backups contain sensitive data (database credentials, API keys, user passwords).
+            # Downloads must go through the admin controller for authentication.
+            <IfModule mod_authz_core.c>
+                Require all denied
+            </IfModule>
+            <IfModule !mod_authz_core.c>
+                Order deny,allow
+                Deny from all
+            </IfModule>
+            HTACCESS;
+
+        @file_put_contents($htaccessPath, $htaccessContent);
     }
 }

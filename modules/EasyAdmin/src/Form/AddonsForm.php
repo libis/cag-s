@@ -2,8 +2,9 @@
 
 namespace EasyAdmin\Form;
 
+use Common\Form\Element as CommonElement;
 use EasyAdmin\Mvc\Controller\Plugin\Addons;
-use Laminas\Form\Element\Select;
+use Laminas\Form\Element;
 use Laminas\Form\Form;
 
 class AddonsForm extends Form
@@ -12,6 +13,11 @@ class AddonsForm extends Form
      * @var \EasyAdmin\Mvc\Controller\Plugin\Addons
      */
     protected $addons;
+
+    /**
+     * @var array
+     */
+    protected $selections = [];
 
     public function init(): void
     {
@@ -22,9 +28,8 @@ class AddonsForm extends Form
             'theme' => 'Themes web', // @translate
         ];
 
-        $addons = $this->getAddons();
-        $list = $addons();
-        foreach ($list as $addonType => $addonsForType) {
+        $listAddons = $this->addons->getAddons();
+        foreach ($listAddons as $addonType => $addonsForType) {
             if (empty($addonsForType)) {
                 continue;
             }
@@ -32,32 +37,58 @@ class AddonsForm extends Form
             foreach ($addonsForType as $url => $addon) {
                 $label = $addon['name'];
                 $label .= $addon['version'] ? ' [v' . $addon['version'] . ']' : '[]';
-                $label .= $addons->dirExists($addon) ? ' *' : '';
+                $label .= $this->addons->dirExists($addon) ? ' *' : '';
                 $valueOptions[$url] = $label;
             }
 
-            $this->add([
-                'name' => $addonType,
-                'type' => Select::class,
+            $this
+                ->add([
+                    'name' => $addonType,
+                    'type' => CommonElement\OptionalSelect::class,
+                    'options' => [
+                        'label' => $addonLabels[$addonType],
+                        'info' => '',
+                        'empty_option' => '',
+                        'value_options' => $valueOptions,
+                    ],
+                    'attributes' => [
+                        'id' => $addonType,
+                        'class' => 'chosen-select',
+                        'data-placeholder' => 'Select below…', // @translate
+                    ],
+                ]);
+        }
+
+        if (!empty($this->selections)) {
+            $this
+                ->add([
+                    'name' => 'selection',
+                    'type' => CommonElement\OptionalSelect::class,
+                    'options' => [
+                        'label' => 'Curated selections of modules and themes', // @translate
+                        'empty_option' => '',
+                        'value_options' => array_combine($this->selections, $this->selections),
+                    ],
+                    'attributes' => [
+                        'id' => 'selection',
+                        'class' => 'chosen-select',
+                        'data-placeholder' => 'Select below…', // @translate
+                    ],
+                ]);
+        }
+
+        $this
+            ->add([
+                'name' => 'reset_cache',
+                'type' => Element\Checkbox::class,
                 'options' => [
-                    'label' => $addonLabels[$addonType],
-                    'info' => '',
-                    'empty_option' => '',
-                    'value_options' => $valueOptions,
+                    'label' => 'Refresh lists of addons and selections', // @translate
                 ],
                 'attributes' => [
-                    'id' => $addonType,
-                    'class' => 'chosen-select',
-                    'data-placeholder' => 'Select below…', // @translate
+                    'id' => 'reset_cache',
                 ],
-            ]);
-
-            $inputFilter = $this->getInputFilter();
-            $inputFilter->add([
-                'name' => $addonType,
-                'required' => false,
-            ]);
-        }
+            ])
+        ;
     }
 
     public function setAddons(Addons $addons): self
@@ -69,5 +100,16 @@ class AddonsForm extends Form
     public function getAddons(): Addons
     {
         return $this->addons;
+    }
+
+    public function setSelections(array $selections): self
+    {
+        $this->selections = $selections;
+        return $this;
+    }
+
+    public function getSelections(): array
+    {
+        return $this->selections;
     }
 }

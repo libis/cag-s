@@ -2,6 +2,8 @@
 
 namespace EasyAdmin\Job;
 
+use Doctrine\DBAL\Connection;
+
 class FileExcess extends AbstractCheckFile
 {
     protected $columns = [
@@ -93,27 +95,136 @@ class FileExcess extends AbstractCheckFile
             $this->createDir(dirname($movePath));
         }
 
-        $files = $this->listFilesInFolder($path);
+        // Use generator to avoid loading all files in memory.
+        $filesIterator = $this->iterateFilesInFolder($path);
 
-        $total = count($files);
         $totalSuccess = 0;
         $totalExcess = 0;
+        $totalProcessed = 0;
 
         $translator = $this->getServiceLocator()->get('MvcTranslator');
         $yes = $translator->translate('Yes'); // @translate
         $no = $translator->translate('No'); // @translate
 
         $this->logger->notice(
-            'Starting check of {total} files for type {type}.', // @translate
-            ['total' => $total, 'type' => $type]
+            'Starting check of files for type {type}.', // @translate
+            ['type' => $type]
         );
 
-        $i = 0;
-        foreach ($files as $filename) {
-            if (($i % 100 === 0) && $i) {
+        $connection = $this->entityManager->getConnection();
+
+        // Process files in batches to reduce database round-trips.
+        // Instead of one query per file (N+1), batch 500 files into one
+        // IN() query, reducing queries by ~500x.
+        $batchSize = 500;
+        $batch = [];
+
+        foreach ($filesIterator as $filename) {
+            $batch[] = $filename;
+            if (count($batch) < $batchSize) {
+                continue;
+            }
+            $result = $this->processExcessBatch(
+                $batch, $type, $isOriginal, $path, $move, $movePath ?? '', $connection,
+                $yes, $no, $totalProcessed, $totalSuccess, $totalExcess
+            );
+            $batch = [];
+            if ($result === false) {
+                return false;
+            }
+        }
+
+        // Process remaining files.
+        if ($batch) {
+            $result = $this->processExcessBatch(
+                $batch, $type, $isOriginal, $path, $move, $movePath ?? '', $connection,
+                $yes, $no, $totalProcessed, $totalSuccess, $totalExcess
+            );
+            if ($result === false) {
+                return false;
+            }
+        }
+
+        if ($move) {
+            $this->logger->notice(
+                'End check of {total} files for type {type}: {total_excess} files in excess moved.', // @translate
+                ['total' => $totalProcessed, 'type' => $type, 'total_excess' => $totalExcess]
+            );
+        } else {
+            $this->logger->notice(
+                'End check of {total} files for type {type}: {total_excess} files in excess.', // @translate
+                ['total' => $totalProcessed, 'type' => $type, 'total_excess' => $totalExcess]
+            );
+        }
+
+        return true;
+    }
+
+    /**
+     * Process a batch of files, checking existence in database with one query.
+     *
+     * @return bool|null False to stop processing, null otherwise.
+     */
+    protected function processExcessBatch(
+        array $filenames,
+        string $type,
+        bool $isOriginal,
+        string $path,
+        bool $move,
+        string $movePath,
+        \Doctrine\DBAL\Connection $connection,
+        string $yes,
+        string $no,
+        int &$totalProcessed,
+        int &$totalSuccess,
+        int &$totalExcess
+    ) {
+        // Build lookup: storageId => [filename, extension].
+        $storageMap = [];
+        foreach ($filenames as $filename) {
+            if ($isOriginal) {
+                $ext = pathinfo($filename, PATHINFO_EXTENSION);
+                $storageId = strlen($ext)
+                    ? substr($filename, 0, strrpos($filename, '.'))
+                    : $filename;
+            } else {
+                $ext = null;
+                $storageId = substr($filename, 0, strrpos($filename, '.'));
+            }
+            $storageMap[$filename] = ['storageId' => $storageId, 'extension' => $ext];
+        }
+
+        $storageIds = array_unique(array_column($storageMap, 'storageId'));
+
+        // Single batched query instead of N individual queries.
+        if ($isOriginal) {
+            $sql = 'SELECT `id`, `item_id`, `storage_id`, `extension` FROM `media`'
+                . ' WHERE `storage_id` IN (:ids) AND `has_original` = 1';
+        } else {
+            $sql = 'SELECT `id`, `item_id`, `storage_id` FROM `media`'
+                . ' WHERE `storage_id` IN (:ids) AND `has_thumbnails` = 1';
+        }
+        $stmt = $connection->executeQuery($sql, ['ids' => $storageIds], ['ids' => Connection::PARAM_STR_ARRAY]);
+        $dbRows = $stmt->fetchAllAssociative();
+
+        // Build lookup: "storageId|extension" => media row (for originals)
+        // or "storageId" => media row (for derivatives).
+        $mediaLookup = [];
+        foreach ($dbRows as $dbRow) {
+            if ($isOriginal) {
+                $key = $dbRow['storage_id'] . '|' . ($dbRow['extension'] ?? '');
+            } else {
+                $key = $dbRow['storage_id'];
+            }
+            $mediaLookup[$key] = $dbRow;
+        }
+
+        // Process each file in the batch.
+        foreach ($filenames as $filename) {
+            if (($totalProcessed % 500 === 0) && $totalProcessed) {
                 $this->logger->info(
-                    '{processed}/{total} files processed.', // @translate
-                    ['processed' => $i, 'total' => $total]
+                    '{processed} files processed.', // @translate
+                    ['processed' => $totalProcessed]
                 );
                 if ($this->shouldStop()) {
                     $this->logger->warn(
@@ -122,26 +233,13 @@ class FileExcess extends AbstractCheckFile
                     return false;
                 }
             }
-            ++$i;
+            ++$totalProcessed;
 
+            $info = $storageMap[$filename];
             if ($isOriginal) {
-                $extension = pathinfo($filename, PATHINFO_EXTENSION);
-                $storageId = strlen($extension)
-                    ? substr($filename, 0, strrpos($filename, '.'))
-                    : $filename;
-                $media = $this->mediaRepository->findOneBy([
-                    'storageId' => $storageId,
-                    'extension' => $extension,
-                    'hasOriginal' => 1,
-                ]);
+                $key = $info['storageId'] . '|' . ($info['extension'] ?? '');
             } else {
-                // The extension of the original file is unknown, but it doesn't
-                // matter, since each filepath is unique.
-                $storageId = substr($filename, 0, strrpos($filename, '.'));
-                $media = $this->mediaRepository->findOneBy([
-                    'storageId' => $storageId,
-                    'hasThumbnails' => 1,
-                ]);
+                $key = $info['storageId'];
             }
 
             $row = [
@@ -154,12 +252,11 @@ class FileExcess extends AbstractCheckFile
                 'fixed' => '',
             ];
 
-            if ($media) {
+            if (isset($mediaLookup[$key])) {
                 $row['exists'] = $yes;
-                $row['item'] = $media->getItem()->getId();
-                $row['media'] = $media->getId();
+                $row['item'] = $mediaLookup[$key]['item_id'];
+                $row['media'] = $mediaLookup[$key]['id'];
                 ++$totalSuccess;
-                $this->entityManager->clear();
                 $this->writeRow($row);
                 continue;
             }
@@ -167,8 +264,6 @@ class FileExcess extends AbstractCheckFile
             $row['exists'] = $no;
 
             if ($move) {
-                // Creation of a folder is required for module ArchiveRepertory
-                // or some other ones.
                 $dirname = dirname($movePath . '/' . $filename);
                 if ($dirname !== $movePath) {
                     if (!$this->createDir($dirname)) {
@@ -185,43 +280,29 @@ class FileExcess extends AbstractCheckFile
                 if ($result) {
                     $row['fixed'] = $yes;
                     $this->logger->warn(
-                        'File "{filename}" ("{type}", {processed}/{total}) doesn’t exist in database and was moved.', // @translate
-                        ['filename' => $filename, 'type' => $type, 'processed' => $i, 'total' => $total]
+                        "File \"{filename}\" (\"{type}\", #{processed}) doesn't exist in database and was moved.", // @translate
+                        ['filename' => $filename, 'type' => $type, 'processed' => $totalProcessed]
                     );
                 } else {
                     $row['fixed'] = $no;
                     $this->writeRow($row);
                     $this->logger->err(
-                        'File "{filename}" (type "{type}") doesn’t exist in database, and cannot be moved.', // @translate
+                        "File \"{filename}\" (type \"{type}\") doesn't exist in database, and cannot be moved.", // @translate
                         ['filename' => $filename, 'type' => $type]
                     );
                     return false;
                 }
             } else {
                 $this->logger->warn(
-                    'File "{filename}" ("{type}", {processed}/{total}) doesn’t exist in database.', // @translate
-                    ['filename' => $filename, 'type' => $type, 'processed' => $i, 'total' => $total]
+                    "File \"{filename}\" (\"{type}\", #{processed}) doesn't exist in database.", // @translate
+                    ['filename' => $filename, 'type' => $type, 'processed' => $totalProcessed]
                 );
             }
 
             $this->writeRow($row);
-
             ++$totalExcess;
-            $this->entityManager->clear();
         }
 
-        if ($move) {
-            $this->logger->notice(
-                'End check of {total} files for type {type}: {total_excess} files in excess moved.', // @translate
-                ['total' => count($files), 'type' => $type, 'total_excess' => $totalExcess]
-            );
-        } else {
-            $this->logger->notice(
-                'End check of {total} files for type {type}: {total_excess} files in excess.', // @translate
-                ['total' => count($files), 'type' => $type, 'total_excess' => $totalExcess]
-            );
-        }
-
-        return true;
+        return null;
     }
 }

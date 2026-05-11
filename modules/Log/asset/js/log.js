@@ -1,67 +1,153 @@
-$(document).ready(function() {
+'use strict';
 
-    /**
-     * Search sidebar.
-     */
-    $('#content').on('click', '.quick-search', function(e) {
-        e.preventDefault();
-        const sidebar = $('#sidebar-search');
-        if (sidebar.hasClass('active')) {
-            Omeka.closeSidebar(sidebar);
-            return;
-        } 
+(function ($) {
 
-        Omeka.openSidebar(sidebar);
+    $(document).ready(function() {
 
-        // Auto-close if other sidebar opened
-        $('body').one('o:sidebar-opened', '.sidebar', function () {
-            if (!sidebar.is(this)) {
+        const dialogMessage = function (message, nl2br = false) {
+            // Use a dialog to display a message, that should be escaped.
+            var dialog = document.querySelector('dialog.popup-message');
+            if (!dialog) {
+                dialog = `
+    <dialog class="popup popup-dialog dialog-message popup-message" data-is-dynamic="1">
+        <div class="dialog-background">
+            <div class="dialog-panel">
+                <div class="dialog-header">
+                    <button type="button" class="dialog-header-close-button" title="Close" autofocus="autofocus">
+                        <span class="dialog-close">🗙</span>
+                    </button>
+                    <button type="button" class="o-icon- far fa-copy log-copy-dialog" title="Copy"></button>
+                </div>
+                <div class="dialog-contents">
+                    {{ message }}
+                </div>
+            </div>
+        </div>
+    </dialog>`;
+                $('body').append(dialog);
+                dialog = document.querySelector('dialog.dialog-message');
+            }
+            if (nl2br) {
+                message = message.replace(/(?:\r\n|\r|\n)/g, '<br/>');
+            }
+            dialog.innerHTML = dialog.innerHTML.replace('{{ message }}', message);
+            dialog.showModal();
+            $(dialog).trigger('o:dialog-opened');
+        };
+
+        /**
+         * Search sidebar.
+         */
+        $('#content').on('click', '.quick-search', function(ev) {
+            ev.preventDefault();
+            const sidebar = $('#sidebar-search');
+            if (sidebar.hasClass('active')) {
                 Omeka.closeSidebar(sidebar);
+                return;
+            }
+
+            Omeka.openSidebar(sidebar);
+
+            // Auto-close if other sidebar opened
+            $('body').one('o:sidebar-opened', '.sidebar', function () {
+                if (!sidebar.is(this)) {
+                    Omeka.closeSidebar(sidebar);
+                }
+            });
+        });
+
+        /**
+         * Better display of big logs.
+         */
+        $('#content').on('click', 'button.popover', function(ev) {
+            const message = $(this).closest('.log-popover-parent').find('.log-popover-current').text();
+            dialogMessage(message, true);
+        });
+
+        $(document).on('click', '.log-copy-dialog', function(ev) {
+            var btn = $(this);
+            var text = btn.closest('.dialog-panel').find('.dialog-contents').text().trim();
+            var copied = function() {
+                btn.removeClass('far fa-copy').addClass('fa fa-check log-copied').attr('title', Omeka.jsTranslate('Message copied'));
+            };
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(text).then(copied);
+            } else {
+                var ta = document.createElement('textarea');
+                ta.value = text;
+                ta.style.position = 'fixed';
+                ta.style.opacity = '0';
+                document.body.appendChild(ta);
+                ta.select();
+                document.execCommand('copy');
+                document.body.removeChild(ta);
+                copied();
             }
         });
+
+        $(document).on('click', '.dialog-header-close-button', function() {
+            const dialog = this.closest('dialog.popup');
+            if (dialog) {
+                dialog.close();
+                if (dialog.hasAttribute('data-is-dynamic') && dialog.getAttribute('data-is-dynamic')) {
+                    dialog.remove();
+                }
+            } else {
+                $(this).closest('.popup').addClass('hidden').hide();
+            }
+        });
+
+        /**
+         * Copy log message to clipboard.
+         */
+        $('#content').on('click', 'button.log-copy', function(ev) {
+            const row = $(this).closest('.log-popover-parent');
+            const full = row.find('.log-message-full');
+            const text = full.length ? full.text() : row.find('.log-message').text();
+            var btn = $(this);
+            var copied = function() {
+                $('.log-copy').removeClass('fa fa-check log-copied').addClass('far fa-copy').attr('title', Omeka.jsTranslate('Copy'));
+                btn.removeClass('far fa-copy').addClass('fa fa-check log-copied').attr('title', Omeka.jsTranslate('Message copied'));
+            };
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(text.trim()).then(copied);
+            } else {
+                var ta = document.createElement('textarea');
+                ta.value = text.trim();
+                ta.style.position = 'fixed';
+                ta.style.opacity = '0';
+                document.body.appendChild(ta);
+                ta.select();
+                document.execCommand('copy');
+                document.body.removeChild(ta);
+                copied();
+            }
+        });
+
+        // Complete the batch delete form after confirmation.
+        // TODO Check if this is still needed.
+        $('#confirm-delete-selected, #confirm-delete-all').on('submit', function() {
+            const confirmForm = $(this);
+            if ('confirm-delete-all' === this.id) {
+                confirmForm.append($('.batch-query').clone());
+            } else {
+                $('#batch-form').find('input[name="resource_ids[]"]:checked:not(:disabled)').each(function() {
+                    confirmForm.append($(this).clone().prop('disabled', false).attr('type', 'hidden'));
+                });
+            }
+        });
+        $('.delete-all').on('click', function() {
+            Omeka.closeSidebar($('#sidebar-delete-selected'));
+        });
+        $('.delete-selected').on('click', function() {
+            Omeka.closeSidebar($('#sidebar-delete-all'));
+            const inputs = $('input[name="resource_ids[]"]');
+            $('#delete-selected-count').text(inputs.filter(':checked').length);
+        });
+        $('#sidebar-delete-all').on('click', 'input[name="confirm-delete-all-check"]', function() {
+            $('#confirm-delete-all input[type="submit"]').prop('disabled', this.checked ? false : true);
+        });
+
     });
 
-    /**
-     * Better display of big logs.
-     */
-    $('a.popover').webuiPopover('destroy').webuiPopover({
-        placement: 'auto-bottom',
-        content: function (element) {
-            var target = $('[data-target=' + element.id + ']');
-            var content = target.closest('.webui-popover-parent').find('.webui-popover-current');
-            $(content).removeClass('truncate').show();
-            return content;
-        },
-        title: '',
-        arrow: false,
-        backdrop: true,
-        onShow: function(element) { element.css({left: 0}); }
-    });
-
-    $('a.popover').webuiPopover();
-
-    // Complete the batch delete form after confirmation.
-    // TODO Check if this is still needed.
-    $('#confirm-delete-selected, #confirm-delete-all').on('submit', function(e) {
-        var confirmForm = $(this);
-        if ('confirm-delete-all' === this.id) {
-            confirmForm.append($('.batch-query').clone());
-        } else {
-            $('#batch-form').find('input[name="resource_ids[]"]:checked:not(:disabled)').each(function() {
-                confirmForm.append($(this).clone().prop('disabled', false).attr('type', 'hidden'));
-            });
-        }
-    });
-    $('.delete-all').on('click', function(e) {
-        Omeka.closeSidebar($('#sidebar-delete-selected'));
-    });
-    $('.delete-selected').on('click', function(e) {
-        Omeka.closeSidebar($('#sidebar-delete-all'));
-        var inputs = $('input[name="resource_ids[]"]');
-        $('#delete-selected-count').text(inputs.filter(':checked').length);
-    });
-    $('#sidebar-delete-all').on('click', 'input[name="confirm-delete-all-check"]', function(e) {
-        $('#confirm-delete-all input[type="submit"]').prop('disabled', this.checked ? false : true);
-    });
-
-});
+})(jQuery);

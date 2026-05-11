@@ -1,7 +1,8 @@
 <?php declare(strict_types=1);
+
 namespace Log\Db\Filter;
 
-use Doctrine\DBAL\Types\Type;
+use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\Mapping\ClassMetaData;
 use Doctrine\ORM\Query\Filter\SQLFilter;
 use Log\Entity\Log;
@@ -40,18 +41,17 @@ class LogVisibilityFilter extends SQLFilter
             return '';
         }
 
-        $constraint = '';
-
         // Users can view all logs they own.
         $identity = $this->acl->getAuthenticationService()->getIdentity();
         if ($identity) {
-            $constraint = sprintf(
+            return sprintf(
                 $alias . '.owner_id = %s',
-                $this->getConnection()->quote($identity->getId(), Type::INTEGER)
+                $this->getConnection()->quote($identity->getId(), Types::INTEGER)
             );
         }
 
-        return $constraint;
+        // Anonymous users cannot view any logs.
+        return '1 = 0';
     }
 
     public function setAcl(Acl $acl): void

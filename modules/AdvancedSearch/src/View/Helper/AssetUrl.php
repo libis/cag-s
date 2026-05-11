@@ -7,9 +7,8 @@ namespace AdvancedSearch\View\Helper;
  *
  * Override core helper to allow to override internal assets in a generic way.
  *
- * @see \AdvancedResourceTemplate\Service\ViewHelper\AssetUrlFactory
- * @see \AdvancedSearch\Service\ViewHelper\AssetUrlFactory
- * @see \BlockPlus\Service\ViewHelper\AssetUrlFactory
+ * @see \AdvancedResourceTemplate\View\Helper\AssetUrl
+ * @see \AdvancedSearch\View\Helper\AssetUrl
  */
 class AssetUrl extends \Omeka\View\Helper\AssetUrl
 {
@@ -26,21 +25,22 @@ class AssetUrl extends \Omeka\View\Helper\AssetUrl
         $this->internals = $internals;
     }
 
-    public function __invoke($file, $module = null, $override = false, $versioned = true)
+    public function __invoke($file, $module = null, $override = false, $versioned = true, $absolute = false)
     {
         if ($module === 'Omeka'
             && isset($this->internals[$file])
             && array_key_exists($this->internals[$file], $this->activeModules)
         ) {
+            $view = $this->getView();
             return sprintf(
                 self::MODULE_ASSETS_PATH,
-                $this->getView()->basePath(),
+                ($absolute ? $view->serverUrl() : '') . $view->basePath(),
                 $this->internals[$file],
                 $file,
                 $versioned ? '?v=' . $this->activeModules[$this->internals[$file]]->getIni('version') : ''
             );
         }
 
-        return parent::__invoke($file, $module, $override, $versioned);
+        return parent::__invoke($file, $module, $override, $versioned, $absolute);
     }
 }

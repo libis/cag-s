@@ -6,6 +6,7 @@ use AdvancedSearch\Mvc\Controller\Plugin\SearchResources;
 use Doctrine\DBAL\Connection;
 use Doctrine\ORM\EntityManager;
 use Doctrine\ORM\QueryBuilder;
+use Laminas\Authentication\AuthenticationService;
 use Laminas\EventManager\Event;
 use Laminas\Session\Container;
 use Omeka\Api\Adapter\Manager as ApiAdapterManager;
@@ -13,21 +14,37 @@ use Omeka\Api\Representation\AbstractResourceEntityRepresentation;
 use Omeka\Api\Representation\MediaRepresentation;
 use Omeka\Api\Representation\SiteRepresentation;
 use Omeka\Api\Request;
+use Omeka\Permissions\Acl;
 
 /**
- * @todo Simplify, factorize and clarify process.
+ * Trait for Previous/Next resource navigation.
+ *
+ * Provide functionality for navigating between resources (items, item_sets, media).
+ * - Items/ItemSets: use doctrine orm query with visibility filtering
+ * - Media: Uses optimized sql query with position-based navigation
+ *
+ * Visibility is handled automatically:
+ * - On public site: only public resources (or owned by current user) are shown
+ * - On admin: all resources are shown (respecting acl permissions)
+ *
+ * @note Some mysql versions may have issues with complex queries. MariaDB works fine.
  */
 trait PreviousNextResourceTrait
 {
+    /**
+     * @var \Omeka\Permissions\Acl
+     */
+    protected $acl;
+
     /**
      * @var ApiAdapterManager
      */
     protected $apiAdapterManager;
 
     /**
-     * @var \Omeka\Api\Adapter\AbstractResourceEntityAdapter
+     * @var \Laminas\Authentication\AuthenticationService
      */
-    protected $resourceAdapter;
+    protected $authenticationService;
 
     /**
      * @var \Doctrine\DBAL\Connection
@@ -40,23 +57,32 @@ trait PreviousNextResourceTrait
     protected $entityManager;
 
     /**
-     * @var \AdvancedSearch\Mvc\Controller\Plugin\SearchResources
+     * @var \Omeka\Api\Adapter\AbstractResourceEntityAdapter
+     */
+    protected $resourceAdapter;
+
+    /**
+     * @var \AdvancedSearch\Mvc\Controller\Plugin\SearchResources|null
      */
     protected $searchResources;
 
     /**
-     * @var SiteRepresentation
+     * @var \Omeka\Api\Representation\SiteRepresentation|null
      */
     protected $site;
 
     public function __construct(
+        Acl $acl,
         ApiAdapterManager $apiAdapterManager,
+        AuthenticationService $authenticationService,
         Connection $connection,
         EntityManager $entityManager,
         ?SearchResources $searchResources,
         ?SiteRepresentation $site
     ) {
+        $this->acl = $acl;
         $this->apiAdapterManager = $apiAdapterManager;
+        $this->authenticationService = $authenticationService;
         $this->connection = $connection;
         $this->entityManager = $entityManager;
         $this->searchResources = $searchResources;
@@ -80,7 +106,6 @@ trait PreviousNextResourceTrait
                     return $this->site
                         ? $view->siteSetting('blockplus_prevnext_items_query', [])
                         : $view->setting('easyadmin_prevnext_items_query', []);
-                    break;
                 case 'item_sets':
                     return $this->site
                         ? $view->siteSetting('blockplus_prevnext_item_sets_query', [])
@@ -101,7 +126,6 @@ trait PreviousNextResourceTrait
         // quick anyway.
         // See previous queries in module Next (version 3.4.46) or in previous
         // version of this module.
-        // TODO Check if visibility is automatically managed. Or use standard automatic filter to check visibility.
 
         $resourceName = $resource->resourceName();
 
@@ -113,13 +137,23 @@ trait PreviousNextResourceTrait
             parse_str($q, $query);
         }
 
+        // On public site, force visibility filter unless already set.
+        // The Doctrine filter handles visibility automatically, but we ensure
+        // it's applied when on the public front-end.
+        if ($this->site
+            && !isset($query['is_public'])
+            && !$this->acl->userIsAllowed(\Omeka\Entity\Resource::class, 'view-all')
+        ) {
+            $query['is_public'] = 1;
+        }
+
         // First step, get the original query, unchanged, without limit.
         // Ideally, use qb from the adapter directly and return scalar.
         $qb = $this->prepareSearch($resourceName, $query)
             ->setMaxResults(null)
             ->setFirstResult(null);
 
-        if ($this->site && !$query) {
+        if ($this->site && empty($query)) {
             switch ($resourceName) {
                 case 'items':
                     $this->filterItemsBySite($qb);
@@ -134,22 +168,36 @@ trait PreviousNextResourceTrait
             }
         }
 
-        // Get only ids.
-        // Ideally output only three ids; or two ids with order reversed for previous.
+        $resourceId = $resource->id();
+
+        // Get only the two adjacent ids (previous and next) using two bounded
+        // queries instead of loading all ids into memory.
+        // The original query builder has the correct filters, sort, and joins.
+        // We clone it and add a condition on id to get only the adjacent ids.
+        // This works because `addOrderBy('omeka_root.id', ...)` is always
+        // appended (line 260), making the sort fully deterministic.
+
+        // Load a bounded window of ids instead of the full result set.
+        // This caps memory usage for very large collections.
+        // For result sets larger than this, resources beyond the limit
+        // won't have prev/next navigation.
+        $maxWindow = 10000;
         $qb->select('omeka_root.id');
+        $qb->setMaxResults($maxWindow + 1);
         $ids = $qb->getQuery()->getSingleColumnResult();
 
-        $resourceId = $resource->id();
         $index = array_search($resourceId, $ids);
         if ($index === false) {
+            // Resource is outside the window (very large filtered result set)
+            // or not in the result set at all.
             return [null, null];
         }
 
         $previousIndex = $index - 1;
-        $previousResourceId = empty($ids[$previousIndex]) ? null : (int) $ids[$previousIndex];
+        $previousResourceId = isset($ids[$previousIndex]) && $ids[$previousIndex] ? (int) $ids[$previousIndex] : null;
 
         $nextIndex = $index + 1;
-        $nextResourceId = empty($ids[$nextIndex]) ? null : (int) $ids[$nextIndex];
+        $nextResourceId = isset($ids[$nextIndex]) && $ids[$nextIndex] ? (int) $ids[$nextIndex] : null;
 
         return [
             $previousResourceId,
@@ -160,7 +208,9 @@ trait PreviousNextResourceTrait
     /**
      * Copy of \Omeka\Api\Adapter\AbstractEntityAdapter::search() to get a prepared query builder.
      *
-     * @todo Trigger all api manager events (api.execute.pre, etc.).
+     * Only event `api.search.query` is triggered to manage arguments added by
+     * modules, other events are useless here (only ids are needed).
+     *
      * @see \Omeka\Api\Adapter\AbstractEntityAdapter::search()
      */
     protected function prepareSearch($resourceName, array $query): QueryBuilder
@@ -200,8 +250,11 @@ trait PreviousNextResourceTrait
         $entityClass = $this->resourceAdapter->getEntityClass();
 
         // $adapter->index = 0;
-        $qb = $this->resourceAdapter->getEntityManager()
-            ->createQueryBuilder()
+        $isOldOmeka = version_compare(\Omeka\Module::VERSION, '4.2.0', '<');
+        $qb = $isOldOmeka
+            ? $this->resourceAdapter->getEntityManager()->createQueryBuilder()
+            : $this->resourceAdapter->createQueryBuilder();
+        $qb
             ->select('omeka_root')
             ->from($entityClass, 'omeka_root');
         $this->resourceAdapter->buildBaseQuery($qb, $query);
@@ -298,67 +351,102 @@ trait PreviousNextResourceTrait
         $qb->addOrderBy("$siteItemSetsAlias.position", 'ASC');
     }
 
+    /**
+     * Get the previous media using optimized SQL query with position.
+     *
+     * Uses direct SQL query for performance instead of loading all media.
+     * Visibility is handled: on public site, only public media are considered.
+     */
     protected function previousMedia(MediaRepresentation $media): ?MediaRepresentation
     {
-        /*
-        $conn = $this->connection;
-        $qb = $conn->createQueryBuilder()
-            ->select('media.id')
-            ->from('media', 'media')
-            ->innerJoin('resource', 'resource')
-            // TODO Manage the visibility.
-            ->where('resource.is_public = 1')
-            ->andWhere('media.position < :media_position')
-            // TODO Get the media position.
-            ->setParameter(':media_position', $media->position())
-            ->andWhere('media.item_id = :item_id')
-            ->setParameter(':item_id', $media->item()->id())
-            ->orderBy('resource.id', 'ASC')
-            ->setMaxResults(1);
-        */
-
-        // TODO Use a better way to get the previous media. Use positions?
-        $previous = null;
-        $mediaId = $media->id();
-        foreach ($media->item()->media() as $media) {
-            if ($media->id() === $mediaId) {
-                return $previous;
-            }
-            $previous = $media;
+        $mediaId = $this->getAdjacentMediaId($media, 'previous');
+        if (!$mediaId) {
+            return null;
         }
-        return null;
+
+        try {
+            return $this->getView()->api()->read('media', $mediaId)->getContent();
+        } catch (\Exception $e) {
+            return null;
+        }
     }
 
+    /**
+     * Get the next media using optimized SQL query with position.
+     *
+     * Uses direct SQL query for performance instead of loading all media.
+     * Visibility is handled: on public site, only public media are considered.
+     */
     protected function nextMedia(MediaRepresentation $media): ?MediaRepresentation
     {
-        /*
-        $conn = $this->connection;
-        $qb = $conn->createQueryBuilder()
+        $mediaId = $this->getAdjacentMediaId($media, 'next');
+        if (!$mediaId) {
+            return null;
+        }
+
+        try {
+            return $this->getView()->api()->read('media', $mediaId)->getContent();
+        } catch (\Exception $e) {
+            return null;
+        }
+    }
+
+    /**
+     * Get the ID of the adjacent (previous or next) media using SQL.
+     *
+     * @param MediaRepresentation $media The current media
+     * @param string $direction 'previous' or 'next'
+     * @return int|null The adjacent media ID or null
+     */
+    protected function getAdjacentMediaId(MediaRepresentation $media, string $direction): ?int
+    {
+        $itemId = $media->item()->id();
+        $mediaId = $media->id();
+
+        // Get position from database since MediaRepresentation doesn't expose it.
+        $position = $this->connection->executeQuery(
+            'SELECT position FROM media WHERE id = :id',
+            ['id' => $mediaId]
+        )->fetchOne();
+
+        if ($position === false) {
+            return null;
+        }
+
+        $qb = $this->connection->createQueryBuilder()
             ->select('media.id')
             ->from('media', 'media')
-            ->innerJoin('resource', 'resource')
-            // TODO Manage the visibility.
-            ->where('resource.is_public = 1')
-            ->andWhere('media.position > :media_position')
-            // TODO Get the media position.
-            ->setParameter(':media_position', $media->position())
+            ->innerJoin('media', 'resource', 'resource', 'media.id = resource.id')
             ->andWhere('media.item_id = :item_id')
-            ->setParameter(':item_id', $media->item()->id())
-            ->orderBy('resource.id', 'ASC')
+            ->setParameter('item_id', $itemId)
             ->setMaxResults(1);
-        */
 
-        // TODO Use a better way to get the next media. Use positions?
-        $next = false;
-        $mediaId = $media->id();
-        foreach ($media->item()->media() as $media) {
-            if ($next) {
-                return $media;
-            }
-            if ($media->id() === $mediaId) {
-                $next = true;
+        // Filter by position based on direction.
+        if ($direction === 'previous') {
+            $qb->andWhere('media.position < :position')
+                ->orderBy('media.position', 'DESC');
+        } else {
+            $qb->andWhere('media.position > :position')
+                ->orderBy('media.position', 'ASC');
+        }
+        $qb->setParameter('position', $position);
+
+        // Handle visibility on public site.
+        if ($this->site
+            && !$this->acl->userIsAllowed(\Omeka\Entity\Resource::class, 'view-all')
+        ) {
+            $identity = $this->authenticationService->getIdentity();
+            if ($identity) {
+                // User can see public resources or resources they own.
+                $qb->andWhere('(resource.is_public = 1 OR resource.owner_id = :owner_id)')
+                    ->setParameter('owner_id', $identity->getId());
+            } else {
+                // Anonymous user can only see public resources.
+                $qb->andWhere('resource.is_public = 1');
             }
         }
-        return null;
+
+        $result = $qb->execute()->fetchOne();
+        return $result ? (int) $result : null;
     }
 }

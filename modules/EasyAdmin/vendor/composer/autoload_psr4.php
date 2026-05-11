@@ -6,4 +6,6 @@ $vendorDir = dirname(__DIR__);
 $baseDir = dirname($vendorDir);
 
 return array(
+    'Sempia\\ExternalAssets\\' => array($vendorDir . '/sempia/external-assets/src'),
+    'EasyAdmin\\' => array($baseDir . '/src'),
 );

@@ -4,7 +4,7 @@ namespace SearchSolr\ValueFormatter;
 
 use Omeka\Api\Representation\ValueRepresentation;
 
-class Point implements ValueFormatterInterface
+class Point extends AbstractValueFormatter
 {
     public function getLabel(): string
     {
@@ -17,12 +17,14 @@ class Point implements ValueFormatterInterface
             switch ($value->type()) {
                 // Less check, because it is already formatted.
                 case 'geometry:geography':
+                case 'geography':
                     $val = (string) $value;
                     return strpos($val, 'POINT(') === 0
                         ? [preg_replace('~[^\d.]~', ',', $val)]
                         : [];
 
                 case 'place':
+                    // TODO Remove json_decode? No, this is the value.
                     $val = json_decode($value->value(), true);
                     if (!$val || !is_array($val) || !array_key_exists('latitude', $val) || !array_key_exists('longitude', $val)) {
                         return [];
@@ -30,6 +32,7 @@ class Point implements ValueFormatterInterface
                     return [$val['latitude'] . ',' . $val['longitude']];
 
                 case 'geometry:geometry':
+                case 'geometry':
                     // Geometry should be checked as any other data, because
                     // only latitude and longitude are managed by Solr point.
                 default:

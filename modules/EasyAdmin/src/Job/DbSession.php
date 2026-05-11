@@ -17,15 +17,25 @@ class DbSession extends AbstractCheck
         $processFix = $process === 'db_session_clean';
         $processRecreate = $process === 'db_session_recreate';
 
-        $minimumDays = (string) $this->getArg('days');
-        if ($processFix && !is_numeric($minimumDays)) {
+        // The form sends "days", the quick mode sends "seconds" directly.
+        $quick = !empty($this->getArg('quick'));
+        if ($quick) {
+            $seconds = (int) $this->getArg('seconds');
+            $this->deleteLastSession($seconds);
+            return;
+        }
+
+        $days = (string) $this->getArg('days');
+        if ($processFix && !is_numeric($days)) {
             $this->logger->warn(
                 'A minimum number of days is needed to clean sessions.' // @translate
             );
             return;
         }
 
-        $this->checkDbSession($processFix, (int) $minimumDays, $processRecreate);
+        $seconds = (int) $days * 86400;
+
+        $this->checkDbSession($processFix, $seconds, $processRecreate);
 
         $this->logger->notice(
             'Process "{process}" completed.', // @translate
@@ -33,34 +43,63 @@ class DbSession extends AbstractCheck
         );
     }
 
+    protected function deleteLastSession(int $seconds): void
+    {
+        // No message, except error.
+        $table = 'session';
+        $column = 'modified';
+        $result = $this->connectionDbal->executeQuery("SHOW INDEX FROM `$table` WHERE `column_name` = '$column';");
+        if (!$result->fetchOne()) {
+            try {
+                $this->connectionDbal->executeStatement("ALTER TABLE `$table` ADD INDEX `$column` (`$column`);");
+            } catch (\Exception $e) {
+                $this->logger->warn(
+                    'Unable to add index "{column}" in table "{table}" to improve performance: {msg}', // @translate
+                    ['column' => $column, 'table' => $table, 'msg' => $e->getMessage()]
+                );
+            }
+        }
+
+        $time = time();
+        $sql = 'DELETE `session` FROM `session` WHERE `modified` < :time;';
+
+        try {
+            $this->connectionDbal->executeStatement(
+                $sql,
+                ['time' => $time - $seconds],
+                ['time' => \Doctrine\DBAL\ParameterType::INTEGER]
+            );
+        } catch (\Exception $e) {
+            $this->job->setStatus(\Omeka\Entity\Job::STATUS_ERROR);
+            $this->logger->err(
+                'Unable to delete last sessions: {msg}', // @translate
+                ['msg' => $e->getMessage()]
+            );
+        }
+    }
+
     /**
      * Check the size of the db table "session".
-     *
-     * @param bool $fix
-     * @param int $minimumDays
      */
-    protected function checkDbSession(bool $fix = false, int $minimumDays = 0, bool $recreate = false): void
+    protected function checkDbSession(bool $fix = false, int $seconds = 0, bool $recreate = false): void
     {
-        $timestamp = time() - 86400 * $minimumDays;
+        $timestamp = time() - $seconds;
 
         $dbname = $this->connection->getDatabase();
-        $sqlSize = <<<SQL
-SELECT ROUND((data_length + index_length) / 1024 / 1024, 2)
-FROM information_schema.TABLES
-WHERE table_schema = "$dbname"
-    AND table_name = "$this->table";
-SQL;
-        $size = $this->connection->executeQuery($sqlSize)->fetchOne();
+        $sqlSize = <<<'SQL'
+            SELECT ROUND((data_length + index_length) / 1024 / 1024, 2)
+            FROM information_schema.TABLES
+            WHERE table_schema = ?
+                AND table_name = ?
+            SQL;
+        $size = $this->connection->executeQuery($sqlSize, [$dbname, $this->table])->fetchOne();
 
         if ($recreate) {
-            $sql = <<<SQL
-SET foreign_key_checks = 0;
-CREATE TABLE `session_new` LIKE `session`;
-RENAME TABLE `session` TO `session_old`, `session_new` TO `session`;
-DROP TABLE `session_old`;
-SET foreign_key_checks = 1;
-SQL;
-            $this->connection->executeStatement($sql);
+            $this->connection->executeStatement('SET foreign_key_checks = 0');
+            $this->connection->executeStatement('CREATE TABLE `session_new` LIKE `session`');
+            $this->connection->executeStatement('RENAME TABLE `session` TO `session_old`, `session_new` TO `session`');
+            $this->connection->executeStatement('DROP TABLE `session_old`');
+            $this->connection->executeStatement('SET foreign_key_checks = 1');
             return;
         }
 
@@ -72,20 +111,19 @@ SQL;
         $sql = "SELECT COUNT(id) FROM $this->table;";
         $all = $this->connection->executeQuery($sql)->fetchOne();
         $this->logger->notice(
-            'The table "{table}" has a size of {size} MB. {old}/{all} records are older than {days} days.', // @translate
-            ['table' => $this->table,'size' => $size, 'old' => $old, 'all' => $all, 'days' => $minimumDays]
+            'The table "{table}" has a size of {size} MB. {old}/{all} records are older than {total} seconds.', // @translate
+            ['table' => $this->table,'size' => $size, 'old' => $old, 'all' => $all, 'total' => $seconds]
         );
 
         if ($fix) {
             $sql = "DELETE FROM `$this->table` WHERE modified < :timestamp;";
             $stmt = $this->connection->prepare($sql);
             $stmt->bindValue(':timestamp', $timestamp);
-            $stmt->executeStatement();
-            $count = $stmt->rowCount();
-            $size = $this->connection->executeQuery($sqlSize)->fetchOne();
+            $count = $stmt->executeStatement();
+            $size = $this->connection->executeQuery($sqlSize, [$dbname, $this->table])->fetchOne();
             $this->logger->notice(
-                '{count} records older than {days} days were removed. The table "{table}" has a size of {size} MB.', // @translate
-                ['count' => $count, 'days' => $minimumDays, 'size' => $size, 'table' => $this->table]
+                '{count} records older than {seconds} seconds were removed. The table "{table}" has a size of {size} MB.', // @translate
+                ['count' => $count, 'seconds' => $seconds, 'size' => $size, 'table' => $this->table]
             );
         }
     }

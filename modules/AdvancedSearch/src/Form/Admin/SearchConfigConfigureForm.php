@@ -2,7 +2,7 @@
 
 /*
  * Copyright BibLibre, 2016-2017
- * Copyright Daniel Berthereau, 2018-2022
+ * Copyright Daniel Berthereau, 2018-2024
  *
  * This software is governed by the CeCILL license under French law and abiding
  * by the rules of distribution of free software.  You can use, modify and/ or
@@ -31,6 +31,7 @@
 namespace AdvancedSearch\Form\Admin;
 
 use AdvancedSearch\Form\Element as AdvancedSearchElement;
+use Common\Form\Element as CommonElement;
 use Laminas\Form\Element;
 use Laminas\Form\Fieldset;
 use Laminas\Form\Form;
@@ -63,7 +64,7 @@ class SearchConfigConfigureForm extends Form
         $availableFields = $this->getAvailableFields();
 
         $this
-            ->setAttribute('id', 'search-form-configure');
+            ->setAttribute('id', 'form-search-config-configure');
 
         // Settings for the search engine. Can be overwritten by a specific form.
 
@@ -118,13 +119,31 @@ class SearchConfigConfigureForm extends Form
             ])
             ->add([
                 'name' => 'hidden_query_filters',
-                'type' => AdvancedSearchElement\UrlQuery::class,
+                'type' => CommonElement\UrlQuery::class,
                 'options' => [
                     'label' => 'Hidden query filter to limit results', // @translate
                     'info' => 'These args are appended to all queries. The format of the query depends on the search form and the search engine.', // @translated
                 ],
                 'attributes' => [
                     'id' => 'hidden_query_filters',
+                ],
+            ])
+            ->add([
+                'name' => 'fulltext_search',
+                'type' => CommonElement\OptionalRadio::class,
+                'options' => [
+                    'label' => 'Add a button to search record or full text (for content not stored in a property)', // @translate
+                    'value_options' => [
+                        '' => 'None', // @translate
+                        'fulltext_checkbox' => 'Check box "Search full text"', // @translate
+                        'record_checkbox' => 'Check box "Record only"', // @translate
+                        'fulltext_radio' => 'Radio "Full text" and "Record only"', // @translate
+                        'record_radio' => 'Radio "Record only" and "Full text"', // @translate
+                    ],
+                ],
+                'attributes' => [
+                    'id' => 'fulltext_search',
+                    'value' => '',
                 ],
             ])
         ;
@@ -140,7 +159,7 @@ class SearchConfigConfigureForm extends Form
             ->get('autosuggest')
             ->add([
                 'name' => 'suggester',
-                'type' => AdvancedSearchElement\OptionalSelect::class,
+                'type' => CommonElement\OptionalSelect::class,
                 'options' => [
                     'label' => 'Suggester', // @translate
                     'value_options' => $this->suggesters,
@@ -155,7 +174,7 @@ class SearchConfigConfigureForm extends Form
             ])
             ->add([
                 'name' => 'url',
-                'type' => AdvancedSearchElement\OptionalUrl::class,
+                'type' => CommonElement\OptionalUrl::class,
                 'options' => [
                     'label' => 'Direct endpoint', // @translate
                     // @see https://solr.apache.org/guide/suggester.html#suggest-request-handler-parameters
@@ -185,7 +204,7 @@ class SearchConfigConfigureForm extends Form
                 'name' => 'form',
                 'type' => Fieldset::class,
                 'options' => [
-                    'label' => 'Advanced form', // @translate
+                    'label' => 'Form', // @translate
                 ],
             ])
             ->get('form')
@@ -195,7 +214,7 @@ class SearchConfigConfigureForm extends Form
                 'type' => AdvancedSearchElement\DataTextarea::class,
                 'options' => [
                     'label' => 'Filters', // @translate
-                    'info' => 'List of filters that will be displayed in the search form. Format is "field = Label = Type = options". The field should exist in all resources fields.', // @translate
+                    'info' => 'List of filters that will be displayed in the search form. Format is "field = Label = Type = Options". The field should exist in all resources fields.', // @translate
                     'as_key_value' => false,
                     'key_value_separator' => '=',
                     'data_keys' => [
@@ -221,6 +240,36 @@ advanced = Filters = Advanced',
                 ],
             ])
             ->add([
+                'name' => 'attribute_form',
+                'type' => Element\Checkbox::class,
+                'options' => [
+                    'label' => 'Add attribute "form" to input elements', // @translate
+                ],
+                'attributes' => [
+                    'id' => 'attribute_form',
+                ],
+            ])
+            ->add([
+                'name' => 'button_reset',
+                'type' => Element\Checkbox::class,
+                'options' => [
+                    'label' => 'Add a button "reset"', // @translate
+                ],
+                'attributes' => [
+                    'id' => 'button_reset',
+                ],
+            ])
+            ->add([
+                'name' => 'button_submit',
+                'type' => Element\Checkbox::class,
+                'options' => [
+                    'label' => 'Add a button "submit"', // @translate
+                ],
+                'attributes' => [
+                    'id' => 'button_submit',
+                ],
+            ])
+            ->add([
                 'name' => 'available_filters',
                 'type' => OmekaElement\ArrayTextarea::class,
                 'options' => [
@@ -241,7 +290,7 @@ advanced = Filters = Advanced',
                 'type' => AdvancedSearchElement\DataTextarea::class,
                 'options' => [
                     'label' => 'Advanced filters', // @translate
-                    'info' => 'List of filters that will be displayed in the search form. Format is "term = Label". The field should exist in all resources fields.', // @translate
+                    'info' => 'List of filters that will be displayed in the search form. Format is "term = Label". The field should exist in all resources fields. Only properties are managed for internal search engine.', // @translate
                     'as_key_value' => true,
                     'key_value_separator' => '=',
                     'data_keys' => [
@@ -308,12 +357,13 @@ advanced = Filters = Advanced',
                 'type' => OmekaElement\ArrayTextarea::class,
                 'options' => [
                     'label' => 'List of operators', // @translate
-                    'info' => 'The default list is: eq, neq, in, nin, sw, nsw, ew, new, ex, nex, res, nres. Negative operators are removed when the joiner "not" is used. The default operators are used when empty.', // @translate
+                    'info' => 'The default list is: eq, neq, in, nin, sw, nsw, ew, new, ex, nex, res, nres. Negative operators are removed when the joiner "not" is used. The default operators are used when empty. Other advanced operators can be used.', // @translate
                     'as_key_value' => true,
                     'key_value_separator' => '=',
                 ],
                 'attributes' => [
                     'id' => 'field_operators',
+                    // This placeholder does not contain all query types.
                     'placeholder' => 'eq = is exactly
 neq = is not exactly
 in = contains
@@ -347,7 +397,7 @@ nlres = is not linked with resource with ID
             ->get('display')
             ->add([
                 'name' => 'search_filters',
-                'type' => AdvancedSearchElement\OptionalRadio::class,
+                'type' => CommonElement\OptionalRadio::class,
                 'options' => [
                     'label' => 'List of query filters', // @translate
                     'value_options' => [
@@ -363,8 +413,42 @@ nlres = is not linked with resource with ID
                 ],
             ])
             ->add([
+                'name' => 'active_facets',
+                'type' => CommonElement\OptionalRadio::class,
+                'options' => [
+                    'label' => 'List of active facets', // @translate
+                    'value_options' => [
+                        'none' => 'No', // @translate
+                        'header' => 'Results header', // @translate
+                        'footer' => 'Results footer', // @translate
+                        'both' => 'Both', // @translate
+                    ],
+                ],
+                'attributes' => [
+                    'id' => 'active_facets',
+                    'value' => 'none',
+                ],
+            ])
+            ->add([
+                'name' => 'total_results',
+                'type' => CommonElement\OptionalRadio::class,
+                'options' => [
+                    'label' => 'Total results', // @translate
+                    'value_options' => [
+                        'none' => 'No', // @translate
+                        'header' => 'Results header', // @translate
+                        'footer' => 'Results footer', // @translate
+                        'both' => 'Both', // @translate
+                    ],
+                ],
+                'attributes' => [
+                    'id' => 'total_results',
+                    'value' => 'header',
+                ],
+            ])
+            ->add([
                 'name' => 'paginator',
-                'type' => AdvancedSearchElement\OptionalRadio::class,
+                'type' => CommonElement\OptionalRadio::class,
                 'options' => [
                     'label' => 'Paginator', // @translate
                     'value_options' => [
@@ -381,7 +465,7 @@ nlres = is not linked with resource with ID
             ])
             ->add([
                 'name' => 'per_pages',
-                'type' => AdvancedSearchElement\OptionalRadio::class,
+                'type' => CommonElement\OptionalRadio::class,
                 'options' => [
                     'label' => 'Pagination per page', // @translate
                     'value_options' => [
@@ -398,7 +482,7 @@ nlres = is not linked with resource with ID
             ])
             ->add([
                 'name' => 'sort',
-                'type' => AdvancedSearchElement\OptionalRadio::class,
+                'type' => CommonElement\OptionalRadio::class,
                 'options' => [
                     'label' => 'Sort', // @translate
                     'value_options' => [
@@ -415,7 +499,7 @@ nlres = is not linked with resource with ID
             ])
             ->add([
                 'name' => 'grid_list',
-                'type' => AdvancedSearchElement\OptionalRadio::class,
+                'type' => CommonElement\OptionalRadio::class,
                 'options' => [
                     'label' => 'Grid / list', // @translate
                     'value_options' => [
@@ -432,7 +516,7 @@ nlres = is not linked with resource with ID
             ])
             ->add([
                 'name' => 'grid_list_mode',
-                'type' => AdvancedSearchElement\OptionalRadio::class,
+                'type' => CommonElement\OptionalRadio::class,
                 'options' => [
                     'label' => 'Grid / list default mode', // @translate
                     'value_options' => [
@@ -547,17 +631,32 @@ nlres = is not linked with resource with ID
             ->get('facet')
             // field (term) = label (order means weight).
             ->add([
+                'name' => 'label',
+                'type' => Element\Text::class,
+                'options' => [
+                    'label' => 'Label above the list of facets', // @translate
+                ],
+                'attributes' => [
+                    'id' => 'label',
+                    'value' => 'Facets',
+                ],
+            ])
+            ->add([
                 'name' => 'facets',
                 'type' => AdvancedSearchElement\DataTextarea::class,
                 'options' => [
                     'label' => 'List of facets', // @translate
-                    'info' => 'List of facets that will be displayed in the search page. Format is "field = Label" and optionnally " = Select" or " = SelectRange". With internal sql engine, "SelectRange" orders values alphabetically. With Solr, "SelectRange" works only with date and numbers.', // @translate
+                    'info' => 'List of facets that will be displayed in the search page. Format is "field = Label = Input type = Options". Input types may be "Select" or "SelectRange". With internal sql engine, "SelectRange" orders values alphabetically. With Solr, "SelectRange" works only with date and numbers. "Tree" can be used for item sets when module ItemSetsTree is enabled and data indexed recursively. Options are a comma separateted list of arguments. For now, the main type ("literal", "uri" or "resource") can be specified to output only this main type.', // @translate
                     'as_key_value' => true,
                     'key_value_separator' => '=',
                     'data_keys' => [
                         'name',
                         'label',
                         'type',
+                        'options',
+                    ],
+                    'data_array_keys' => [
+                        'options' => '|',
                     ],
                 ],
                 'attributes' => [
@@ -598,7 +697,7 @@ nlres = is not linked with resource with ID
             ])
             ->add([
                 'name' => 'order',
-                'type' => AdvancedSearchElement\OptionalRadio::class,
+                'type' => CommonElement\OptionalRadio::class,
                 'options' => [
                     'label' => 'Order of facet items', // @translate
                     'value_options' => [
@@ -628,8 +727,24 @@ nlres = is not linked with resource with ID
                 ],
             ])
             ->add([
+                'name' => 'display_list',
+                'type' => CommonElement\OptionalRadio::class,
+                'options' => [
+                    'label' => 'Display list of facets', // @translate
+                    'value_options' => [
+                        'all' => 'All facets, even with 0 results', // @translate
+                        'available' => 'Available facets only', // @translate
+                    ],
+                ],
+                'attributes' => [
+                    'id' => 'display_list',
+                    'required' => false,
+                    'value' => 'available',
+                ],
+            ])
+            ->add([
                 'name' => 'mode',
-                'type' => AdvancedSearchElement\OptionalRadio::class,
+                'type' => CommonElement\OptionalRadio::class,
                 'options' => [
                     'label' => 'Facet mode', // @translate
                     'value_options' => [
@@ -644,21 +759,65 @@ nlres = is not linked with resource with ID
                 ],
             ])
             ->add([
-                'name' => 'display_button',
-                'type' => AdvancedSearchElement\OptionalRadio::class,
+                'name' => 'display_submit',
+                'type' => CommonElement\OptionalRadio::class,
                 'options' => [
                     'label' => 'Position of the button "Apply filters"', // @translate
                     'value_options' => [
+                        'none' => 'None', // @translate
                         'above' => 'Above facets', // @translate
                         'below' => 'Below facets', // @translate
                         'both' => 'Both', // @translate
-                        'none' => 'None', // @translate
                     ],
                 ],
                 'attributes' => [
-                    'id' => 'facet_display_button',
+                    'id' => 'facet_display_submit',
                     'required' => false,
                     'value' => 'above',
+                ],
+            ])
+            ->add([
+                'name' => 'display_reset',
+                'type' => CommonElement\OptionalRadio::class,
+                'options' => [
+                    'label' => 'Position of the button "Reset facets"', // @translate
+                    'value_options' => [
+                        'none' => 'None', // @translate
+                        'above' => 'Above facets', // @translate
+                        'below' => 'Below facets', // @translate
+                        'both' => 'Both', // @translate
+                    ],
+                ],
+                'attributes' => [
+                    'id' => 'facet_display_reset',
+                    'required' => false,
+                    'value' => 'above',
+                ],
+            ])
+            ->add([
+                'name' => 'label_submit',
+                'type' => Element\Text::class,
+                'options' => [
+                    'label' => 'Label for submit', // @translate
+                ],
+                'attributes' => [
+                    'id' => 'label_submit',
+                    'required' => false,
+                    'value' => 'Apply facets', // @translate
+                    'placeholder' => 'Apply facets', // @translate
+                ],
+            ])
+            ->add([
+                'name' => 'label_reset',
+                'type' => Element\Text::class,
+                'options' => [
+                    'label' => 'Label for reset', // @translate
+                ],
+                'attributes' => [
+                    'id' => 'label_reset',
+                    'required' => false,
+                    'value' => 'Reset facets', // @translate
+                    'placeholder' => 'Reset facets', // @translate
                 ],
             ])
             ->add([

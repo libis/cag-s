@@ -1,10 +1,11 @@
 <?php declare(strict_types=1);
+
 namespace Log\Job\DispatchStrategy;
 
 use Doctrine\ORM\EntityManager;
 use Laminas\Log\Logger;
-use Log\Log\Writer\Job as JobWriter;
 use Omeka\Entity\Job;
+use Omeka\Log\Writer\Job as JobWriter;
 
 class Synchronous extends \Omeka\Job\DispatchStrategy\Synchronous
 {
@@ -14,7 +15,7 @@ class Synchronous extends \Omeka\Job\DispatchStrategy\Synchronous
      *
      * @inheritdoc
      */
-    public function handleFatalError(Job $job, EntityManager $entityManager, Logger $logger = null): void
+    public function handleFatalError(Job $job, EntityManager $entityManager, ?Logger $logger = null): void
     {
         $lastError = error_get_last();
         if ($lastError) {
@@ -27,16 +28,18 @@ class Synchronous extends \Omeka\Job\DispatchStrategy\Synchronous
                 $job = $entityManager->find(Job::class, $job->getId());
                 $job->setStatus(Job::STATUS_ERROR);
 
-                if (is_null($logger)) {
+                if ($logger === null) {
                     $logger = $this->serviceLocator->get('Omeka\Logger');
 
                     // Job writer should be reenabled.
                     if ($this->serviceLocator->get('Config')['logger']['writers']['job']) {
-                        $logger->addWriter(new JobWriter($job));
+                        $writer = new JobWriter($job);
+                        $writer->setFormatter(new \Common\Log\Formatter\PsrLogSimple);
+                        $logger->addWriter($writer);
                     }
 
                     // Enable the user and job id in the default logger.
-                    $userJobIdProcessor = new \Log\Processor\UserJobId($job);
+                    $userJobIdProcessor = new \Log\Log\Processor\UserJobId($job);
                     // The priority "0" fixes a precedency issue with the processor UserId.
                     $logger->addProcessor($userJobIdProcessor, 0);
                 }
@@ -54,16 +57,18 @@ class Synchronous extends \Omeka\Job\DispatchStrategy\Synchronous
             }
             // Log other errors according to the config for severity.
             else {
-                if (is_null($logger)) {
+                if ($logger === null) {
                     $logger = $this->serviceLocator->get('Omeka\Logger');
 
                     // Job writer should be reenabled.
                     if ($this->serviceLocator->get('Config')['logger']['writers']['job']) {
-                        $logger->addWriter(new JobWriter($job));
+                        $writer = new JobWriter($job);
+                        $writer->setFormatter(new \Common\Log\Formatter\PsrLogSimple);
+                        $logger->addWriter($writer);
                     }
 
                     // Enable the user and job id in the default logger.
-                    $userJobIdProcessor = new \Log\Processor\UserJobId($job);
+                    $userJobIdProcessor = new \Log\Log\Processor\UserJobId($job);
                     // The priority "0" fixes a precedency issue with the processor UserId.
                     $logger->addProcessor($userJobIdProcessor, 0);
                 }

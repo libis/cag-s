@@ -2,10 +2,10 @@
 
 namespace Log\Controller\Admin;
 
+use Common\Stdlib\PsrMessage;
 use Laminas\Mvc\Controller\AbstractActionController;
 use Laminas\View\Model\ViewModel;
 use Log\Form\QuickSearchForm;
-use Log\Stdlib\PsrMessage;
 use Omeka\Form\ConfirmForm;
 
 class LogController extends AbstractActionController
@@ -22,45 +22,44 @@ class LogController extends AbstractActionController
 
     public function browseAction()
     {
-        $this->setBrowseDefaults('created');
-
-        $params = $this->params()->fromQuery();
+        $this->browse()->setDefaults('logs');
+        $query = $this->params()->fromQuery();
 
         $formSearch = $this->getForm(QuickSearchForm::class);
         $formSearch
             ->setAttribute('action', $this->url()->fromRoute(null, ['action' => 'browse'], true))
             ->setAttribute('id', 'log-search');
-        if ($params) {
-            $formSearch->setData($params);
+        if ($query) {
+            $formSearch->setData($query);
             // TODO Don't check validity?
         }
 
         // TODO Manage multiple messages in/nin.
-        $params += ['message' => []];
-        if (!is_array($params['message'])) {
-            $params['message'] = [['text' => $params['message'], 'type' => 'in']];
+        $query += ['message' => []];
+        if (!is_array($query['message'])) {
+            $query['message'] = [['text' => $query['message'], 'type' => 'in']];
         }
-        if (isset($params['message_not']) && strlen($params['message_not'])) {
-            $params['message'][] = ['text' => $params['message_not'], 'type' => 'nin'];
-            unset($params['message_not']);
+        if (isset($query['message_not']) && strlen($query['message_not'])) {
+            $query['message'][] = ['text' => $query['message_not'], 'type' => 'nin'];
+            unset($query['message_not']);
         }
-        $response = $this->api()->search('logs', $params);
+
+        $response = $this->api()->search('logs', $query);
         $this->paginator($response->getTotalResults(), $this->params()->fromQuery('page'));
 
         $formDeleteSelected = $this->getForm(ConfirmForm::class);
         $formDeleteSelected
             ->setAttribute('action', $this->url()->fromRoute('admin/log/default', ['action' => 'batch-delete'], true))
-            ->setAttribute('id', 'confirm-delete-selected');
-        $formDeleteSelected
+            ->setAttribute('id', 'confirm-delete-selected')
             ->setButtonLabel('Confirm delete'); // @translate
 
         $formDeleteAll = $this->getForm(ConfirmForm::class);
         $formDeleteAll
             ->setAttribute('action', $this->url()->fromRoute('admin/log/default', ['action' => 'batch-delete-all'], true))
             ->setAttribute('id', 'confirm-delete-all')
-            ->get('submit')->setAttribute('disabled', true);
-        $formDeleteAll
             ->setButtonLabel('Confirm delete'); // @translate
+        $formDeleteAll
+            ->get('submit')->setAttribute('disabled', true);
 
         $logs = $response->getContent();
 
@@ -98,16 +97,16 @@ class LogController extends AbstractActionController
         $response = $this->api()->read('logs', $this->params('id'));
         $log = $response->getContent();
 
-        $view = new ViewModel;
-        $view
+        $view = new ViewModel([
+            'resource' => $log,
+            'resourceLabel' => 'log', // @translate
+            'partialPath' => 'log/admin/log/show-details',
+            'linkTitle' => $linkTitle,
+            'log' => $log,
+        ]);
+        return $view
             ->setTerminal(true)
-            ->setTemplate('common/delete-confirm-details')
-            ->setVariable('resource', $log)
-            ->setVariable('resourceLabel', 'log') // @translate
-            ->setVariable('partialPath', 'log/admin/log/show-details')
-            ->setVariable('linkTitle', $linkTitle)
-            ->setVariable('log', $log);
-        return $view;
+            ->setTemplate('common/delete-confirm-details');
     }
 
     public function deleteAction()
@@ -116,7 +115,7 @@ class LogController extends AbstractActionController
             $form = $this->getForm(ConfirmForm::class);
             $form->setData($this->getRequest()->getPost());
             if ($form->isValid()) {
-                $response = $this->api($form)->delete('logs', $this->params('id'));
+                $response = $this->api($form)->delete('logs', ['id' => (int) $this->params('id')]);
                 if ($response) {
                     $this->messenger()->addSuccess('Log successfully deleted'); // @translate
                 } else {

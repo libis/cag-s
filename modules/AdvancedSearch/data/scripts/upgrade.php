@@ -2,29 +2,29 @@
 
 namespace AdvancedSearch;
 
-use Omeka\Mvc\Controller\Plugin\Messenger;
 use Omeka\Stdlib\Message;
 
 /**
  * @var Module $this
  * @var \Laminas\ServiceManager\ServiceLocatorInterface $services
- * @var string $oldVersion
  * @var string $newVersion
+ * @var string $oldVersion
  *
- * @var \Doctrine\ORM\EntityManager $entityManager
- * @var \Doctrine\DBAL\Connection $connection
  * @var \Omeka\Api\Manager $api
- * @var array $config
  * @var \Omeka\Settings\Settings $settings
+ * @var \Doctrine\DBAL\Connection $connection
+ * @var \Doctrine\ORM\EntityManager $entityManager
+ * @var \Omeka\Mvc\Controller\Plugin\Messenger $messenger
  */
-// $entityManager = $services->get('Omeka\EntityManager');
-$connection = $services->get('Omeka\Connection');
-// $api = $services->get('Omeka\ApiManager');
-// $config = require dirname(__DIR__, 2) . '/config/module.config.php';
+$plugins = $services->get('ControllerPluginManager');
+$api = $plugins->get('api');
 $settings = $services->get('Omeka\Settings');
+$connection = $services->get('Omeka\Connection');
+$messenger = $plugins->get('messenger');
+$entityManager = $services->get('Omeka\EntityManager');
 
 if (version_compare($oldVersion, '3.3.6.2', '<')) {
-    $this->checkDependency();
+    $this->checkDependencies();
 
     $sqls = <<<'SQL'
 CREATE TABLE `search_suggester` (
@@ -55,7 +55,7 @@ ALTER TABLE `search_suggester` ADD CONSTRAINT FK_F64D915AE78C9C0A FOREIGN KEY (`
 ALTER TABLE `search_suggestion` ADD CONSTRAINT FK_536C3D170913F08 FOREIGN KEY (`suggester_id`) REFERENCES `search_suggester` (`id`) ON DELETE CASCADE;
 SQL;
     foreach (array_filter(explode(";\n", $sqls)) as $sql) {
-        $connection->exec($sql);
+        $connection->executeStatement($sql);
     }
 }
 
@@ -64,12 +64,14 @@ if (version_compare($oldVersion, '3.3.6.3', '<')) {
     // connection.
     // $searchConfigPaths = $api->search('search_configs', [], ['returnScalar' => 'path'])->getContent();
     $sql = <<<'SQL'
-SELECT `id`, `path` FROM `search_config` ORDER BY `id`;
+SELECT `id`, `path` FROM `search_config` ORDER BY `id` ASC;
 SQL;
-    $searchConfigPaths = $connection->fetchAll($sql);
+    $searchConfigPaths = $connection->fetchAllAssociative($sql);
     $searchConfigPaths = array_column($searchConfigPaths, 'path', 'id');
     $settings->set('advancedsearch_all_configs', $searchConfigPaths);
 }
+
+// End of support of direct upgrade of modules Search and derivative modules.
 
 if (version_compare($oldVersion, '3.3.6.7', '<')) {
     $sql = <<<SQL
@@ -159,7 +161,11 @@ SQL;
 
     // Add the default search partial process for internal engine.
     // Add the default multi-fields to internal engine.
-    $searchEngineConfig = require __DIR__ . '/../../data/search_engines/internal.php';
+    if (file_exists(__DIR__ . '/../../data/search_engines/internal.php')) {
+        $searchEngineConfig = require __DIR__ . '/../../data/search_engines/internal.php';
+    } else {
+        $searchEngineConfig = [];
+    }
     $defaultAdapterSettings = $searchEngineConfig['o:settings']['adapter']
         ?? ['default_search_partial_word' => false, 'multifields' => []];
     $qb = $connection->createQueryBuilder();
@@ -189,8 +195,6 @@ SQL;
             $id,
         ]);
     }
-
-    $messenger = new Messenger();
 
     /** @var \Omeka\Module\Manager $moduleManager */
     $moduleManager = $services->get('Omeka\ModuleManager');
@@ -231,7 +235,6 @@ SQL;
 }
 
 if (version_compare($oldVersion, '3.3.6.9', '<')) {
-    $messenger = new Messenger();
     $message = new Message(
         'It is now possible to query ressources with linked ressources in the standard advanced form.' // @translate
     );
@@ -239,7 +242,6 @@ if (version_compare($oldVersion, '3.3.6.9', '<')) {
 }
 
 if (version_compare($oldVersion, '3.3.6.12', '<')) {
-    $messenger = new Messenger();
     $message = new Message(
         'A new option was added to display the resources mixed (by default) or item sets and items separately (old behavior).' // @translate
     );
@@ -255,7 +257,6 @@ if (version_compare($oldVersion, '3.3.6.12', '<')) {
 }
 
 if (version_compare($oldVersion, '3.3.6.15', '<')) {
-    $messenger = new Messenger();
     $message = new Message(
         'It’s now possible to search resources by multiples properties, and resources without class, template, item set, site or owner.' // @translate
     );
@@ -263,7 +264,6 @@ if (version_compare($oldVersion, '3.3.6.15', '<')) {
 }
 
 if (version_compare($oldVersion, '3.3.6.16', '<')) {
-    $messenger = new Messenger();
     $message = new Message(
         'It’s now possible to use facet range with a double select (from/to). With internal sql engine, order is alphabetic only for now: it works for strings and simple four digits years or standard dates, not integer or variable dates. With Solr, only numbers and dates are supported. The theme may need to be updated.' // @translate
     );
@@ -273,7 +273,180 @@ if (version_compare($oldVersion, '3.3.6.16', '<')) {
     );
     $messenger->addWarning($message);
     $message = new Message(
-        'Updade your theme to support new features for facets (active facets, button apply facets with id="apply-facets", list of facet values).' // @translate
+        'Update your theme to support new features for facets (active facets, button apply facets with id="apply-facets", list of facet values).' // @translate
     );
     $messenger->addWarning($message);
+}
+
+if (version_compare($oldVersion, '3.3.6.19', '<')) {
+    $sql = <<<'SQL'
+UPDATE `site_page_block`
+SET
+    `data` = REPLACE(data, '"search_page":', '"search_config":')
+WHERE
+    `data` LIKE '%"search_page":%'
+;
+SQL;
+    $connection->executeStatement($sql);
+
+    $message = new Message(
+        'It’s now possible to search values similar other ones (via %1$sSoundex%2$s, designed for British English phonetic).', // @translate
+        '<a href="https://en.wikipedia.org/wiki/Soundex">', '</a>'
+    );
+    $message->setEscapeHtml(false);
+    $messenger->addSuccess($message);
+}
+
+if (version_compare($oldVersion, '3.4.7', '<')) {
+    $message = new Message(
+        'Some new options were added to manage facets.' // @translate
+    );
+    $messenger->addSuccess($message);
+}
+
+if (version_compare($oldVersion, '3.4.10', '<')) {
+    $sql = <<<'SQL'
+UPDATE `search_config`
+SET
+    `settings` = REPLACE(`settings`, '"display_button"', '"display_submit"')
+;
+SQL;
+    $connection->executeStatement($sql);
+}
+
+if (version_compare($oldVersion, '3.4.11', '<')) {
+    $sql = <<<'SQL'
+ALTER TABLE `search_config` CHANGE `created` `created` datetime NOT NULL DEFAULT NOW() AFTER `settings`;
+ALTER TABLE `search_engine` CHANGE `created` `created` datetime NOT NULL DEFAULT NOW() AFTER `settings`;
+ALTER TABLE `search_suggester` CHANGE `created` `created` datetime NOT NULL DEFAULT NOW() AFTER `settings`;
+SQL;
+    $connection->executeStatement($sql);
+
+    /** @var \Omeka\Module\Manager $moduleManager */
+    $moduleManager = $services->get('Omeka\ModuleManager');
+    $module = $moduleManager->getModule('Reference');
+    $hasReference = $module
+        && version_compare($module->getIni('version'), '3.4.43', '<');
+    if ($hasReference) {
+        $message = new Message(
+            'It is recommended to upgrade the module "Reference" to improve performance.' // @translate
+        );
+        $messenger->addWarning($message);
+    }
+}
+
+if (version_compare($oldVersion, '3.4.12', '<')) {
+    $sql = <<<'SQL'
+ALTER TABLE `search_config` CHANGE `created` `created` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP AFTER `settings`;
+ALTER TABLE `search_engine` CHANGE `created` `created` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP AFTER `settings`;
+ALTER TABLE `search_suggester` CHANGE `created` `created` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP AFTER `settings`;
+SQL;
+    $connection->executeStatement($sql);
+}
+
+if (version_compare($oldVersion, '3.4.14', '<')) {
+    /** @see https://github.com/omeka/omeka-s/pull/2096 */
+    try {
+        $connection->executeStatement('ALTER TABLE `resource` ADD INDEX `idx_public_type_id_title` (`is_public`,`resource_type`,`id`,`title` (190));');
+    } catch (\Exception $e) {
+        // Index exists.
+    }
+    try {
+        $connection->executeStatement('ALTER TABLE `value` ADD INDEX `idx_public_resource_property` (`is_public`,`resource_id`,`property_id`);');
+    } catch (\Exception $e) {
+        // Index exists.
+    }
+
+    /** @see https://github.com/omeka/omeka-s/pull/2105 */
+    try {
+        $connection->executeStatement('ALTER TABLE `resource` ADD INDEX `is_public` (`is_public`);');
+    } catch (\Exception $e) {
+        // Index exists.
+    }
+    try {
+        $connection->executeStatement('ALTER TABLE `value` ADD INDEX `is_public` (`is_public`);');
+    } catch (\Exception $e) {
+        // Index exists.
+    }
+    try {
+        $connection->executeStatement('ALTER TABLE `site_page` ADD INDEX `is_public` (`is_public`);');
+    } catch (\Exception $e) {
+        // Index exists.
+    }
+
+    $settings->set('advancedsearch_index_batch_edit', $settings->get('advancedsearch_disable_index_batch_edit') ? 'none' : 'sync');
+    $settings->delete('advancedsearch_disable_index_batch_edit');
+
+    $message = new Message(
+        'A new settings allows to skip indexing after a batch process because an issue can occurs in some cases.' // @translate
+    );
+    $messenger->addWarning($message);
+}
+
+if (version_compare($oldVersion, '3.4.15', '<')) {
+    $sql = <<<'SQL'
+DELETE FROM `site_setting`
+WHERE `id` = "advancedsearch_restrict_used_terms";
+SQL;
+    $connection->executeStatement($sql);
+
+    $message = new Message(
+        'The performance was improved in many places, in particular for large databases.' // @translate
+    );
+    $messenger->addSuccess($message);
+
+    $message = new Message(
+        'It is now possible to order results by a list of ids with argument "sort_by=ids".' // @translate
+    );
+    $messenger->addSuccess($message);
+}
+
+if (version_compare($oldVersion, '3.4.16', '<')) {
+    $message = new Message(
+        'It is now possible to do a standard search with a sub-query, for example to get all items with creators born in 1789.' // @translate
+    );
+    $messenger->addSuccess($message);
+}
+
+if (version_compare($oldVersion, '3.4.18', '<')) {
+    if (!method_exists($this, 'checkModuleActiveVersion') || !$this->checkModuleActiveVersion('Common', '3.4.49')) {
+        $message = new Message(
+            'The module %1$s should be upgraded to version %2$s or later.', // @translate
+            'Common', '3.4.49'
+        );
+        throw new \Omeka\Module\Exception\ModuleCannotInstallException((string) $message);
+    }
+}
+
+if (version_compare($oldVersion, '3.4.19', '<')) {
+    if (!method_exists($this, 'checkModuleActiveVersion') || !$this->checkModuleActiveVersion('Common', '3.4.49')) {
+        $message = new Message(
+            'The module %1$s should be upgraded to version %2$s or later.', // @translate
+            'Common', '3.4.49'
+        );
+        throw new \Omeka\Module\Exception\ModuleCannotInstallException((string) $message);
+    }
+
+    // Repeated because of an issue in previous version.
+    $settings->delete('advancedsearch_restrict_used_terms');
+    $sql = <<<'SQL'
+DELETE FROM `site_setting`
+WHERE `id` = "advancedsearch_restrict_used_terms";
+SQL;
+    $connection->executeStatement($sql);
+}
+
+if (version_compare($oldVersion, '3.4.20', '<')) {
+    if (!method_exists($this, 'checkModuleActiveVersion') || !$this->checkModuleActiveVersion('Common', '3.4.49')) {
+        $message = new Message(
+            'The module %1$s should be upgraded to version %2$s or later.', // @translate
+            'Common', '3.4.49'
+        );
+        throw new \Omeka\Module\Exception\ModuleCannotInstallException((string) $message);
+    }
+
+    $message = new Message(
+        'When full text is managed in alto files, it is now possible to search full text or record only.' // @translate
+    );
+    $messenger->addSuccess($message);
 }

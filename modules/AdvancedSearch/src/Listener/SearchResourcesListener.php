@@ -18,7 +18,7 @@ class SearchResourcesListener
     protected $propertiesByTermsAndIds;
 
     /**
-     * List of used property ids by term and id.
+     * List of used property ids by term.
      *
      * @var array
      */
@@ -32,7 +32,7 @@ class SearchResourcesListener
     protected $resourceClassesByTermsAndIds;
 
     /**
-     * List of used resource class ids by term and id.
+     * List of used resource class ids by term.
      *
      * @var array
      */
@@ -229,7 +229,7 @@ class SearchResourcesListener
      */
     protected function buildPropertyQuery(QueryBuilder $qb, array $query): void
     {
-        if (!isset($query['property']) || !is_array($query['property'])) {
+        if (empty($query['property']) || !is_array($query['property'])) {
             return;
         }
 
@@ -317,7 +317,7 @@ class SearchResourcesListener
                     // no break.
                 case 'list':
                     $list = is_array($value) ? $value : explode("\n", $value);
-                    $list = array_filter(array_map('trim', array_map('strval', $list)), 'strlen');
+                    $list = array_unique(array_filter(array_map('trim', array_map('strval', $list)), 'strlen'));
                     if (empty($list)) {
                         continue 2;
                     }
@@ -388,9 +388,6 @@ class SearchResourcesListener
                     $predicateExpr = $expr->isNotNull("$valuesAlias.id");
                     break;
 
-                default:
-                    continue 2;
-
                 // TODO Manage uri and resources with gt, gte, lte, lt (it has a meaning at least for resource ids, but separate).
                 case 'gt':
                     $valueNorm = $this->getDateTimeFromValue($value, false);
@@ -436,6 +433,9 @@ class SearchResourcesListener
                         );
                     }
                     break;
+
+                default:
+                    continue 2;
             }
 
             $joinConditions = [];
@@ -454,9 +454,9 @@ class SearchResourcesListener
                 }
             }
 
-            // Avoid to get results with some incorrect query.
+            // Avoid to get results with an incorrect query.
             if ($incorrectValue) {
-                $where = $expr->eq('incorrect date time request', '');
+                $where = $expr->eq('omeka_root.id', 0);
                 break;
             }
 
@@ -908,8 +908,6 @@ class SearchResourcesListener
      * Convert into a standard DateTime. Manage some badly formatted values.
      *
      * Adapted from module NumericDataType.
-     * The main difference is the max/min date: from 1000 to 9999. Since fields
-     * are "created" and "modified", other dates are removed.
      * The regex pattern allows partial month and day too.
      * @link https://mariadb.com/kb/en/datetime/
      * @see \NumericDataTypes\DataType\AbstractDateTimeDataType::getDateTimeFromValue()
@@ -917,17 +915,17 @@ class SearchResourcesListener
      * Allow mysql datetime too, not only iso 8601 (so with a space, not only a
      * "T" to separate date and time).
      *
+     * Warning, year "0" does not exists, so output is null in that case.
+     *
      * @param string $value
      * @param bool $defaultFirst
      * @return array|null
      */
     protected function getDateTimeFromValue($value, $defaultFirst = true)
     {
-        // $yearMin = -292277022656;
-        // $yearMax = 292277026595;
-        $yearMin = 1000;
-        $yearMax = 9999;
-        $patternIso8601 = '^(?<date>(?<year>-?\d{4,})(-(?<month>\d{1,2}))?(-(?<day>\d{1,2}))?)(?<time>((?:T| )(?<hour>\d{1,2}))?(:(?<minute>\d{1,2}))?(:(?<second>\d{1,2}))?)(?<offset>((?<offset_hour>[+-]\d{1,2})?(:(?<offset_minute>\d{1,2}))?)|Z?)$';
+        $yearMin = -292277022656;
+        $yearMax = 292277026595;
+        $patternIso8601 = '^(?<date>(?<year>-?\d{1,})(-(?<month>\d{1,2}))?(-(?<day>\d{1,2}))?)(?<time>((?:T| )(?<hour>\d{1,2}))?(:(?<minute>\d{1,2}))?(:(?<second>\d{1,2}))?)(?<offset>((?<offset_hour>[+-]\d{1,2})?(:(?<offset_minute>\d{1,2}))?)|Z?)$';
         static $dateTimes = [];
 
         $firstOrLast = $defaultFirst ? 'first' : 'last';
@@ -944,7 +942,10 @@ class SearchResourcesListener
         }
 
         // Remove empty values.
-        $matches = array_filter($matches);
+        $matches = array_filter($matches, 'strlen');
+        if (!isset($matches['date'])) {
+            return null;
+        }
 
         // An hour requires a day.
         if (isset($matches['hour']) && !isset($matches['day'])) {
@@ -962,7 +963,7 @@ class SearchResourcesListener
             'date_value' => $matches['date'],
             'time_value' => $matches['time'] ?? null,
             'offset_value' => $matches['offset'] ?? null,
-            'year' => (int) $matches['year'],
+            'year' => empty($matches['year']) ? null : (int) $matches['year'],
             'month' => isset($matches['month']) ? (int) $matches['month'] : null,
             'day' => isset($matches['day']) ? (int) $matches['day'] : null,
             'hour' => isset($matches['hour']) ? (int) $matches['hour'] : null,
@@ -1068,12 +1069,12 @@ class SearchResourcesListener
      *
      * @return int[]
      */
-    protected function getPropertyIds(array $termOrIds): array
+    protected function getPropertyIds(array $termsOrIds): array
     {
         if (is_null($this->propertiesByTermsAndIds)) {
             $this->prepareProperties();
         }
-        return array_values(array_intersect_key($this->propertiesByTermsAndIds, array_flip($termOrIds)));
+        return array_values(array_intersect_key($this->propertiesByTermsAndIds, array_flip($termsOrIds)));
     }
 
     /**
@@ -1088,7 +1089,7 @@ class SearchResourcesListener
     }
 
     /**
-     * Prepare the list of properties and used properties.
+     * Prepare the list of properties and used properties by term.
      */
     protected function prepareProperties(): self
     {
@@ -1096,31 +1097,20 @@ class SearchResourcesListener
             $connection = $this->adapter->getServiceLocator()->get('Omeka\Connection');
             $qb = $connection->createQueryBuilder();
             $qb
-                ->select([
-                    'DISTINCT property.id AS id',
+                ->select(
                     'CONCAT(vocabulary.prefix, ":", property.local_name) AS term',
-                    // Only the two first selects are needed, but some databases
-                    // require "order by" or "group by" value to be in the select.
-                    'vocabulary.id',
-                    'property.id',
-                ])
+                    'property.id AS id'
+                )
                 ->from('property', 'property')
                 ->innerJoin('property', 'vocabulary', 'vocabulary', 'property.vocabulary_id = vocabulary.id')
                 ->orderBy('vocabulary.id', 'asc')
                 ->addOrderBy('property.id', 'asc')
-                ->addGroupBy('property.id')
             ;
-            $stmt = $connection->executeQuery($qb);
-            // Fetch by key pair is not supported by doctrine 2.0.
-            $properties = $stmt->fetchAll(\PDO::FETCH_ASSOC);
-            $properties = array_map('intval', array_column($properties, 'id', 'term'));
+            $properties = array_map('intval', $connection->executeQuery($qb)->fetchAllKeyValue());
             $this->propertiesByTermsAndIds = array_replace($properties, array_combine($properties, $properties));
 
             $qb->innerJoin('property', 'value', 'value', 'property.id = value.property_id');
-            $stmt = $connection->executeQuery($qb);
-            // Fetch by key pair is not supported by doctrine 2.0.
-            $properties = $stmt->fetchAll(\PDO::FETCH_ASSOC);
-            $this->usedPropertiesByTerm = array_map('intval', array_column($properties, 'id', 'term'));
+            $this->usedPropertiesByTerm = array_map('intval', $connection->executeQuery($qb)->fetchAllKeyValue());
         }
         return $this;
     }
@@ -1130,12 +1120,12 @@ class SearchResourcesListener
      *
      * @return int[]
      */
-    protected function getResourceClassIds(array $termOrIds): array
+    protected function getResourceClassIds(array $termsOrIds): array
     {
         if (is_null($this->resourceClassesByTermsAndIds)) {
             $this->prepareResourceClasses();
         }
-        return array_values(array_intersect_key($this->resourceClassesByTermsAndIds, array_flip($termOrIds)));
+        return array_values(array_intersect_key($this->resourceClassesByTermsAndIds, array_flip($termsOrIds)));
     }
 
     /**
@@ -1150,7 +1140,7 @@ class SearchResourcesListener
     }
 
     /**
-     * Prepare the list of resource classes and used properties.
+     * Prepare the list of resource classes and used resource classes by term.
      */
     protected function prepareResourceClasses(): self
     {
@@ -1158,31 +1148,20 @@ class SearchResourcesListener
             $connection = $this->adapter->getServiceLocator()->get('Omeka\Connection');
             $qb = $connection->createQueryBuilder();
             $qb
-                ->select([
-                    'DISTINCT resource_class.id AS id',
+                ->select(
                     'CONCAT(vocabulary.prefix, ":", resource_class.local_name) AS term',
-                    // Only the two first selects are needed, but some databases
-                    // require "order by" or "group by" value to be in the select.
-                    'vocabulary.id',
-                    'resource_class.id',
-                ])
+                    'resource_class.id AS id'
+                )
                 ->from('resource_class', 'resource_class')
                 ->innerJoin('resource_class', 'vocabulary', 'vocabulary', 'resource_class.vocabulary_id = vocabulary.id')
                 ->orderBy('vocabulary.id', 'asc')
                 ->addOrderBy('resource_class.id', 'asc')
-                ->addGroupBy('resource_class.id')
             ;
-            $stmt = $connection->executeQuery($qb);
-            // Fetch by key pair is not supported by doctrine 2.0.
-            $resourceClasses = $stmt->fetchAll(\PDO::FETCH_ASSOC);
-            $resourceClasses = array_map('intval', array_column($resourceClasses, 'id', 'term'));
-            $this->tesourceClassesByTermsAndIds = array_replace($resourceClasses, array_combine($resourceClasses, $resourceClasses));
+            $resourceClasses = array_map('intval', $connection->executeQuery($qb)->fetchAllKeyValue());
+            $this->resourceClassesByTermsAndIds = array_replace($resourceClasses, array_combine($resourceClasses, $resourceClasses));
 
-            // $qb->innerJoin('resource_class', 'resource', 'resource', 'resource_class.id = resource.resource_class_id');
-            // $stmt = $connection->executeQuery($qb);
-            // // Fetch by key pair is not supported by doctrine 2.0.
-            // $resourceClasses = $stmt->fetchAll(\PDO::FETCH_ASSOC);
-            // $this->usedResourceClassesByTerm = array_map('intval', array_column($resourceClasses, 'id', 'term'));
+            $qb->innerJoin('resource_class', 'resource', 'resource', 'resource_class.id = resource.resource_class_id');
+            $this->usedResourceClassesByTerm = array_map('intval', $connection->executeQuery($qb)->fetchAllKeyValue());
             return $this;
         }
     }

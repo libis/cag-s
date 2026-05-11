@@ -1,7 +1,7 @@
 <?php
 /*
  * Copyright BibLibre, 2016
- * Copyright Daniel Berthereau, 2017-2022
+ * Copyright Daniel Berthereau, 2017-2024
  *
  * This software is governed by the CeCILL license under French law and abiding
  * by the rules of distribution of free software.  You can use, modify and/ or
@@ -31,7 +31,6 @@
  * @var \Laminas\View\Renderer\PhpRenderer $this
  * @var \Omeka\Api\Representation\SiteRepresentation $site
  * @var \AdvancedSearch\Api\Representation\SearchConfigRepresentation $searchConfig
- * @var \AdvancedSearch\Api\Representation\SearchConfigRepresentation $searchPage
  * @var \AdvancedSearch\Query $query
  * @var \AdvancedSearch\Response $response
  *
@@ -43,11 +42,22 @@
 $plugins = $this->getHelperPluginManager();
 $api = $plugins->get('api');
 $partial = $plugins->get('partial');
+$escape = $plugins->get('escapeHtml');
 $assetUrl = $plugins->get('assetUrl');
 $translate = $plugins->get('translate');
+$hyperlink = $plugins->get('hyperlink');
 $translatePlural = $plugins->get('translatePlural');
 
+$breadcrumbs = $plugins->has('breadcrumbs') ? $plugins->get('breadcrumbs') : null;
+
 $vars = $this->vars();
+
+$setting = $plugins->get(isset($site) ? 'siteSetting' : 'setting');
+
+$filterLocale = (bool) $setting('filter_locale_values');
+$lang = $this->lang();
+$langTitle = $filterLocale ? $lang : null;
+$langValue = $filterLocale ? [$lang, ''] : null;
 
 // Used in case of a redirect of item-set/show to search, when used like item/browse.
 $itemSetId = $this->params()->fromRoute('item-set-id');
@@ -58,19 +68,43 @@ $itemSet = $itemSetId ? $api->searchOne('item_sets', ['id' => $itemSetId])->getC
 $isPartial = $skipFormAction = !empty($skipFormAction);
 
 $documentCount = isset($response) ? $response->getTotalResults() : 0;
-if ($documentCount):
+if ($documentCount) {
     $itemSetsCount = $response->getResourceTotalResults('item_sets');
     $itemsCount = $response->getResourceTotalResults('items');
-    $displayParts = $searchPage->setting('display', []);
+    $displayParts = $searchConfig->setting('display', []);
     $displayPartsHeader = array_filter($displayParts, function ($v) { return in_array($v, ['header', 'both']); });
     $displayPartsFooter = array_filter($displayParts, function ($v) { return in_array($v, ['footer', 'both']); });
-endif;
+} else {
+    $itemSetsCount = 0;
+    $itemsCount = 0;
+    $displayPartsHeader = [];
+    $displayPartsFooter = [];
+}
 
-$this->headLink()->appendStylesheet($assetUrl('css/search.css', 'AdvancedSearch'));
-$this->headScript()->appendFile($assetUrl('js/search.js', 'AdvancedSearch'), 'text/javascript', ['defer' => 'defer']);
+$this->headLink()
+    ->appendStylesheet($assetUrl('css/search.css', 'AdvancedSearch'));
+$this->headScript()
+    ->appendFile($assetUrl('js/search.js', 'AdvancedSearch'), 'text/javascript', ['defer' => 'defer']);
 ?>
 
 <?php if (empty($isPartial)): ?>
+<?php if ($breadcrumbs): ?>
+    <?= $breadcrumbs() ?>
+<?php else: ?>
+<nav id="breadcrumb" class="breadcrumbs">
+    <ul>
+        <?php if (isset($site)): ?>
+        <li><?= $hyperlink($translate('Home'), $site->siteUrl()) ?></li>
+        <?php endif; ?>
+        <?php if ($itemSet): ?>
+        <li><?= $translate('Collections') ?></li>
+        <li><span><?= isset($site) ? $itemSet->siteUrl($site->slug()) : $itemSet->adminUrl() ?></span></li>
+        <?php endif; ?>
+        <li><span><?= $escape($translate('Search')) ?></span></li>
+    </ul>
+</nav>
+<?php endif; ?>
+
 <div id="search-page">
 <?php endif; ?>
 
@@ -81,7 +115,7 @@ $this->headScript()->appendFile($assetUrl('js/search.js', 'AdvancedSearch'), 'te
     $vars->offsetSet('resourceType', 'item_sets'); // TODO Check if really needed.
     $this->htmlElement('body')->appendAttribute('class', 'search-page item-set resource browse');
     ?>
-    <?= $this->pageTitle($itemSet->displayTitle(), 2) ?>
+    <?= $this->pageTitle($itemSet->displayTitle(null, $langTitle), 2) ?>
     <h3><?= $translate('Item set') ?></h3>
     <div class="metadata">
         <?= $itemSet->displayValues() ?>
@@ -97,7 +131,7 @@ $this->headScript()->appendFile($assetUrl('js/search.js', 'AdvancedSearch'), 'te
 
 <?php endif; ?>
 
-<?= $this->searchForm($searchPage, null, $skipFormAction) ?>
+<?= $searchConfig->renderForm(['template' => null, 'skip_form_action' => $skipFormAction]) ?>
 
 <?php if (isset($response)): ?>
 
@@ -110,7 +144,9 @@ $this->headScript()->appendFile($assetUrl('js/search.js', 'AdvancedSearch'), 'te
         <div class="search-results-part search-results-header">
             <?= $partial('search/results-header-footer', [
                 'site' => $site,
-                'searchPage' => $searchPage,
+                'searchConfig' => $searchConfig,
+                // Kept for compatibility with old themes.
+                'searchPage' => $searchConfig,
                 'query' => $query,
                 'response' => $response,
                 'itemSet' => $itemSet,
@@ -124,7 +160,8 @@ $this->headScript()->appendFile($assetUrl('js/search.js', 'AdvancedSearch'), 'te
             <?php if ($itemSetsCount): ?>
             <?= $partial('search/resource-list', [
                 'site' => $site,
-                'searchPage' => $searchPage,
+                'searchConfig' => $searchConfig,
+                'searchPage' => $searchConfig,
                 'query' => $query,
                 'response' => $response,
                 'title' => sprintf($translatePlural('%s item set', '%s item sets', $itemSetsCount), $itemSetsCount),
@@ -135,7 +172,8 @@ $this->headScript()->appendFile($assetUrl('js/search.js', 'AdvancedSearch'), 'te
             <?php if ($itemsCount): ?>
             <?= $partial('search/resource-list', [
                 'site' => $site,
-                'searchPage' => $searchPage,
+                'searchConfig' => $searchConfig,
+                'searchPage' => $searchConfig,
                 'query' => $query,
                 'response' => $response,
                 'title' => sprintf($translatePlural('%s item', '%s items', $itemsCount), $itemsCount),
@@ -148,7 +186,8 @@ $this->headScript()->appendFile($assetUrl('js/search.js', 'AdvancedSearch'), 'te
         <div class="search-results-part search-results-footer">
             <?= $partial('search/results-header-footer', [
                 'site' => $site,
-                'searchPage' => $searchPage,
+                'searchConfig' => $searchConfig,
+                'searchPage' => $searchConfig,
                 'query' => $query,
                 'response' => $response,
                 'itemSet' => $itemSet,
@@ -166,9 +205,9 @@ $this->headScript()->appendFile($assetUrl('js/search.js', 'AdvancedSearch'), 'te
                 <?php elseif (empty($query) && $itemSet): ?>
                 <?= $translate('This item set has no items.') ?>
                 <?php else: ?>
-                <?php if (in_array($searchPage->subSetting('display', 'search_filters', 'header'), ['header', 'both'])): ?>
+                <?php if (in_array($searchConfig->subSetting('display', 'search_filters', 'header'), ['header', 'both'])): ?>
                 <div class="search-results-part search-results-header">
-                    <?= $this->searchingFilters($searchPage, $query, ['template' => 'common/search-filters-links']) ?>
+                    <?= $this->searchingFilters($searchConfig, $query, ['template' => 'common/search-filters-links']) ?>
                 </div>
                 <?php endif; ?>
                 <?= $translate('Your query returned no results') ?>
@@ -181,7 +220,8 @@ $this->headScript()->appendFile($assetUrl('js/search.js', 'AdvancedSearch'), 'te
 
     <?= $partial('search/facets', [
         'site' => $site,
-        'searchPage' => $searchPage,
+        'searchConfig' => $searchConfig,
+        'searchPage' => $searchConfig,
         'query' => $query,
         'response' => $response,
         'itemSet' => $itemSet,

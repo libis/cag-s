@@ -2,7 +2,7 @@
 
 /*
  * Copyright BibLibre, 2016
- * Copyright Daniel Berthereau, 2017-2021
+ * Copyright Daniel Berthereau, 2017-2024
  *
  * This software is governed by the CeCILL license under French law and abiding
  * by the rules of distribution of free software.  You can use, modify and/ or
@@ -34,21 +34,6 @@ use Omeka\Api\Representation\AbstractEntityRepresentation;
 
 class SearchConfigRepresentation extends AbstractEntityRepresentation
 {
-    /**
-     * @var bool
-     */
-    private $isFormInit = false;
-
-    /**
-     * @var \AdvancedSearch\FormAdapter\FormAdapterInterface
-     */
-    protected $formAdapter;
-
-    /**
-     * @var \Laminas\Form\Form|null
-     */
-    protected $form;
-
     public function getJsonLdType()
     {
         return 'o:SearchConfig';
@@ -61,6 +46,7 @@ class SearchConfigRepresentation extends AbstractEntityRepresentation
             'o:name' => $this->resource->getName(),
             'o:path' => $this->resource->getPath(),
             'o:engine' => $this->engine()->getReference(),
+            // TODO Don't use "o:form" for the form adapter.
             'o:form' => $this->resource->getFormAdapter(),
             'o:settings' => $this->resource->getSettings(),
             'o:created' => $this->getDateTime($this->resource->getCreated()),
@@ -82,6 +68,9 @@ class SearchConfigRepresentation extends AbstractEntityRepresentation
         return $url('admin/search/config-id', $params, $options);
     }
 
+    /**
+     * Url of the real search page.
+     */
     public function adminSearchUrl($canonical = false): string
     {
         $url = $this->getViewHelper('Url');
@@ -126,6 +115,18 @@ class SearchConfigRepresentation extends AbstractEntityRepresentation
             : null;
     }
 
+    public function searchAdapter(): ?\AdvancedSearch\Adapter\AdapterInterface
+    {
+        $engine = $this->engine();
+        if ($engine) {
+            $adapter = $engine->adapter();
+            return $adapter
+                ? $adapter->setSearchEngine($engine)
+                : null;
+        }
+        return null;
+    }
+
     public function formAdapterName(): ?string
     {
         return $this->resource->getFormAdapter();
@@ -133,18 +134,53 @@ class SearchConfigRepresentation extends AbstractEntityRepresentation
 
     public function formAdapter(): ?\AdvancedSearch\FormAdapter\FormAdapterInterface
     {
-        if (!$this->isFormInit) {
-            $this->formInit();
+        $formAdapterName = $this->formAdapterName();
+        if (!$formAdapterName) {
+            return null;
         }
-        return $this->formAdapter;
+
+        $formAdapterManager = $this->getServiceLocator()->get('Search\FormAdapterManager');
+        if (!$formAdapterManager->has($formAdapterName)) {
+            return null;
+        }
+
+        /** @var \AdvancedSearch\FormAdapter\FormAdapterInterface $formAdapter */
+        $formAdapter = $formAdapterManager->get($formAdapterName);
+        return $formAdapter
+            ->setSearchConfig($this);
     }
 
+    /**
+     * Get the form from the adapter.
+     *
+     * @uses \AdvancedSearch\FormAdapter\FormAdapterInterface::getForm()
+     */
     public function form(): ?\Laminas\Form\Form
     {
-        if (!$this->isFormInit) {
-            $this->formInit();
-        }
-        return $this->form;
+        $formAdapter = $this->formAdapter();
+        return $formAdapter
+            ? $formAdapter->getForm()
+            : null;
+    }
+
+    /**
+     * Render the form.
+     *
+     * @param array $options
+     *   - template (string): Use a specific template instead of the default one.
+     *   This is the template of the form, not the main template of the search page.
+     *   - skip_form_action (bool): Don't set form action, so use the current page.
+     *   - skip_partial_headers (bool): Skip partial headers.
+     *   Other options are passed to the partial.
+     *
+     * @uses \AdvancedSearch\FormAdapter\FormAdapterInterface::renderForm()
+     */
+    public function renderForm(array $options = []): string
+    {
+        $formAdapter = $this->formAdapter();
+        return $formAdapter
+            ? $formAdapter->renderForm($options)
+            : '';
     }
 
     public function settings(): array
@@ -180,33 +216,5 @@ class SearchConfigRepresentation extends AbstractEntityRepresentation
     public function getEntity(): \AdvancedSearch\Entity\SearchConfig
     {
         return $this->resource;
-    }
-
-    private function formInit(): self
-    {
-        $this->isFormInit = true;
-
-        $formAdapterManager = $this->getServiceLocator()->get('Search\FormAdapterManager');
-        $formAdapterName = $this->formAdapterName();
-        if (!$formAdapterManager->has($formAdapterName)) {
-            return $this;
-        }
-
-        $this->formAdapter = $formAdapterManager->get($formAdapterName);
-        $formClass = $this->formAdapter->getFormClass();
-        if (empty($formClass)) {
-            return $this;
-        }
-
-        $this->form = $this->getServiceLocator()
-            ->get('FormElementManager')
-            ->get($formClass, [
-                'search_config' => $this,
-            ])
-            ->setAttribute('method', 'GET');
-
-        $this->formAdapter->setForm($this->form);
-
-        return $this;
     }
 }

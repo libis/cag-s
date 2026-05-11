@@ -181,7 +181,7 @@ return [
                 'adapter' => 'uri',
             ],
             'resource' => [
-                'label' => 'Omeka resource (by ID)', // @translate
+                'label' => 'Omeka resource', // @translate
                 'adapter' => 'resource',
             ],
         ],
@@ -189,6 +189,7 @@ return [
             'url' => MediaIngesterAdapter\UrlMediaIngesterAdapter::class,
             'html' => MediaIngesterAdapter\HtmlMediaIngesterAdapter::class,
             'iiif' => null,
+            'iiif_presentation' => null,
             'oembed' => null,
             'youtube' => null,
         ],

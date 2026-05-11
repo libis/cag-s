@@ -24,6 +24,7 @@ class Messages extends AbstractHelper
      */
     public function get()
     {
+        // Messenger can be used directly, it is used only to get messages.
         $messenger = new Messenger;
         $messages = $messenger->get();
         $messenger->clear();
@@ -56,7 +57,7 @@ class Messages extends AbstractHelper
 
         // When the form has multiple sub-fieldsets, messages can be nested.
         $append = null;
-        $append = function ($message, $class) use (&$append, &$output, $escape, $translate, $translator) {
+        $append = function ($message, $class) use (&$append, &$output, $escape, $translate, $translator): void {
             if (is_array($message)) {
                 foreach ($message as $msg) {
                     $append($msg, $class);

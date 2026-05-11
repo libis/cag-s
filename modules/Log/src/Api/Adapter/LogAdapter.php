@@ -63,7 +63,7 @@ class LogAdapter extends AbstractEntityAdapter
 
         // Job table is not joined to get only existing jobs: useless with
         // "on delete cascade".
-        if (isset($query['job_id'])) {
+        if (isset($query['job_id']) && $query['job_id'] !== '' && $query['job_id'] !== []) {
             $ids = $query['job_id'];
             if (!is_array($ids)) {
                 $ids = [$ids];
@@ -81,7 +81,22 @@ class LogAdapter extends AbstractEntityAdapter
             }
         }
 
-        if (isset($query['reference']) && $query['reference'] ) {
+        if (isset($query['job_class']) && $query['job_class'] !== '') {
+            $jobAlias = $this->createAlias();
+            $qb->innerJoin(
+                'omeka_root.job',
+                $jobAlias
+            );
+            // Escape backslashes for LIKE: the user can type
+            // "BulkImport\Job\Import" without doubling backslashes.
+            $jobClass = strtr($query['job_class'], ['\\' => '\\\\']);
+            $qb->andWhere($expr->like(
+                "$jobAlias.class",
+                $this->createNamedParameter($qb, '%' . $jobClass . '%')
+            ));
+        }
+
+        if (isset($query['reference']) && $query['reference']) {
             $qb->andWhere($expr->eq(
                 'omeka_root.reference',
                 $this->createNamedParameter($qb, $query['reference'])
@@ -156,31 +171,39 @@ class LogAdapter extends AbstractEntityAdapter
         EntityInterface $entity,
         ErrorStore $errorStore
     ): void {
-        switch ($request->getOperation()) {
-            case Request::CREATE:
-                $data = $request->getContent();
-                if (empty($data['o:owner'])) {
-                    $owner = null;
-                } elseif (is_object($data['o:owner'])) {
-                    $owner = $data['o:owner'];
-                } else {
-                    $owner = $this->getAdapter('users')->findEntity($data['o:owner']['o:id']);
-                }
-                if (empty($data['o:job'])) {
-                    $job = null;
-                } elseif (is_object($data['o:job'])) {
-                    $job = $data['o:job'];
-                } else {
-                    $job = $this->getAdapter('jobs')->findEntity($data['o:job']['o:id']);
-                }
-                $entity->setOwner($owner);
-                $entity->setJob($job);
-                $entity->setReference($data['o:reference']);
-                $entity->setSeverity($data['o:severity']);
-                $entity->setMessage($data['o:message']);
-                $entity->setContext($data['o:context']);
-                $entity->setCreated(new \DateTime('now'));
-                break;
+        /** @var \Log\Entity\Log $entity */
+
+        // Logs are not updatable.
+
+        if ($request->getOperation() === Request::CREATE) {
+            $data = $request->getContent();
+            $entityManager = $this->getEntityManager();
+            // Reload objects to avoid issues with doctrine.
+            if (empty($data['o:owner'])) {
+                $owner = null;
+            } elseif (is_object($data['o:owner'])) {
+                $owner = $entityManager->find(\Omeka\Entity\User::class, $data['o:owner']->getId());
+            } elseif (!empty($data['o:owner']['o:id'])) {
+                $owner = $entityManager->find(\Omeka\Entity\User::class, $data['o:owner']['o:id']);
+            } else {
+                $owner = $this->getServiceLocator()
+                    ->get('Omeka\AuthenticationService')->getIdentity();
+                $owner = $owner ? $entityManager->find(\Omeka\Entity\User::class, $owner->getId()) : null;
+            }
+            if (empty($data['o:job'])) {
+                $job = null;
+            } elseif (is_object($data['o:job'])) {
+                $job = $entityManager->find(\Omeka\Entity\Job::class, $data['o:job']->getId());
+            } else {
+                $job = $entityManager->find(\Omeka\Entity\Job::class, $data['o:job']['o:id']);
+            }
+            $entity->setOwner($owner);
+            $entity->setJob($job);
+            $entity->setReference($data['o:reference']);
+            $entity->setSeverity($data['o:severity']);
+            $entity->setMessage($data['o:message']);
+            $entity->setContext($data['o:context']);
+            $entity->setCreated(new \DateTime('now'));
         }
     }
 
@@ -233,13 +256,16 @@ class LogAdapter extends AbstractEntityAdapter
      */
     protected function buildQuerySeverityComparison(QueryBuilder $qb, array $query, $value, $column): void
     {
-        $map = [
+        // The form sends numeric strings ('0'–'7'), but the api
+        // may receive severity names ('error', 'info', etc.) or
+        // int values. Normalize to numeric string before comparison.
+        static $map = [
             'emergency' => Logger::EMERG,
             'emerg' => Logger::EMERG,
             'alert' => Logger::ALERT,
             'critical' => Logger::CRIT,
             'crit' => Logger::CRIT,
-            'errror' => Logger::ERR,
+            'error' => Logger::ERR,
             'err' => Logger::ERR,
             'warning' => Logger::WARN,
             'warn' => Logger::WARN,
@@ -249,14 +275,30 @@ class LogAdapter extends AbstractEntityAdapter
             'info' => Logger::INFO,
             'debug' => Logger::DEBUG,
         ];
-        $value = str_ireplace(array_keys($map), array_values($map), $value);
-        $this->buildQueryComparison($qb, $query, $value, $column);
+
+        $value = (string) $value;
+
+        // Extract optional comparison prefix (<=, >=, <>, <, >, =).
+        $prefix = '';
+        if (preg_match('/^([<>=!]{1,2})/', $value, $matches)) {
+            $prefix = $matches[1];
+            $value = substr($value, strlen($prefix));
+        }
+
+        // Convert severity name to numeric level when needed.
+        $lower = strtolower(trim($value));
+        if (isset($map[$lower])) {
+            $value = (string) $map[$lower];
+        }
+
+        $this->buildQueryComparison($qb, $query, $prefix . $value, $column);
     }
 
     /**
      * Add a comparison condition to query from a date.
      *
      * @see \Annotate\Api\Adapter\QueryDateTimeTrait::searchDateTime()
+     * @see \AiGenerator\Api\Adapter\AiRecordAdapter::buildQueryDateComparison()
      * @see \Contribute\Api\Adapter\ContributionAdapter::buildQueryDateComparison()
      * @see \Log\Api\Adapter\LogAdapter::buildQueryDateComparison()
      */

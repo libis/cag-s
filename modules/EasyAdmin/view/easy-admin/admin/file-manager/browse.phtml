@@ -1,0 +1,263 @@
+<?php
+/**
+ * @var \Laminas\View\Renderer\PhpRenderer $this
+ * @var string $basePath
+ * @var string|null $localUrl
+ * @var string|null $dirPath
+ * @var array $dirPaths
+ * @var bool $isProtected
+ * @var bool $isUserData
+ * @var bool $canWriteInDir
+ * @var array|null $uploadData
+ * @var array $files
+ * @var int $totalFiles
+ * @var int $page
+ * @var int $perPage
+ * @var int $totalPages
+ * @var \Omeka\Form\ConfirmForm|null $formDelete
+ * @var bool $isAdmin
+ */
+
+$plugins = $this->getHelperPluginManager();
+$url = $plugins->get('url');
+$escape = $plugins->get('escapeHtml');
+$assetUrl = $plugins->get('assetUrl');
+$translate = $plugins->get('translate');
+$hyperlink = $plugins->get('hyperlink');
+$escapeAttr = $plugins->get('escapeHtmlAttr');
+$htmlAttr = $plugins->get('htmlAttributes');
+
+$this->headLink()
+    ->appendStylesheet($assetUrl('css/easy-admin.css', 'EasyAdmin'));
+$this->headScript()
+    ->appendFile($assetUrl('js/file-manager.js', 'EasyAdmin'), 'text/javascript', ['defer' => 'defer']);
+
+// Add upload scripts only for writable directories.
+if ($uploadData):
+    $this->headLink()->appendStylesheet($assetUrl('css/bulk-upload.css', 'EasyAdmin'));
+    $this->headScript()
+        ->appendFile($assetUrl('vendor/flow.js/flow.min.js', 'EasyAdmin'), 'text/javascript', ['defer' => 'defer'])
+        ->appendFile($assetUrl('js/bulk-upload.js', 'EasyAdmin'), 'text/javascript', ['defer' => 'defer']);
+endif;
+
+$this->htmlElement('body')->appendAttribute('class', 'easy-admin files browse file-manager');
+
+$displayDir = (bool) $this->params()->fromQuery('display_dir');
+$canDelete = $formDelete && $canWriteInDir;
+
+// Helper to format file size.
+$formatSize = function ($bytes) {
+    if ($bytes < 1024) return $bytes . ' B';
+    if ($bytes < 1048576) return round($bytes / 1024, 1) . ' KB';
+    if ($bytes < 1073741824) return round($bytes / 1048576, 1) . ' MB';
+    return round($bytes / 1073741824, 2) . ' GB';
+};
+?>
+
+<?= $this->pageTitle($translate('File manager'), 1, $translate('Easy Admin')) ?>
+
+<nav class="section-nav">
+    <?= $this->navigation('Laminas\Navigation\EasyAdmin')->menu() ?>
+</nav>
+
+<?php // Directory selector ?>
+<div class="block">
+    <form id="dir-select-form" method="get">
+        <label for="dir_path"><?= $translate('Directory:') ?></label>
+        <select id="dir_path" name="dir_path" class="chosen-select">
+            <?php foreach ($dirPaths as $path => $label): ?>
+            <option value="<?= $escapeAttr($path) ?>"<?= $path === $dirPath ? ' selected' : '' ?>>
+                <?= $escape($label) ?>
+            </option>
+            <?php endforeach; ?>
+        </select>
+        <button type="submit" class="button"><?= $translate('Go') ?></button>
+        <label class="display-dir-label">
+            <input type="checkbox" name="display_dir" value="1"<?= $displayDir ? ' checked' : '' ?>>
+            <?= $translate('Show folders') ?>
+        </label>
+    </form>
+</div>
+
+<?php if (!$dirPath): return; endif; ?>
+
+<?php // Protected directory notice ?>
+<?php if ($isProtected): ?>
+<ul class="messages">
+    <li class="warning"><?= sprintf($translate('%1$s: %2$s'), $translate('Read-only directory'), $translate('This directory is managed by Omeka. Files cannot be uploaded or deleted here.')) ?></li>
+</ul>
+<?php endif; ?>
+
+<?php // Read-only notice for other admin userdata directory ?>
+<?php if ($isUserData && !$canWriteInDir): ?>
+<ul class="messages">
+    <li class="warning"><?= sprintf($translate('%1$s: %2$s'), $translate('Read-only directory'), $translate('This is another user directory. You can browse and download files but not modify them.')) ?></li>
+</ul>
+<?php endif; ?>
+
+<?php // Filesystem path display for userdata directories ?>
+<?php if ($isUserData && $dirPath): ?>
+<ul class="messages">
+    <li class="notice"><?= sprintf($translate('Filesystem path: %s'), '<code>' . $escape($dirPath) . '</code>') ?></li>
+</ul>
+<?php endif; ?>
+
+<?php // Upload section (only for writable directories) ?>
+<?php if ($uploadData): ?>
+<div id="bulk-upload" class="block media-field-wrapper">
+    <div class="media-bulk-upload" data-main-index="__index__" <?= $htmlAttr($uploadData) ?>>
+        <div class="field field-drag-and-drop">
+            <div class="inputs bulk-drop">
+                <span><?= $translate('Drag and drop files here') ?></span>
+            </div>
+        </div>
+        <div class="field field-browse-files">
+            <div class="inputs">
+                <button type="button" class="button button-browse button-browse-files"><?= $translate('Browse files') ?></button>
+            </div>
+        </div>
+        <div class="field field-browse-folders">
+            <div class="inputs">
+                <button type="button" class="button button-browse button-browse-directory" webkitdirectory="webkitdirectory"><?= $translate('Select folder') ?></button>
+            </div>
+        </div>
+    </div>
+    <input type="hidden" name="filesData[file][__index__]" value="[]" class="filesdata"/>
+    <div class="field bulk-upload-actions-pre empty">
+        <div class="bulk-upload-actions-more">
+            <label class="hide-upload-label">
+                <input type="checkbox" class="hide-uploaded" name="hide-uploaded"/>
+                <span><?= $translate('Hide uploaded files') ?></span>
+            </label>
+        </div>
+        <div class="bulk-upload-actions-button">
+            <button type="button" class="button button-pause"><?= $escape($uploadData['data-translate-pause']) ?></button>
+        </div>
+        <div class="media-files-input-full-progress">
+            <div class="progress-count">
+                <span class="progress-current"></span> / <span class="progress-total"></span>
+            </div>
+            <span class="progress-wait"><?= $translate('Uploading…') ?></span>
+        </div>
+    </div>
+    <div class="field bulk-upload-actions"></div>
+    <div class="field media-files-input-preview"><ol></ol></div>
+</div>
+<?php endif; ?>
+
+<?php $this->trigger('view.browse.before'); ?>
+
+<?php // File listing ?>
+<form method="post" id="file-list-form" class="block disable-unsaved-warning">
+    <input type="hidden" name="dir_path" value="<?= $escapeAttr($dirPath) ?>">
+
+    <?php // Batch actions (only for writable directories) ?>
+    <?php if ($canDelete): ?>
+    <div class="batch-actions">
+        <button type="button" class="button batch-delete-btn" disabled>
+            <?= $translate('Delete selected') ?>
+        </button>
+        <span class="selected-count"></span>
+    </div>
+    <?php endif; ?>
+
+    <?php // Pagination info ?>
+    <div class="pagination-info">
+        <?= sprintf($translate('%d file(s)'), $totalFiles) ?>
+        <?php if ($totalPages > 1): ?>
+        — <?= sprintf($translate('Page %d of %d'), $page, $totalPages) ?>
+        <?php endif; ?>
+    </div>
+
+    <?php if ($files): ?>
+    <table class="tablesaw batch-edit" data-tablesaw-mode="stack">
+        <thead>
+            <tr>
+                <th><?php if ($canDelete): ?><input type="checkbox" class="select-all" aria-label="<?= $translate('Select all') ?>"><?php endif; ?><?= $translate('Name') ?></th>
+                <th class="col-date"><?= $translate('Date') ?></th>
+                <th class="col-size"><?= $translate('Size') ?></th>
+            </tr>
+        </thead>
+        <tbody>
+            <?php foreach ($files as $file): ?>
+            <tr class="<?= $file['isDir'] ? 'is-dir' : 'is-file' ?>">
+                <td>
+                    <?php if ($canDelete && !$file['isDir'] && $file['isWritable']): ?>
+                    <input type="checkbox" name="filenames[]" value="<?= $escapeAttr($file['name']) ?>" aria-label="<?= $translate('Select file') ?>">
+                    <?php endif; ?>
+                    <?php if ($file['isDir']): ?>
+                    <?= $hyperlink($file['name'], $url(null, [], ['query' => ['dir_path' => $file['path'], 'display_dir' => 1]], true), ['class' => 'folder-link']) ?>
+                    <?php else: ?>
+                    <span class="file-name"><?= $escape($file['name']) ?></span>
+                    <?php endif; ?>
+                    <ul class="actions">
+                        <?php if (!$file['isDir']): ?>
+                        <?php if ($isUserData): ?>
+                        <li><a href="<?= $escapeAttr($url('admin/easy-admin/file-manager', ['action' => 'download'], ['query' => ['dir_path' => $dirPath, 'filename' => $file['name']]])) ?>"
+                           class="o-icon-download" title="<?= $translate('Download') ?>"></a></li>
+                        <?php elseif ($localUrl): ?>
+                        <li><a href="<?= $escapeAttr(rtrim($localUrl, '/') . '/' . rawurlencode($file['name'])) ?>"
+                           download="<?= $escapeAttr($file['name']) ?>"
+                           class="o-icon-download" title="<?= $translate('Download') ?>"></a></li>
+                        <?php endif; ?>
+                        <?php endif; ?>
+                        <?php if ($canDelete && !$file['isDir'] && $file['isWritable']): ?>
+                        <li><a href="#" class="o-icon-delete sidebar-content delete-one"
+                           data-sidebar-selector="#sidebar"
+                           data-sidebar-content-url="<?= $escapeAttr($url('admin/easy-admin/file-manager', ['action' => 'delete-confirm'], ['query' => ['dir_path' => $dirPath, 'filename' => $file['name']]])) ?>"
+                           title="<?= $translate('Delete') ?>"></a></li>
+                        <?php endif; ?>
+                    </ul>
+                </td>
+                <td class="col-date">
+                    <?= $file['isDir'] ? '' : date('Y-m-d H:i', $file['mtime']) ?>
+                </td>
+                <td class="col-size">
+                    <?= $file['isDir'] ? '' : $formatSize($file['size']) ?>
+                </td>
+            </tr>
+            <?php endforeach; ?>
+        </tbody>
+    </table>
+
+    <?php // Pagination ?>
+    <?php if ($totalPages > 1): ?>
+    <nav class="pagination">
+        <?php if ($page > 1): ?>
+        <a href="<?= $url(null, [], ['query' => ['dir_path' => $dirPath, 'display_dir' => (int) $displayDir, 'page' => $page - 1]], true) ?>" class="button">&laquo; <?= $translate('Previous') ?></a>
+        <?php endif; ?>
+
+        <span class="page-info"><?= $page ?> / <?= $totalPages ?></span>
+
+        <?php if ($page < $totalPages): ?>
+        <a href="<?= $url(null, [], ['query' => ['dir_path' => $dirPath, 'display_dir' => (int) $displayDir, 'page' => $page + 1]], true) ?>" class="button"><?= $translate('Next') ?> &raquo;</a>
+        <?php endif; ?>
+    </nav>
+    <?php endif; ?>
+
+    <?php else: ?>
+    <p class="no-files"><?= $translate('No files.') ?></p>
+    <?php endif; ?>
+</form>
+
+<?php $this->trigger('view.browse.after'); ?>
+
+<?php // Delete confirmation sidebar ?>
+<?php if ($canDelete): ?>
+<div id="sidebar" class="sidebar">
+    <?= $hyperlink('', '#', ['class' => 'sidebar-close o-icon-close', 'title' => $translate('Close')]) ?>
+    <div class="sidebar-content"></div>
+</div>
+
+<div id="sidebar-confirm-batch" class="sidebar">
+    <?= $hyperlink('', '#', ['class' => 'sidebar-close o-icon-close', 'title' => $translate('Close')]) ?>
+    <div class="sidebar-content">
+        <h3><?= $translate('Delete files') ?></h3>
+        <p><?= $translate('Are you sure you want to delete the selected files?') ?></p>
+        <p class="error">
+            <?= sprintf($translate('%sWarning%s: This will permanently delete %s file(s).'), '<strong>', '</strong>', '<span class="delete-count">0</span>') ?>
+        </p>
+        <?= $this->form($formDelete) ?>
+    </div>
+</div>
+<?php endif; ?>

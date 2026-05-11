@@ -5,19 +5,56 @@ namespace EasyAdmin\Job;
 abstract class AbstractCheckFile extends AbstractCheck
 {
     /**
-     * Check the size or the hash of the files.
+     * The column to check (size, sha256, media_type, storage_id).
+     * Subclasses should override this property.
      *
-     * @param string $column
-     * @param bool $fix
-     * @return bool
+     * @var string
      */
-    protected function checkFileData($column, $fix = false)
+    protected $checkColumn = '';
+
+    /**
+     * The process name suffix for the fix action (e.g., 'files_size_fix').
+     * Subclasses should override this property.
+     *
+     * @var string
+     */
+    protected $fixProcessName = '';
+
+    /**
+     * Common perform logic for file data check jobs.
+     * Subclasses can call this method or override perform() entirely.
+     */
+    protected function performFileDataCheck(): void
     {
-        if (!in_array($column, ['size', 'sha256', 'media_type'])) {
+        parent::perform();
+        if ($this->job->getStatus() === \Omeka\Entity\Job::STATUS_ERROR) {
+            return;
+        }
+
+        $process = $this->getArg('process');
+        $fix = $this->fixProcessName && $process === $this->fixProcessName;
+
+        $this->checkFileData($this->checkColumn, $fix);
+
+        $this->logger->notice(
+            'Process "{process}" completed.', // @translate
+            ['process' => $process]
+        );
+
+        $this->finalizeOutput();
+    }
+
+    /**
+     * Check the size or the hash of the files.
+     */
+    protected function checkFileData(string $column, bool $fix = false): bool
+    {
+        if (!in_array($column, ['size', 'sha256', 'media_type', 'storage_id'])) {
             $this->logger->err(
                 'Column {type} does not exist or cannot be checked.', // @translate
                 ['type' => $column]
             );
+            $this->job->setStatus(\Omeka\Entity\Job::STATUS_ERROR);
             return false;
         }
 
@@ -63,9 +100,10 @@ abstract class AbstractCheckFile extends AbstractCheck
             return true;
         }
 
-        $translator = $this->getServiceLocator()->get('MvcTranslator');
-        $yes = $translator->translate('Yes'); // @translate
-        $no = $translator->translate('No'); // @translate
+        $yesNo = $this->getYesNo();
+        $yes = $yesNo['yes'];
+        $no = $yesNo['no'];
+        $empty = $this->translator->translate('[empty]'); // @translate
 
         $specifyMediaType = $this->getServiceLocator()->get('ControllerPluginManager')->get('specifyMediaType');
 
@@ -114,20 +152,53 @@ abstract class AbstractCheckFile extends AbstractCheck
                     'fixed' => '',
                 ];
 
+                $isFixable = false;
                 if (file_exists($filepath)) {
                     $row['exists'] = $yes;
                     switch ($column) {
                         case 'size':
                             $dbValue = $media->getSize();
                             $realValue = filesize($filepath);
+                            $isFixable = true;
                             break;
                         case 'sha256':
                             $dbValue = $media->getSha256();
                             $realValue = hash_file('sha256', $filepath);
+                            $isFixable = true;
                             break;
                         case 'media_type':
                             $dbValue = $media->getMediaType();
                             $realValue = $specifyMediaType($filepath);
+                            $isFixable = true;
+                            break;
+                        case 'storage_id':
+                            /** @see \Omeka\File\TempFile::getStorageId() */
+                            $dbValue = $media->getStorageId();
+                            $realValue = bin2hex(\Laminas\Math\Rand::getBytes(20));
+                            // No check for existing file, such like TempFile:
+                            // this is a 20 hexa random name.
+                            $isFixable = $dbValue && is_writeable($filepath);
+                            if (!$dbValue) {
+                                $this->logger->warn(
+                                    'Media #{media_id} ({processed}/{total}): original file "{filename}" has no value and cannot be renamed.', // @translate
+                                    [
+                                        'media_id' => $media->getId(),
+                                        'processed' => $offset + $key + 1,
+                                        'total' => $totalToProcess,
+                                        'filename' => $filename,
+                                    ]
+                                );
+                            } elseif (!is_writeable($filepath)) {
+                                $this->logger->warn(
+                                    'Media #{media_id} ({processed}/{total}): original file "{filename}" is write protected and cannot be renamed.', // @translate
+                                    [
+                                        'media_id' => $media->getId(),
+                                        'processed' => $offset + $key + 1,
+                                        'total' => $totalToProcess,
+                                        'filename' => $filename,
+                                    ]
+                                );
+                            }
                             break;
                     }
 
@@ -138,35 +209,85 @@ abstract class AbstractCheckFile extends AbstractCheck
 
                     if ($fix) {
                         if ($isDifferent) {
+                            $isFixed = false;
                             switch ($column) {
                                 case 'size':
                                     $media->setSize($realValue);
+                                    $isFixed = true;
                                     break;
                                 case 'sha256':
                                     $media->setSha256($realValue);
+                                    $isFixed = true;
                                     break;
                                 case 'media_type':
                                     $media->setMediaType($realValue);
+                                    $isFixed = true;
+                                    break;
+                                case 'storage_id':
+                                    if ($isFixable) {
+                                        $extension = $media->getExtension();
+                                        $newFilepath = dirname($filepath) . '/' . $realValue . ($extension !== null && $extension !== '' ? '.' . $extension : '');
+                                        // Ideally, the rename should occur at
+                                        // the same time than flush, but this
+                                        // it is a rare issue and logging is
+                                        // enough. Anyway, file rename and db
+                                        // flush cannot be atomic.
+                                        $isFixed = rename($filepath, (string) $newFilepath);
+                                        if ($isFixed) {
+                                            $media->setStorageId($realValue);
+                                            $this->logger->notice(
+                                                'Media #{media_id} ({processed}/{total}): original file "{filename}" was renamed "{filename_2}".', // @translate
+                                                [
+                                                    'media_id' => $media->getId(),
+                                                    'processed' => $offset + $key + 1,
+                                                    'total' => $totalToProcess,
+                                                    'filename' => $filename,
+                                                    'filename_2' => basename($newFilepath),
+                                                ]
+                                            );
+                                        } else {
+                                            $this->logger->warn(
+                                                'Media #{media_id} ({processed}/{total}): original file "{filename}" cannot be renamed "{filename_2}".', // @translate
+                                                [
+                                                    'media_id' => $media->getId(),
+                                                    'processed' => $offset + $key + 1,
+                                                    'total' => $totalToProcess,
+                                                    'filename' => $filename,
+                                                    'filename_2' => basename($newFilepath),
+                                                ]
+                                            );
+                                        }
+                                    }
                                     break;
                             }
                             $this->entityManager->persist($media);
-                            $this->logger->notice(
-                                'Media #{media_id} ({processed}/{total}): original file "{filename}" updated with {type} = {real_value} (was {old_value}).', // @translate
-                                [
-                                    'media_id' => $media->getId(),
-                                    'processed' => $offset + $key + 1,
-                                    'total' => $totalToProcess,
-                                    'filename' => $filename,
-                                    'type' => $column,
-                                    'real_value' => $realValue,
-                                    'old_value' => $dbValue,
-                                ]
-                            );
+                            // Don't repeat log for storage and it may be issue.
+                            if ($column !== 'storage_id') {
+                                $this->logger->notice(
+                                    'Media #{media_id} ({processed}/{total}): original file "{filename}" updated with {type} = {real_value} (was {old_value}).', // @translate
+                                    [
+                                        'media_id' => $media->getId(),
+                                        'processed' => $offset + $key + 1,
+                                        'total' => $totalToProcess,
+                                        'filename' => $filename,
+                                        'type' => $column,
+                                        'real_value' => $realValue,
+                                        'old_value' => $dbValue ?: $empty,
+                                    ]
+                                );
+                            }
+                        } else {
+                            $isFixed = true;
                         }
                         ++$totalSucceed;
-                        $row['fixed'] = $yes;
+                        $row['fixed'] = $isFixed ? $yes : $no;
                     } else {
-                        if (is_null($dbValue)) {
+                        if ($column === 'storage_id') {
+                            // Messages are set above and the real value is random.
+                            $isFixable
+                                ? ++$totalSucceed
+                                : ++$totalFailed;
+                        } elseif ($dbValue === null) {
                             ++$totalFailed;
                             $this->logger->warn(
                                 'Media #{media_id} ({processed}/{total}): original file "{filename}" has no {type}, but should be {real_value}.', // @translate
@@ -217,7 +338,9 @@ abstract class AbstractCheckFile extends AbstractCheck
                 ++$totalProcessed;
             }
 
-            $this->entityManager->flush();
+            if ($fix) {
+                $this->entityManager->flush();
+            }
             $this->entityManager->clear();
             unset($medias);
 
@@ -245,37 +368,92 @@ abstract class AbstractCheckFile extends AbstractCheck
     }
 
     /**
-     * Get a relative or full path of files filtered by extensions recursively
-     * in a directory.
-     *
-     * @param string $dir
-     * @param bool $absolute
-     * @param string $extensions
-     * @return array
+     * List files inside a directory filtered by extensions recursively.
      */
-    protected function listFilesInFolder($dir, $absolute = false, array $extensions = [])
-    {
+    protected function listFilesInFolder(
+        string $dir,
+        bool $absolute = false,
+        array $extensions = [],
+        array $extensionsExclude = [],
+        array $filenamesEndExclude = []
+    ): array {
         if (empty($dir) || !file_exists($dir) || !is_dir($dir) || !is_readable($dir)) {
             return [];
         }
+
+        $files = iterator_to_array($this->iterateFilesInFolder($dir, $absolute, $extensions, $extensionsExclude, $filenamesEndExclude));
+        sort($files);
+        return $files;
+    }
+
+    /**
+     * Iterate files inside a directory filtered by extensions recursively.
+     *
+     * Memory-efficient generator version of listFilesInFolder().
+     * Use this for very large directories (millions of files).
+     *
+     * @return \Generator<string>
+     */
+    protected function iterateFilesInFolder(
+        string $dir,
+        bool $absolute = false,
+        array $extensions = [],
+        array $extensionsExclude = [],
+        array $filenamesEndExclude = []
+    ): \Generator {
+        if (empty($dir) || !file_exists($dir) || !is_dir($dir) || !is_readable($dir)) {
+            return;
+        }
+
         $regex = empty($extensions)
             ? '/^.+$/i'
             : '/^.+\.(' . implode('|', $extensions) . ')$/i';
+
+        $excludedRegex = empty($extensionsExclude)
+            ? null
+            : '/^.+\.(' . implode('|', $extensionsExclude) . ')$/i';
+
         $directory = new \RecursiveDirectoryIterator($dir, \RecursiveDirectoryIterator::SKIP_DOTS);
         $iterator = new \RecursiveIteratorIterator($directory);
-        $regex = new \RegexIterator($iterator, $regex, \RecursiveRegexIterator::GET_MATCH);
-        $files = [];
-        if ($absolute) {
-            foreach ($regex as $file) {
-                $files[] = reset($file);
-            }
-        } else {
-            $dirLength = mb_strlen($dir) + 1;
-            foreach ($regex as $file) {
-                $files[] = mb_substr(reset($file), $dirLength);
-            }
+        $regexIterator = new \RegexIterator($iterator, $regex, \RecursiveRegexIterator::GET_MATCH);
+
+        $dirLength = mb_strlen($dir) + 1;
+
+        $excludedFilenamesEnd = [];
+        foreach ($filenamesEndExclude ?? [] as $excludeString) {
+            $excludedFilenamesEnd[$excludeString] = mb_strlen($excludeString);
         }
-        sort($files);
-        return $files;
+
+        try {
+            foreach ($regexIterator as $file) {
+                $filePath = reset($file);
+                if ($excludedRegex && preg_match($excludedRegex, $filePath)) {
+                    continue;
+                }
+
+                // Skip files ending with excluded strings
+                if ($excludedFilenamesEnd) {
+                    $filename = pathinfo($filePath, PATHINFO_FILENAME);
+                    $shouldSkip = false;
+                    foreach ($excludedFilenamesEnd as $excludeString => $length) {
+                        if (mb_substr($filename, -$length) === $excludeString) {
+                            $shouldSkip = true;
+                            break;
+                        }
+                    }
+                    if ($shouldSkip) {
+                        continue;
+                    }
+                }
+
+                yield $absolute ? $filePath : mb_substr($filePath, $dirLength);
+            }
+        } catch (\Exception $e) {
+            $this->logger->err(
+                'Directory or file not readable: {error}', // @translate
+                ['exception' => $e->getMessage()]
+            );
+            $this->job->setStatus(\Omeka\Entity\Job::STATUS_ERROR);
+        }
     }
 }

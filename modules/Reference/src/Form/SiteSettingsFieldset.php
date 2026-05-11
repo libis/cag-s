@@ -2,10 +2,10 @@
 
 namespace Reference\Form;
 
+use Common\Form\Element as CommonElement;
 use Laminas\Form\Element;
 use Laminas\Form\Fieldset;
-use Reference\Form\Element\DoubleArrayTextarea;
-use Reference\Form\Element\OptionalMultiCheckbox;
+use Reference\Form\Element as ReferenceElement;
 
 class SiteSettingsFieldset extends Fieldset
 {
@@ -14,15 +14,33 @@ class SiteSettingsFieldset extends Fieldset
      */
     protected $label = 'Reference'; // @translate
 
+    protected $elementGroups = [
+        'references' => 'References', // @translate
+    ];
+
     public function init(): void
     {
         $this
             ->setAttribute('id', 'reference')
+            ->setOption('element_groups', $this->elementGroups)
+            ->add([
+                'name' => 'reference_page_title',
+                'type' => Element\Text::class,
+                'options' => [
+                    'element_group' => 'references',
+                    'label' => 'Title of the page [deprecated: use page block]', // @translate
+                ],
+                'attributes' => [
+                    'id' => 'reference_page_title',
+                    'placeholder' => 'References', // @translate
+                ],
+            ])
             ->add([
                 'name' => 'reference_resource_name',
                 'type' => Element\Radio::class,
                 'options' => [
-                    'label' => 'Resources to link', // @translate
+                    'element_group' => 'references',
+                    'label' => 'Resources to link [deprecated: use page block]', // @translate
                     'value_options' => [
                         // TODO Manage the list of reference separately.
                         // '' => 'All resources (separately)', // @translate
@@ -39,10 +57,12 @@ class SiteSettingsFieldset extends Fieldset
             ])
             ->add([
                 'name' => 'reference_options',
-                'type' => OptionalMultiCheckbox::class,
+                'type' => CommonElement\OptionalMultiCheckbox::class,
                 'options' => [
-                    'label' => 'Display', // @translate
+                    'element_group' => 'references',
+                    'label' => 'Display [deprecated: use page block]', // @translate
                     'value_options' => [
+                        'element_group' => 'references',
                         'headings' => 'Headings', // @translate
                         'skiplinks' => 'Skip links', // @translate
                         'total' => 'Individual total', // @translate
@@ -58,9 +78,10 @@ class SiteSettingsFieldset extends Fieldset
             ])
             ->add([
                 'name' => 'reference_slugs',
-                'type' => DoubleArrayTextarea::class,
+                'type' => ReferenceElement\DoubleArrayTextarea::class,
                 'options' => [
-                    'label' => 'Reference pages for selected classes and properties', // @translate
+                    'element_group' => 'references',
+                    'label' => 'Reference pages for selected classes and properties [deprecated: use page block]', // @translate
                     'as_key_value' => true,
                     'second_level_keys' => [
                         'term',
@@ -70,10 +91,11 @@ class SiteSettingsFieldset extends Fieldset
                 'attributes' => [
                     'id' => 'reference_slugs',
                     'rows' => 12,
-                    'placeholder' => 'slug = term = label
-dctype:Image = dctype:Image = Image
-dcterms:subject = dcterms:subject = Subjects
-',
+                    'placeholder' => <<<'TXT'
+                        slug = term = label
+                        dctype:Image = dctype:Image = Image
+                        dcterms:subject = dcterms:subject = Subjects
+                        TXT,
                 ],
             ])
         ;

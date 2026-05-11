@@ -2,7 +2,7 @@
 
 /*
  * Copyright BibLibre, 2016
- * Copyright Daniel Berthereau, 2018-2022
+ * Copyright Daniel Berthereau, 2018-2024
  *
  * This software is governed by the CeCILL license under French law and abiding
  * by the rules of distribution of free software. You can use, modify and/ or
@@ -48,6 +48,11 @@ class Query implements \JsonSerializable
      * @var bool
      */
     protected $isPublic = true;
+
+    /**
+     * @deprecated Will be removed in a future version.
+     */
+    protected $recordOrFullText = 'all';
 
     /**
      * @var array
@@ -144,6 +149,11 @@ class Query implements \JsonSerializable
     protected $siteId;
 
     /**
+     * @var array
+     */
+    protected $options = [];
+
+    /**
      * The query should be stringable and is always trimmed.
      */
     public function setQuery($query): self
@@ -192,6 +202,23 @@ class Query implements \JsonSerializable
     public function getIsPublic(): bool
     {
         return $this->isPublic;
+    }
+
+    /**
+     * @deprecated Will be removed in a future version.
+     */
+    public function setRecordOrFullText(?string $recordOrFullText): self
+    {
+        $this->recordOrFullText = $recordOrFullText === 'record' ? 'record' : 'all';
+        return $this;
+    }
+
+    /**
+     * @deprecated Will be removed in a future version.
+     */
+    public function getRecordOrFullText(): string
+    {
+        return $this->recordOrFullText;
     }
 
     /**
@@ -540,6 +567,21 @@ class Query implements \JsonSerializable
     public function getSiteId(): ?int
     {
         return $this->siteId;
+    }
+
+    /**
+     * @experimental Only used to pass the display list mode for facets for now.
+     * May be removed in a future version.
+     */
+    public function setOption(string $key, $value): self
+    {
+        $this->options[$key] = $value;
+        return $this;
+    }
+
+    public function getOption(string $key, $default = null)
+    {
+        return $this->options[$key] ?? $default;
     }
 
     /**

@@ -97,8 +97,8 @@ trait ZipTrait
             $skipZip = in_array('*.zip', $exclude);
             $sourceLength = mb_strlen($source);
 
-            // TODO Find a better way to set the compression level for ZipArchive.
-            // In fact, "default" is "deflate".
+            // Compression configuration is commented; deflate used by default.
+            // ZipArchive::setCompressionIndex() may be used per-file if needed.
             /*
             $compressions = [
                 -1 => ZipArchive::CM_DEFAULT,
@@ -150,8 +150,7 @@ trait ZipTrait
             $filterIterator = new RecursiveCallbackFilterIterator(
                 $directoryIterator,
                 function (SplFileInfo $file, string $filepath, RecursiveDirectoryIterator $iterator)
-                use ($excludedDirs, $excludedFiles, $excludedDirsRegex, $skipHidden, $skipZip)
-                : bool {
+                    use ($excludedDirs, $excludedFiles, $excludedDirsRegex, $skipHidden, $skipZip): bool {
                     $filename = $file->getFilename();
                     if ($skipHidden && mb_substr($filename, 0, 1) === '.') {
                         return false;
@@ -160,7 +159,7 @@ trait ZipTrait
                     } elseif ($file->isFile()) {
                         return $file->isReadable()
                             && !in_array($filepath, $excludedFiles);
-                     } elseif ($file->isDir()) {
+                    } elseif ($file->isDir()) {
                         return $file->isExecutable()
                             && $file->isReadable()
                             && !in_array($filepath, $excludedDirs)
@@ -194,11 +193,12 @@ trait ZipTrait
                 ++$result['total'];
                 // It is useless to log info, because the zip is created during
                 // call to close().
-                if (($result['total'] % 10000) === 0) {
+                if (($result['total'] % 1000) === 0) {
                     if ($this->shouldStop()) {
                         $this->logger->notice(
                             'Backup stopped: {total_dirs} dirs, {total_files} files, size: {total_size} bytes prepared.', // @translate
                             [
+                                // Space is a narrow no break space.
                                 'total_dirs' => number_format((int) $result['total_dirs'], 0, ',', ' '),
                                 'total_files' => number_format((int) $result['total_files'], 0, ',', ' '),
                                 'total_size' => number_format((int) $result['total_size'], 0, ',', ' '),
@@ -206,7 +206,7 @@ trait ZipTrait
                         );
                         $zip->close();
                         @unlink($destination);
-                        $result['size'] = null;
+                        $result['error'] = true;
                         return $result;
                     }
                 }
@@ -215,6 +215,7 @@ trait ZipTrait
             $this->logger->info(
                 'Backup to process: {total_dirs} dirs, {total_files} files, size: {total_size} bytes.', // @translate
                 [
+                    // Space is a narrow no break space.
                     'total_dirs' => number_format((int) $result['total_dirs'], 0, ',', ' '),
                     'total_files' => number_format((int) $result['total_files'], 0, ',', ' '),
                     'total_size' => number_format((int) $result['total_size'], 0, ',', ' '),
@@ -222,11 +223,9 @@ trait ZipTrait
             );
 
             if (method_exists($zip, 'registerCancelCallback')) {
-                $zip->registerCancelCallback(function () {
-                    return $this->shouldStop() ? -1 : 0;
-                });
+                $zip->registerCancelCallback(fn () => $this->shouldStop() ? -1 : 0);
 
-                $zip->registerProgressCallback(0.1, function ($rate) {
+                $zip->registerProgressCallback(0.1, function ($rate): void {
                     $this->logger->info(
                         'Backup in progress: {percent}', // @translate
                         ['percent' => $rate * 100]
@@ -249,6 +248,13 @@ trait ZipTrait
         }
 
         // Via zip on cli.
+        // Check for stop signal before starting CLI zip (cannot be stopped once running).
+        if ($this->shouldStop()) {
+            $this->logger->warn('Backup stopped by user.'); // @translate
+            $result['error'] = true;
+            return $result;
+        }
+
         $excludedDirs = [];
         $excludedFiles = [];
         foreach ($exclude as $excluded) {

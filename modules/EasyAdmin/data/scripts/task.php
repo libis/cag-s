@@ -9,7 +9,7 @@
  * Nevertheless, the process is checked and must be a system one, not a web one.
  * The class must be a job one.
  *
- * The modules are not available inside this file (no Log\Stdlib\PsrMessage).
+ * The modules are not available inside this file (no \Common\Stdlib\PsrMessage).
  *
  * @todo Use the true Laminas console routing system.
  */
@@ -37,7 +37,7 @@ Recommended arguments:
 		"http://localhost").
 
   -b --base-path [path]
-		The url path to complete the server url (default: "/").
+		The path to complete the server url (default: "/").
 
 Optional arguments:
   -a --args [json]
@@ -58,10 +58,10 @@ Deprecated arguments:
 		taskable.
 		This option is now set by default and is useless.
 
+Other arguments:
   -h --help
 		This help.
-MSG;
-// @translate
+MSG; // @translate
 
 $taskName = null;
 $userId = null;
@@ -152,11 +152,11 @@ if (empty($taskName)) {
     exit();
 }
 
-// TODO Use the plugin manager.
+// Manually scan modules directory instead of using plugin manager because this
+// script may be called before the service manager is fully initialized.
+// This approach works reliably for execution of jobs via cli.
 $omekaModulesPath = OMEKA_PATH . '/modules';
-$modulePaths = array_values(array_filter(array_diff(scandir($omekaModulesPath), ['.', '..']), function ($file) use ($omekaModulesPath) {
-    return is_dir($omekaModulesPath . '/' . $file);
-}));
+$modulePaths = array_values(array_filter(array_diff(scandir($omekaModulesPath), ['.', '..']), fn ($file) => is_dir($omekaModulesPath . '/' . $file)));
 // Short task name.
 if (strpos($taskName, '\\') === false) {
     foreach ($modulePaths as $modulePath) {
@@ -256,6 +256,10 @@ if (empty($basePath)) {
 }
 
 $serverUrlParts = parse_url($serverUrl);
+if (!is_array($serverUrlParts) || !isset($serverUrlParts['scheme'], $serverUrlParts['host'])) {
+    $logger->err('Invalid server URL given; use --server-url <scheme://host>'); // @translate
+    exit;
+}
 $scheme = $serverUrlParts['scheme'];
 $host = $serverUrlParts['host'];
 if (isset($serverUrlParts['port'])) {
@@ -280,8 +284,11 @@ $services->get('Router')->setBaseUrl($basePath);
 
 $services->get('Omeka\AuthenticationService')->getStorage()->write($user);
 
-// TODO Log fatal errors.
-// @see \Omeka\Job\DispatchStrategy::handleFatalError();
+// Fatal errors are displayed on stdout/stderr for CLI scripts.
+// Unlike Omeka's DispatchStrategy::handleFatalError(), register_shutdown_function
+// is not used: the job is not persisted; the logger may not be available at
+// shutdown; cli output is sufficient.
+// @see \Omeka\Job\DispatchStrategy\Synchronous::handleFatalError()
 // @link https://stackoverflow.com/questions/1900208/php-custom-error-handler-handling-parse-fatal-errors#7313887
 
 // Finalize the preparation of the job / task.
@@ -294,23 +301,30 @@ $job->setPid(getmypid());
 $referenceId = null;
 
 if ($asTask) {
-    // Since it’s a job not prepared as a job, the logger should be prepared here.
-    /** @var \Omeka\Module\Module $module */
-    $module = $services->get('Omeka\ModuleManager')->getModule('Log');
+    // Since the job is not prepared via the omeka dispatcher, the logger should
+    // be prepared here.
+    /**
+     * @var \Omeka\Module\Manager $moduleManager
+     * @var \Omeka\Module\Module $module
+     */
+    $moduleManager = $services->get('Omeka\ModuleManager');
+    $module = $moduleManager->getModule('Log');
     if ($module && $module->getState() === \Omeka\Module\Manager::STATE_ACTIVE) {
-        $referenceId = 'task:' . str_replace(['\\', '/Job/'], ['/', '/'], $taskName) . ':' . (new \DateTime())->format('Ymd-His');
+        $referenceId = 'task:' . strtr($taskName, ['\\' => '/', '/Job/' => '/']) . ':' . (new \DateTime())->format('Ymd-His');
         $referenceIdProcessor = new \Laminas\Log\Processor\ReferenceId();
         $referenceIdProcessor->setReferenceId($referenceId);
         $logger->addProcessor($referenceIdProcessor);
-        $userIdProcessor = new \Log\Processor\UserId($user);
+        $userIdProcessor = new \Log\Log\Processor\UserId($user);
         $logger->addProcessor($userIdProcessor);
         unset($module);
     }
-    // Since there is no job id, the job should not require it.
-    // For example, the `shouldStop()` should not be called.
-    // Using a dynamic super-class bypasses this issue in most of the real life
-    // cases.
-    // @todo Fix \Omeka\Job\AbstractJob::shouldStop().
+    // Since there is no job id (not persisted), shouldStop() would fail because
+    // it queries the database for the job status. This dynamic subclass overrides
+    // shouldStop() to return false when there's no job id, allowing CLI tasks
+    // to run without database persistence.
+    // Note: This is a workaround for Omeka core issue - AbstractJob::shouldStop()
+    // assumes a persisted job entity.
+    // TODO Fix \Omeka\Job\AbstractJob::shouldStop().
     class_alias($taskClass, 'RealTask');
     class Task extends \RealTask
     {

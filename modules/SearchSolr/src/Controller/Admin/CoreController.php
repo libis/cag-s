@@ -2,7 +2,7 @@
 
 /*
  * Copyright BibLibre, 2016
- * Copyright Daniel Berthereau, 2017-2022
+ * Copyright Daniel Berthereau, 2017-2023
  *
  * This software is governed by the CeCILL license under French law and abiding
  * by the rules of distribution of free software.  You can use, modify and/ or
@@ -47,8 +47,14 @@ class CoreController extends AbstractActionController
         'resource_name',
         'field_name',
         'source',
+        'pool:filter_values',
+        'pool:filter_uris',
+        'pool:filter_resources',
+        'pool:filter_value_resources',
         'pool:data_types',
         'pool:data_types_exclude',
+        'pool:filter_languages',
+        'pool:filter_visibility',
         'settings:label',
         'settings:formatter',
     ];
@@ -104,6 +110,12 @@ class CoreController extends AbstractActionController
             'server_id' => $this->settings()->get('searchsolr_server_id'),
         ]);
         $data = $core->jsonSerialize();
+
+        // The setting "filter_resources" should be a string.
+        $data['o:settings']['filter_resources'] = empty($data['o:settings']['filter_resources'])
+            ? ''
+            : http_build_query($data['o:settings']['filter_resources']);
+
         $form->setData($data);
 
         if (!$this->checkPostAndValidForm($form)) {
@@ -114,6 +126,11 @@ class CoreController extends AbstractActionController
 
         $data = $form->getData();
         $clearFullIndex = !empty($data['o:settings']['clear_full_index']);
+
+        // Store query as array to simplify process.
+        $filterResources = [];
+        parse_str($data['o:settings']['filter_resources'] ?? '', $filterResources);
+        $data['o:settings']['filter_resources'] = $filterResources ?: null;
 
         // SolrClient requires a boolean for the option "secure".
         $data['o:settings']['client']['secure'] = !empty($data['o:settings']['client']['secure']);
@@ -362,8 +379,15 @@ class CoreController extends AbstractActionController
                     'o:field_name' => $row['field_name'],
                     'o:source' => $row['source'],
                     'o:pool' => [
-                        'data_types' => array_filter(array_map('trim', explode('|', $row['pool:data_types']))),
-                        'data_types_exclude' => array_filter(array_map('trim', explode('|', $row['pool:data_types_exclude']))),
+                        'filter_values' => empty($row['pool:filter_values']) ? null : trim($row['pool:filter_values']),
+                        'filter_uris' => empty($row['pool:filter_uris']) ? null : trim($row['pool:filter_uris']),
+                        'filter_resources' => empty($row['pool:filter_resources']) ? null : trim($row['pool:filter_resources']),
+                        'filter_value_resources' => empty($row['pool:filter_value_resources']) ? null : trim($row['pool:filter_value_resources']),
+                        'data_types' => empty($row['pool:data_types']) ? [] : array_filter(array_map('trim', explode('|', $row['pool:data_types']))),
+                        'data_types_exclude' => empty($row['pool:data_types_exclude']) ? [] : array_filter(array_map('trim', explode('|', $row['pool:data_types_exclude']))),
+                        // Don't filter array to keep values without language.
+                        'filter_languages' => empty($row['pool:filter_languages']) ? [] : array_unique(array_map('trim', explode('|', $row['pool:filter_languages']))),
+                        'filter_visibility' => empty($row['pool:filter_visibility']) || !in_array($row['pool:filter_visibility'], ['public', 'private']) ? null : $row['pool:filter_visibility'],
                     ],
                     'o:settings' => [
                         'formatter' => $row['settings:formatter'],
@@ -429,13 +453,20 @@ class CoreController extends AbstractActionController
         $this->appendTsvRow($stream, $this->mappingHeaders);
 
         foreach ($solrCore->mapsByResourceName() as $resourceName => $maps) {
+            /** @var \SearchSolr\Api\Representation\SolrMapRepresentation $map */
             foreach ($maps as $map) {
                 $mapping = [
                     $resourceName,
                     $map->fieldName(),
                     $map->source(),
+                    (string) $map->pool('filter_values'),
+                    (string) $map->pool('filter_uris'),
+                    (string) $map->pool('filter_resources'),
+                    (string) $map->pool('filter_value_resources'),
                     implode(' | ', $map->pool('data_types')),
                     implode(' | ', $map->pool('data_types_exclude')),
+                    implode(' | ', $map->pool('filter_languages')),
+                    (string) $map->pool('filter_visibility'),
                     $map->setting('label', ''),
                     $map->setting('formatter', ''),
                 ];

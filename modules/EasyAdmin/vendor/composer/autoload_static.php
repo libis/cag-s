@@ -4,8 +4,40 @@
 
 namespace Composer\Autoload;
 
-class ComposerStaticInit698e59fa020ec6b1a86762ee8e062a6d
+class ComposerStaticInitde981ae6189eb2b75e89c7f55529a27a
 {
+    public static $prefixLengthsPsr4 = array (
+        'S' =>
+        array (
+            'Sempia\\ExternalAssets\\' => 22,
+        ),
+        'E' =>
+        array (
+            'EasyAdmin\\' => 10,
+        ),
+    );
+
+    public static $prefixDirsPsr4 = array (
+        'Sempia\\ExternalAssets\\' =>
+        array (
+            0 => __DIR__ . '/..' . '/sempia/external-assets/src',
+        ),
+        'EasyAdmin\\' =>
+        array (
+            0 => __DIR__ . '/../..' . '/src',
+        ),
+    );
+
+    public static $prefixesPsr0 = array (
+        'F' =>
+        array (
+            'Flow' =>
+            array (
+                0 => __DIR__ . '/..' . '/flowjs/flow-php-server/src',
+            ),
+        ),
+    );
+
     public static $classMap = array (
         'Composer\\InstalledVersions' => __DIR__ . '/..' . '/composer/InstalledVersions.php',
     );
@@ -13,7 +45,10 @@ class ComposerStaticInit698e59fa020ec6b1a86762ee8e062a6d
     public static function getInitializer(ClassLoader $loader)
     {
         return \Closure::bind(function () use ($loader) {
-            $loader->classMap = ComposerStaticInit698e59fa020ec6b1a86762ee8e062a6d::$classMap;
+            $loader->prefixLengthsPsr4 = ComposerStaticInitde981ae6189eb2b75e89c7f55529a27a::$prefixLengthsPsr4;
+            $loader->prefixDirsPsr4 = ComposerStaticInitde981ae6189eb2b75e89c7f55529a27a::$prefixDirsPsr4;
+            $loader->prefixesPsr0 = ComposerStaticInitde981ae6189eb2b75e89c7f55529a27a::$prefixesPsr0;
+            $loader->classMap = ComposerStaticInitde981ae6189eb2b75e89c7f55529a27a::$classMap;
 
         }, null, ClassLoader::class);
     }
