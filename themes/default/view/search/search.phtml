@@ -83,13 +83,33 @@ $this->headScript()->appendFile($assetUrl('js/search.js', 'AdvancedSearch'), 'te
                 <a href="/page/digitale-leeszaal-tijdschriften" class="breadcrumb__item">
                   <span>Tijdschriften</span>
                 </a>
-              <?php elseif(htmlspecialchars($query->getQuery())):?>
-                <span><a href="<?= parse_url($_SERVER["REQUEST_URI"], PHP_URL_PATH).'?q=' ?>"><?php echo $page->name();?></a></span></span>
-                <span class="breadcrumb__scope">
-                <span><?= htmlspecialchars($query->getQuery())?></span></span>
+              <?php elseif($searchPage->name() == "Beeldbank"):?>                
+                <a href="/page/beeldbank" class="breadcrumb__item">
+                  <span>Beeldbank</span>
+                </a>
+              <?php elseif($searchPage->name() == "Cinema Rural Filmdatabank"):?>                
+                <a href="/page/cinema-rural-filmdatabank" class="breadcrumb__item">
+                  <span>Cinema Rural Filmdatabank</span>
+                </a>
+              <?php elseif($searchPage->name() == "Collecties"):?>                
+                <a href="/page/collecties" class="breadcrumb__item">
+                  <span>Collecties</span>
+                </a>
+              <?php elseif($searchPage->name() == "Verhalen"):?>                
+                <a href="/page/verhalen" class="breadcrumb__item">      
+                  <span>Verhalen</span>
+                </a>
+              <?php else: ?>
+               <span><a href="<?= parse_url($_SERVER["REQUEST_URI"], PHP_URL_PATH).'?q=' ?>"><?php echo $page->name();?></a></span>
+              <?php endif;?>  
+              </span>
+              <span class="breadcrumb__scope">
+              <?php if(htmlspecialchars($query->getQuery())):?>                
+                  <span><?= htmlspecialchars($query->getQuery())?></span>
               <?php else:?>
-               <span><?php echo $page->name();?></span>
+               <span>Zoeken</span>
               <?php endif;?>
+              </span>
            </span>
        </div>
        <h1 class="spacer">
