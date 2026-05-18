@@ -1,3 +1,2 @@
-User-agent: *
-Disallow: /page/aanvraag*?*
-Disallow: /s/start/*?*
+User-Agent: *
+Disallow: /
