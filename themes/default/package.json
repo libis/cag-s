@@ -16,7 +16,7 @@
     "url": "https://github.com/omeka-s-themes/default/issues"
   },
   "devDependencies": {
-    "autoprefixer": "^9.2.1",
+    "autoprefixer": "^10.4.24",
     "gulp": "^5.0.0",
     "gulp-clean-css": "^4.3.0",
     "gulp-concat": "^2.6.1",
