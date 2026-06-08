@@ -185,6 +185,18 @@ class ContactUsForm extends Form
                 ['name' => Filter\StringTrim::class],
             ],
         ]);
+
+        $inputFilter->add([
+            'name' => 'lastname',
+            'required' => false,
+            'validators' => [
+                [
+                    'name' => Validator\StringLength::class,
+                    'options' => ['max' => 0], // must stay empty
+                ],
+            ],
+        ]);
+
         if ($question) {
             $inputFilter->add([
                 'name' => 'answer',
