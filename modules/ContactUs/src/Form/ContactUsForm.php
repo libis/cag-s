@@ -1,11 +1,11 @@
 <?php
 namespace ContactUs\Form;
 
-use Zend\Filter;
-use Zend\Form\Element;
-use Zend\Form\Form;
-use Zend\Validator;
-use Zend\Http\PhpEnvironment\RemoteAddress;
+use Laminas\Filter;
+use Laminas\Form\Element;
+use Laminas\Form\Form;
+use Laminas\Validator;
+use Laminas\Http\PhpEnvironment\RemoteAddress;
 
 class ContactUsForm extends Form
 {
@@ -58,7 +58,7 @@ class ContactUsForm extends Form
         if(isset($_GET['id']) && isset($_GET['aanvraag'])):
           if($_GET['aanvraag']):
             $aanvraag = true;
-            $value = "Graag, had ik een hoge resolutieversie van object ".$_GET['id']." en motiveer deze aanvraag als volgt: (publicatie, verzameling, commercieel, niet-commercieel…). Door deze aanvraag te verzenden, beloof ik de wetgeving over intellectuele eigendomsrechten te respecteren.";
+            $value = "Graag, had ik een hoge resolutieversie van object ".$_GET['id']." en motiveer deze aanvraag als volgt: (publicatie, verzameling, commercieel, niet-commercieel…). Door deze aanvraag te verLaminasen, beloof ik de wetgeving over intellectuele eigendomsrechten te respecteren.";
           endif;
         endif;
 
@@ -133,9 +133,8 @@ class ContactUsForm extends Form
         ]);
 
         $mngr = $this->getFormFactory()->getFormElementManager();
-        $settings = $mngr->getServiceLocator()->get('Omeka\Settings');
-        $siteKey = $settings->get('recaptcha_site_key');
-        $secretKey = $settings->get('recaptcha_secret_key');
+        $siteKey = $this->getOption('recaptcha_site_key');
+        $secretKey = $this->getOption('recaptcha_secret_key');
 
         $element = $mngr->get('Omeka\Form\Element\Recaptcha', [
                   'site_key' => $siteKey,
@@ -173,7 +172,7 @@ class ContactUsForm extends Form
             'attributes' => [
                 'id' => 'submit',
                 'class' => 'btn',
-                'value' => 'Verzenden', // @translate
+                'value' => 'VerLaminasen', // @translate
             ],
         ]);
 

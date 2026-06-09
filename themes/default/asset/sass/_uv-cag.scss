@@ -20,7 +20,7 @@ $yellow: #e8ae11;
     padding-top: 5px !important;
     margin-right: 5px !important;
     margin-left: 5px  !important;
-    background: #9a9a9a !important;
+    background: rgba($primary,0.5) !important;
 }
 
 .uv .headerPanel .options {
@@ -115,7 +115,7 @@ $yellow: #e8ae11;
     background-color: #ffffff !important;
 }
 
-.uv .footerPanel .options {
+.uv .footerPanel .options,.uv .mobileFooterPanel .options {
     background: $primary !important;
 }
 
@@ -167,4 +167,17 @@ $yellow: #e8ae11;
 
 .uv .spinner {
   filter: invert(1) brightness(0.3) !important;
+}
+
+
+@media (max-width: 768px) {
+  .uv {
+    max-height: 65vh !important;
+    overflow-y: auto !important;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .uv .openseadragon-container {
+    touch-action: pan-y !important;
+  }
 }

@@ -7,7 +7,7 @@ services:
     ports:
       - "9016:80"
     volumes:
-      #- ./modules/:/var/www/html/modules/
+      - ./modules/:/var/www/html/modules/
       - ./themes/:/var/www/html/themes/
       - ./files/:/var/www/html/files/
       - ./config/:/var/www/html/config/

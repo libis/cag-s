@@ -3,7 +3,7 @@ namespace ContactUs\Service\BlockLayout;
 
 use ContactUs\Site\BlockLayout\ContactUs;
 use Interop\Container\ContainerInterface;
-use Zend\ServiceManager\Factory\FactoryInterface;
+use Laminas\ServiceManager\Factory\FactoryInterface;
 
 class ContactUsFactory implements FactoryInterface
 {

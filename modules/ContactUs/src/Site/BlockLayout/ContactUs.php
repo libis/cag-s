@@ -11,20 +11,17 @@ use Omeka\Site\BlockLayout\AbstractBlockLayout;
 use Omeka\Stdlib\ErrorStore;
 use Omeka\Stdlib\Mailer;
 use Omeka\Stdlib\Message;
-use Zend\Form\FormElementManager\FormElementManagerV3Polyfill as FormElementManager;
-use Zend\Http\PhpEnvironment\RemoteAddress;
-use Zend\Log\Logger;
-use Zend\Session\Container;
-use Zend\View\Renderer\PhpRenderer;
-use Zend\Mime\Message as MimeMessage;
-use Zend\Mime\Part as MimePart;
+use Laminas\Form\FormElementManager;
+use Laminas\Http\PhpEnvironment\RemoteAddress;
+use Laminas\Log\Logger;
+use Laminas\Session\Container;
+use Laminas\View\Renderer\PhpRenderer;
+use Laminas\Mime\Message as MimeMessage;
+use Laminas\Mime\Part as MimePart;
 
 class ContactUs extends AbstractBlockLayout
 {
-    /**
-     * @var FormElementManager
-     */
-    protected $formElementManager;
+    
 
     /**
      * @var array
@@ -201,7 +198,7 @@ class ContactUs extends AbstractBlockLayout
                     if (!$result) {
                         $status = 'error';
                         $message = new Message(
-                            $translate('Sorry, we kunnen je mail niet verzenden.')
+                            $translate('Sorry, we kunnen je mail niet verLaminasen.')
                         );
                     }
                     // Send the confirmation message to the visitor.
@@ -227,7 +224,7 @@ class ContactUs extends AbstractBlockLayout
                         if (!$result) {
                             $status = 'error';
                             $message = new Message(
-                                $translate('Sorry, we kunnen de bevestigingsmail niet verzenden.')
+                                $translate('Sorry, we kunnen de bevestigingsmail niet verLaminasen.')
                             );
                         }
                     }

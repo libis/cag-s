@@ -4,7 +4,7 @@ $translate = $this->plugin('translate');
 <nav class="pagination" role="navigation" aria-label="pagination">
 <?php if ($totalCount): ?>
     <?php if ($currentPage != 1): ?>
-        <?php echo $this->hyperlink($translate('Previous'), $previousPageUrl, ['class' => 'pagination-previous', 'title' => $translate('Previous'), 'aria-label' => $translate('Previous')]); ?>
+        <?php echo $this->hyperlink($translate('Vorige pagina'), $previousPageUrl, ['class' => 'pagination-previous', 'title' => $translate('Vorige pagina'), 'aria-label' => $translate('Vorige pagina')]); ?>
     <?php endif; ?>
 
     <form method="GET" action="">
@@ -14,7 +14,7 @@ $translate = $this->plugin('translate');
     </form>
 
     <?php if ($currentPage < $pageCount): ?>
-    <?php echo $this->hyperlink($translate('Next'), $nextPageUrl, ['class' => 'pagination-next', 'title' => $translate('Next'), 'aria-label' => $translate('Next')]); ?>
+    <?php echo $this->hyperlink($translate('Volgende pagina'), $nextPageUrl, ['class' => 'pagination-next', 'title' => $translate('Volgende pagina'), 'aria-label' => $translate('Volgende pagina')]); ?>
     <?php endif; ?>
 
     <?php
