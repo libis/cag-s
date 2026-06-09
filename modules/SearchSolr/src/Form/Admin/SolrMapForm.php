@@ -2,7 +2,7 @@
 
 /*
  * Copyright BibLibre, 2017
- * Copyright Daniel Berthereau, 2017-2023
+ * Copyright Daniel Berthereau, 2017-2026
  *
  * This software is governed by the CeCILL license under French law and abiding
  * by the rules of distribution of free software.  You can use, modify and/ or
@@ -30,35 +30,64 @@
 
 namespace SearchSolr\Form\Admin;
 
-use AdvancedSearch\Form\Element as AdvancedSearchElement;
+use Common\Form\Element as CommonElement;
 use Laminas\Form\Element;
 use Laminas\Form\Fieldset;
 use Laminas\Form\Form;
 use Omeka\Api\Manager as ApiManager;
-use SearchSolr\Form\Element as SearchSolrElement;
 use SearchSolr\ValueExtractor\Manager as ValueExtractorManager;
 use SearchSolr\ValueFormatter\Manager as ValueFormatterManager;
 
+/**
+ * Adapted:
+ * @see \BulkExport\Form\ShaperConfigFieldset
+ * @see \SearchSolr\Form\Admin\SolrMapForm
+ */
 class SolrMapForm extends Form
 {
     /**
-     * @var ValueExtractorManager
+     * @var \Omeka\Api\Manager
+     */
+    protected $apiManager;
+
+    /**
+     * @var \SearchSolr\ValueExtractor\Manager
      */
     protected $valueExtractorManager;
 
     /**
-     * @var ValueFormatterManager
+     * @var \SearchSolr\ValueFormatter\Manager
      */
     protected $valueFormatterManager;
 
     /**
-     * @var ApiManager
+     * @todo Set main index and label first then all other values a collection. In controller, manage them as individual map. The aim is to create an index from multiple sources, like in show view.
+     *
+     * {@inheritDoc}
+     * @see \Laminas\Form\Element::init()
      */
-    protected $apiManager;
-
     public function init(): void
     {
+        // Warning: when the form is updated, the core controller should be
+        // updated for import.
+
         $this
+            ->setAttribute('id', 'solr-map-form')
+            ->add([
+                'name' => 'o:resource_name',
+                'type' => Element\Radio::class,
+                'options' => [
+                    'label' => 'Scope', // @translate
+                    'value_options' => $this->getValueExtractorOptions(),
+                ],
+                'attributes' => [
+                    'id' => 'o:resource_name',
+                    'value' => $this->getOption('resource_name') ?: 'items',
+                    'required' => true,
+                ],
+            ])
+
+            // TODO Allow to set multiple sources in the same map (store as dcterms:creator|dcterms:contributor).
             ->add([
                 'name' => 'o:source',
                 'type' => Element\Collection::class,
@@ -67,34 +96,68 @@ class SolrMapForm extends Form
                     'should_create_template' => true,
                     'allow_add' => true,
                     'label' => 'Source', // @translate
+                    'label_attributes' => [
+                        'class' => 'hidden',
+                    ],
                     'info' => 'To select a sub-property allows to store a linked metadata when the property is filled with a resource. Thereby, an item can be found from the specified value of a linked item. For example an issue of a journal can be linked with the journal, so the issue can be found from the title of the journal.', // @translate
                     'target_element' => new SourceFieldset(null, [
                         'options' => $this->getSourceOptions(),
                     ]),
                 ],
                 'attributes' => [
-                    'id' => 'o:source',
+                    'id' => 'o-source',
                     'required' => true,
+                    'class' => 'source-resource',
                 ],
             ])
-            ->add([
-                'name' => 'o:pool',
-                'type' => Fieldset::class,
-            ])
-            ->add([
-                'name' => 'o:field_name',
-                'type' => Element\Text::class,
-                'options' => [
-                    'label' => 'Solr field', // @translate
-                ],
-                'attributes' => [
-                    'id' => 'o:pool',
-                    'required' => true,
-                ],
-            ]);
+        ;
+
+        foreach ($this->valueExtractorManager->getRegisteredNames() as $name) {
+            $this
+                ->add([
+                    'name' => 'o:source/' . $name,
+                    'type' => Element\Collection::class,
+                    'options' => [
+                        'count' => 1,
+                        'should_create_template' => true,
+                        'allow_add' => true,
+                        'label' => 'Source', // @translate
+                        'label_attributes' => [
+                            'class' => 'hidden',
+                        ],
+                        'info' => 'To select a sub-property allows to store a linked metadata when the property is filled with a resource. Thereby, an item can be found from the specified value of a linked item. For example an issue of a journal can be linked with the journal, so the issue can be found from the title of the journal.', // @translate
+                        'target_element' => new SourceFieldset(null, [
+                            'options' => $this->getSourceOptions($name),
+                        ]),
+                    ],
+                    'attributes' => [
+                        'id' => 'o-source-' . $name,
+                        'required' => true,
+                        'data-value-extractor' => $name,
+                        'class' => 'source-resource',
+                    ],
+                ]);
+        }
 
         $this
-            ->get('o:pool')
+            // Temp fix for empty value options in DataTypeSelect in fieldset.
+            ->add([
+                'name' => 'data_types',
+                'type' => CommonElement\DataTypeSelect::class,
+                'options' => [
+                    'label' => 'Only these data types', // @translate
+                ],
+                'attributes' => [
+                    'id' => 'data_types',
+                    'data-placeholder' => 'Select data types…', // @translate
+                    'multiple' => true,
+                    'required' => false,
+                ],
+            ])
+        ;
+
+        $poolFieldset = new Fieldset('o:pool');
+        $poolFieldset
             ->add([
                 'name' => 'filter_resources',
                 'type' => Element\Text::class,
@@ -141,9 +204,11 @@ class SolrMapForm extends Form
             ])
             ->add([
                 'name' => 'data_types',
-                'type' => SearchSolrElement\DataTypeSelect::class,
+                'type' => CommonElement\DataTypeSelect::class,
                 'options' => [
                     'label' => 'Only these data types', // @translate
+                    // Fix use of DataTypeSelect in a fieldset.
+                    'disable_inarray_validator' => true,
                 ],
                 'attributes' => [
                     'id' => 'data_types',
@@ -154,9 +219,11 @@ class SolrMapForm extends Form
             ])
             ->add([
                 'name' => 'data_types_exclude',
-                'type' => SearchSolrElement\DataTypeSelect::class,
+                'type' => CommonElement\DataTypeSelect::class,
                 'options' => [
                     'label' => 'Exclude data types', // @translate
+                    // Fix use of DataTypeSelect in a fieldset.
+                    'disable_inarray_validator' => true,
                 ],
                 'attributes' => [
                     'id' => 'data_types_exclude',
@@ -167,7 +234,7 @@ class SolrMapForm extends Form
             ])
             ->add([
                 'name' => 'filter_languages',
-                'type' => AdvancedSearchElement\ArrayText::class,
+                'type' => CommonElement\ArrayText::class,
                 'options' => [
                     'label' => 'Only languages', // @translate
                     'value_separator' => ' ',
@@ -181,11 +248,12 @@ class SolrMapForm extends Form
                 'name' => 'filter_visibility',
                 'type' => Element\Radio::class,
                 'options' => [
-                    'label' => 'Only visibility', // @translate
+                    'label' => 'Values visibility', // @translate
                     'value_options' => [
-                        '' => 'All', // @translate
-                        'public' => 'Public', // @translate
-                        'private' => 'Private', // @translate
+                        '' => 'Follow engine setting (recommended)', // @translate
+                        'all' => 'All values (override engine)', // @translate
+                        'public' => 'Public only', // @translate
+                        'private' => 'Private only', // @translate
                     ],
                 ],
                 'attributes' => [
@@ -193,7 +261,42 @@ class SolrMapForm extends Form
                     'required' => false,
                     'value' => '',
                 ],
-            ]);
+            ])
+        ;
+
+        $this
+            ->add($poolFieldset)
+
+            ->add([
+                'name' => 'o:field_name',
+                'type' => Element\Text::class,
+                'options' => [
+                    'label' => 'Solr field', // @translate
+                ],
+                'attributes' => [
+                    'id' => 'o:field_name',
+                    'required' => true,
+                    'pattern' => '[a-zA-Z0-9_:\-]+',
+                    'maxlength' => '190',
+                ],
+            ])
+            ->add([
+                'name' => 'o:alias',
+                'type' => Element\Text::class,
+                'options' => [
+                    // For now, only one alias is managed.
+                    // Other aliases may be managed in search config anyway.
+                    'label' => 'Default alias', // @translate
+                    'info' => 'The default alias is optional. Usualy, it is the Omeka search key. More aliases can be configured in the search config page.', // @translate
+                ],
+                'attributes' => [
+                    'id' => 'o:alias',
+                    'required' => false,
+                    'pattern' => '[a-zA-Z0-9_:\-]+',
+                    'maxlength' => '190',
+                ],
+            ])
+        ;
 
         $settingsFieldset = new Fieldset('o:settings');
         $settingsFieldset
@@ -208,26 +311,168 @@ class SolrMapForm extends Form
                     'id' => 'label',
                 ],
             ])
+
+            ->add([
+                'name' => 'boost',
+                'type' => CommonElement\OptionalNumber::class,
+                'options' => [
+                    'label' => 'Boost multiplier', // @translate
+                    'info' => 'The boost is set by index, so if the boost is set multiple times, only the value of the last index will be used. Moreover, they can be overridden by the search fields boosts.', // @translate
+                ],
+                'attributes' => [
+                    'id' => 'boost',
+                    'required' => false,
+                    'min' => '0.001',
+                    'max' => '9999.999',
+                    'step' => '0.001',
+                ],
+            ])
+
+            ->add([
+                'name' => 'index_for_link',
+                'type' => Element\Checkbox::class,
+                'options' => [
+                    'label' => 'Index for bounce link (for multi-string "_ss")', // @translate
+                ],
+                'attributes' => [
+                    'id' => 'index_for_link',
+                    'required' => false,
+                ],
+            ])
+
+            ->add([
+                'name' => 'parts',
+                'type' => Element\MultiCheckbox::class,
+                'options' => [
+                    'label' => 'Values to extract', // @translate
+                    'value_options' => [
+                        'full' => 'Full (linked resource label, uri label, uri, and value)', // @translate
+                        'main' => 'Single linked resource label, uri label, uri or any extracted value', // @translate
+                        'value' => 'Property values only (as stored in database)', // @translate
+                        'uri' => 'Uri (for values with an uri)', // @translate
+                        'vrid' => 'Id of the linked resource', // @translate
+                        'id' => 'Id of the resource', // @translate
+                        'link' => 'Bounce link (value, uri or linked id)', // @translate
+                        'html' => 'Html (as seen)', // @translate
+                    ],
+                ],
+                'attributes' => [
+                    'id' => 'parts',
+                    'value' => [
+                        'full',
+                    ],
+                ],
+            ])
             ->add([
                 'name' => 'formatter',
                 'type' => Element\Radio::class,
                 'options' => [
                     'label' => 'Formatter', // @translate
-                    'value_options' => $this->getFormatterOptions(),
+                    'value_options' => $this->getFormatterLabelsAndComments(),
                     'empty_option' => 'None', // @translate
                 ],
                 'attributes' => [
                     'id' => 'formatter',
                     'value' => '',
                 ],
-            ]);
-        if (class_exists('Table\Form\Element\TablesSelect')) {
+            ])
+            ->add([
+                'name' => 'normalization',
+                'type' => CommonElement\OptionalMultiCheckbox::class,
+                'options' => [
+                    'label' => 'Cleaning and normalization', // @translate
+                    'info' => 'The cleaning is processed in the following order.', // @translate'
+                    'value_options' => [
+                        'html_escaped' => 'Escape html', // @translate
+                        'strip_tags' => 'Strip tags', // @translate
+                        'lowercase' => 'Lower case', // @translate
+                        'uppercase' => 'Upper case', // @translate
+                        'ucfirst' => 'Upper case first character', // @translate
+                        'remove_diacritics' => 'Remove diacritics', // @translate
+                        'alphanumeric' => 'Alphanumeric only', // @translate
+                        'alphabetic' => 'Alphabetic only', // @translate
+                        'max_length' => 'Max length', // @translate
+                        'integer' => 'Number', // @translate
+                        'year' => 'Year', // @translate
+                        'year_month' => 'Year-month (YYYYMM)', // @translate
+                        'decade' => 'Decade (round to 10)', // @translate
+                        'century' => 'Century (round to 100)', // @translate
+                        'millennium' => 'Millennium (round to 1000)', // @translate
+                        'truncate' => 'Truncate at separator', // @translate
+                        'table' => 'Map value to a code or code to a value (module Table)', // @translate
+                        // Table may be first post normalization or finalization too.
+                        // TODO Allow to specify order of normalizations.
+                    ],
+                ],
+                'attributes' => [
+                    'id' => 'normalization',
+                    'value' => [
+                    ],
+                    // Is used with all values.
+                    // 'data-formatter' => 'text',
+                ],
+            ])
+            ->add([
+                'name' => 'max_length',
+                'type' => Element\Number::class,
+                'options' => [
+                    'label' => 'Max length', // @translate
+                ],
+                'attributes' => [
+                    'id' => 'max_length',
+                    // Setting for normalization "max_length" only.
+                    'data-normalization' => 'max_length',
+                ],
+            ])
+            ->add([
+                'name' => 'truncate_at',
+                'type' => Element\Text::class,
+                'options' => [
+                    'label' => 'Truncate at separators', // @translate
+                    'info' => 'List of separators, pipe-separated. The value is truncated at the first occurrence. Example: " (| - " truncates before " (" or " - ".', // @translate
+                ],
+                'attributes' => [
+                    'id' => 'truncate_at',
+                    'required' => false,
+                    'placeholder' => ' (| - ',
+                    'data-normalization' => 'truncate',
+                ],
+            ])
+
+            ->add([
+                'name' => 'place_mode',
+                'type' => Element\Radio::class,
+                'options' => [
+                    'label' => 'Place', // @translate
+                    'value_options' => [
+                        'country_and_toponym' => 'Country and toponym separately', // @translate
+                        'toponym_and_country' => 'Toponym and country separately', // @translate
+                        'country_toponym' => 'Country and toponym together', // @translate
+                        'toponym_country' => 'Toponym and country together', // @translate
+                        'toponym' => 'Toponym', // @translate
+                        'country' => 'Country', // @translate
+                        'coordinates' => 'Coordinates', // @translate
+                        'latitude' => 'Latitude', // @translate
+                        'longitude' => 'Longitude', // @translate
+                        'html' => 'String with all data', // @translate
+                        'array' => 'All data separately', // @translate
+                    ],
+                ],
+                'attributes' => [
+                    'id' => 'place_mode',
+                    'value' => 'country_and_toponym',
+                    'data-formatter' => 'place',
+                ],
+            ])
+        ;
+
+        if (class_exists('Table\Module', false)) {
             $settingsFieldset
                 ->add([
                     'name' => 'table',
                     'type' => \Table\Form\Element\TablesSelect::class,
                     'options' => [
-                        'label' => 'Table for formatter "Table"', // @translate
+                        'label' => 'Table for normalization "Table"', // @translate
                         'disable_group_by_owner' => true,
                         'empty_option' => '',
                     ],
@@ -237,8 +482,8 @@ class SolrMapForm extends Form
                         'required' => false,
                         'data-placeholder' => 'Select a table…', // @translate
                         'value' => '',
-                        // Setting for formatter "table" only.
-                        'data-formatter' => 'table',
+                        // Setting for normalization "table" only.
+                        'data-normalization' => 'table',
                     ],
                 ])
                 ->add([
@@ -250,14 +495,14 @@ class SolrMapForm extends Form
                         'value_options' => [
                             'label' => 'Label only', // @translate
                             'code' => 'Code only', // @translate
-                            'both' => 'Label and code ', // @translate
+                            'both' => 'Label and code', // @translate
                         ],
                     ],
                     'attributes' => [
                         'id' => 'table_mode',
                         'required' => false,
                         'value' => 'label',
-                        'data-formatter' => 'table',
+                        'data-normalization' => 'table',
                     ],
                 ])
                 ->add([
@@ -269,7 +514,7 @@ class SolrMapForm extends Form
                     'attributes' => [
                         'id' => 'table_index_original',
                         'required' => false,
-                        'data-formatter' => 'table',
+                        'data-normalization' => 'table',
                     ],
                 ])
                 ->add([
@@ -281,7 +526,7 @@ class SolrMapForm extends Form
                     'attributes' => [
                         'id' => 'table_check_strict',
                         'required' => false,
-                        'data-formatter' => 'table',
+                        'data-normalization' => 'table',
                     ],
                 ]);
 
@@ -290,7 +535,93 @@ class SolrMapForm extends Form
                 ->setApiManager($this->apiManager);
         }
 
-        $this->add($settingsFieldset);
+        if (class_exists('Thesaurus\Module', false)) {
+            $settingsFieldset
+                ->add([
+                    'name' => 'thesaurus_resources',
+                    'type' => CommonElement\OptionalRadio::class,
+                    'options' => [
+                        'label' => 'Thesaurus resources', // @translate
+                        'value_options' => [
+                            'scheme' => 'Scheme', // @translate
+                            'tops' => 'Tops', // @translate
+                            'top' => 'Top', // @translate
+                            'self' => 'Self', // @translate
+                            'broader' => 'Broader', // @translate
+                            'narrowers' => 'Narrowers', // @translate
+                            'relateds' => 'Relateds', // @translate
+                            'siblings' => 'Siblings', // @translate
+                            'ascendants' => 'Ascendants', // @translate
+                            'descendants' => 'Descendants', // @translate
+                            'branch' => 'Branch (top to descendants)', // @translate
+                        ],
+                    ],
+                    'attributes' => [
+                        'id' => 'thesaurus_resources',
+                        'class' => 'chosen-select',
+                        'required' => false,
+                        'data-placeholder' => 'Select a type of resources', // @translate
+                        'value' => '',
+                        // Setting for formatter "table" only.
+                        'data-formatter' => 'thesaurus',
+                    ],
+                ])
+                ->add([
+                    'name' => 'thesaurus_self',
+                    'type' => Element\Checkbox::class,
+                    'options' => [
+                        'label' => 'Include self', // @translate
+                    ],
+                    'attributes' => [
+                        'id' => 'thesaurus_self',
+                        'required' => false,
+                        'data-formatter' => 'thesaurus',
+                    ],
+                ])
+                ->add([
+                    'name' => 'thesaurus_metadata',
+                    'type' => CommonElement\OptionalMultiCheckbox::class,
+                    'options' => [
+                        'label' => 'Values indexed', // @translate
+                        'value_options' => [
+                            'o:id' => 'Resource id', // @translate
+                            'skos:prefLabel' => 'Prefered label', // @translate
+                            'skos:altLabel' => 'Alternative labels', // @translate
+                            'skos:hiddenLabel' => 'Hidden labels', // @translate
+                            'skos:notation' => 'Notation', // @translate
+                            // TODO Other data? Useless for now.
+                        ],
+                    ],
+                    'attributes' => [
+                        'id' => 'thesaurus_metadata',
+                        'required' => false,
+                        'value' => 'skos:prefLabel',
+                        'data-formatter' => 'thesaurus',
+                    ],
+                ])
+            ;
+        }
+
+        $settingsFieldset
+            ->add([
+                'name' => 'finalization',
+                'type' => CommonElement\OptionalMultiCheckbox::class,
+                'options' => [
+                    'label' => 'Finalization', // @translate
+                    'info' => 'The option "path" allows to search ascendants or descendants inside a partial of full path automatically.', // @translate
+                    'value_options' => [
+                        'path' => 'Merge values as a path with parts separated with a "/"', // @translate
+                    ],
+                ],
+                'attributes' => [
+                    'id' => 'finalization',
+                ],
+            ])
+        ;
+
+        $this
+            ->add($settingsFieldset)
+        ;
 
         $inputFilter = $this->getInputFilter();
         $inputFilter
@@ -306,15 +637,32 @@ class SolrMapForm extends Form
                 'required' => false,
             ])
             ->add([
+                'name' => 'max_length',
+                'required' => false,
+            ])
+            ->add([
+                'name' => 'truncate_at',
+                'required' => false,
+            ])
+            ->add([
                 'name' => 'table_mode',
                 'required' => false,
             ]);
     }
 
     /**
+     * @param ApiManager $apiManager
+     */
+    public function setApiManager(ApiManager $apiManager): self
+    {
+        $this->apiManager = $apiManager;
+        return $this;
+    }
+
+    /**
      * @param ValueExtractorManager $valueExtractorManager
      */
-    public function setValueExtractorManager(ValueExtractorManager $valueExtractorManager)
+    public function setValueExtractorManager(ValueExtractorManager $valueExtractorManager): self
     {
         $this->valueExtractorManager = $valueExtractorManager;
         return $this;
@@ -323,27 +671,24 @@ class SolrMapForm extends Form
     /**
      * @param ValueFormatterManager $valueFormatterManager
      */
-    public function setValueFormatterManager(ValueFormatterManager $valueFormatterManager)
+    public function setValueFormatterManager(ValueFormatterManager $valueFormatterManager): self
     {
         $this->valueFormatterManager = $valueFormatterManager;
         return $this;
     }
 
-    /**
-     * @param ApiManager $apiManager
-     */
-    public function setApiManager(ApiManager $apiManager)
+    public function getValueExtractorOptions(): array
     {
-        $this->apiManager = $apiManager;
-        return $this;
+        $result = [];
+        foreach ($this->valueExtractorManager->getRegisteredNames() as $name) {
+            $result[$name] = $this->valueExtractorManager->get($name)->getLabel() ?: $name;
+        }
+        return $result;
     }
 
-    /**
-     * @return array|null
-     */
-    protected function getSourceOptions()
+    protected function getSourceOptions(?string $resourceName = null): ?array
     {
-        $resourceName = $this->getOption('resource_name');
+        $resourceName ??= $this->getOption('resource_name');
         /** @var \SearchSolr\ValueExtractor\ValueExtractorInterface $valueExtractor */
         $valueExtractor = $this->valueExtractorManager->get($resourceName);
         if (!isset($valueExtractor)) {
@@ -357,17 +702,47 @@ class SolrMapForm extends Form
 
     protected function getFormatterOptions(): array
     {
-        $noTableModule = !class_exists('Table\Form\Element\TablesSelect');
+        $noTableModule = !class_exists('Table\Module', false);
+        $noThesaurusModule = !class_exists('Thesaurus\Module', false);
 
         $options = [];
         foreach ($this->valueFormatterManager->getRegisteredNames() as $name) {
             $valueFormatter = $this->valueFormatterManager->get($name);
             if ($noTableModule && $name === 'table') {
                 $options[$name] = sprintf('%s (require module Table)', $valueFormatter->getLabel());
-                continue;
+            } elseif ($noThesaurusModule && $name === 'thesaurus') {
+                $options[$name] = sprintf('%s (require module Thesaurus)', $valueFormatter->getLabel());
+            } else {
+                $options[$name] = $valueFormatter->getLabel();
             }
-            $options[$name] = $valueFormatter->getLabel();
         }
+
+        return $options;
+    }
+
+    protected function getFormatterLabelsAndComments(): array
+    {
+        $noTableModule = !class_exists('Table\Module', false);
+        $noThesaurusModule = !class_exists('Thesaurus\Module', false);
+
+        $options = [];
+        foreach ($this->valueFormatterManager->getRegisteredNames() as $name) {
+            $valueFormatter = $this->valueFormatterManager->get($name);
+            $optionsData = [
+                'value' => $name,
+                'label' => $valueFormatter->getLabel(),
+                'attributes' => [
+                    'title' => $valueFormatter->getComment(),
+                ],
+            ];
+            if ($noTableModule && $name === 'table') {
+                $optionsData['attributes']['disabled'] = 'disabled';
+            } elseif ($noThesaurusModule && $name === 'thesaurus') {
+                $optionsData['attributes']['disabled'] = 'disabled';
+            }
+            $options[] = $optionsData;
+        }
+
         return $options;
     }
 }

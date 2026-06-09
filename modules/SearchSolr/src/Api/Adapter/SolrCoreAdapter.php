@@ -2,7 +2,7 @@
 
 /*
  * Copyright BibLibre, 2016
- * Copyright Daniel Berthereau, 2017-2023
+ * Copyright Daniel Berthereau, 2017-2026
  *
  * This software is governed by the CeCILL license under French law and abiding
  * by the rules of distribution of free software.  You can use, modify and/ or
@@ -30,6 +30,7 @@
 
 namespace SearchSolr\Api\Adapter;
 
+use Doctrine\ORM\QueryBuilder;
 use Omeka\Api\Adapter\AbstractEntityAdapter;
 use Omeka\Api\Request;
 use Omeka\Entity\EntityInterface;
@@ -37,6 +38,8 @@ use Omeka\Stdlib\ErrorStore;
 
 class SolrCoreAdapter extends AbstractEntityAdapter
 {
+    use TraitArrayFilterRecursiveEmptyValue;
+
     protected $sortFields = [
         'id' => 'id',
         'name' => 'name',
@@ -63,14 +66,29 @@ class SolrCoreAdapter extends AbstractEntityAdapter
         return \SearchSolr\Entity\SolrCore::class;
     }
 
-    public function hydrate(Request $request, EntityInterface $entity,
-        ErrorStore $errorStore
-    ): void {
+    public function buildQuery(QueryBuilder $qb, array $query): void
+    {
+        $expr = $qb->expr();
+
+        // Id is managed via entity adapter.
+
+        if (isset($query['name']) && $query['name']) {
+            $qb->andWhere($expr->eq(
+                'omeka_root.name',
+                $this->createNamedParameter($qb, $query['name'])
+            ));
+        }
+    }
+
+    public function hydrate(Request $request, EntityInterface $entity, ErrorStore $errorStore): void
+    {
+        /** @var \SearchSolr\Entity\SolrCore $entity */
         if ($this->shouldHydrate($request, 'o:name')) {
             $entity->setName(trim($request->getValue('o:name') ?? ''));
         }
         if ($this->shouldHydrate($request, 'o:settings')) {
-            $entity->setSettings($request->getValue('o:settings') ?: []);
+            $array = $this->arrayFilterRecursiveEmptyValue($request->getValue('o:settings') ?: []);
+            $entity->setSettings($array);
         }
     }
 

@@ -2,7 +2,7 @@
 
 /*
  * Copyright BibLibre, 2016
- * Copyright Daniel Berthereau, 2020-2024
+ * Copyright Daniel Berthereau, 2020-2026
  *
  * This software is governed by the CeCILL license under French law and abiding
  * by the rules of distribution of free software.  You can use, modify and/ or
@@ -30,6 +30,7 @@
 
 namespace AdvancedSearch\Controller\Admin;
 
+use Common\Stdlib\PsrMessage;
 use Laminas\Mvc\Controller\AbstractActionController;
 use Laminas\View\Model\ViewModel;
 
@@ -38,22 +39,105 @@ class IndexController extends AbstractActionController
     public function browseAction()
     {
         $api = $this->api();
-        $engines = $api->search('search_engines', ['sort_by' => 'name'])->getContent();
+        $searchEngines = $api->search('search_engines', ['sort_by' => 'name'])->getContent();
         $searchConfigs = $api->search('search_configs', ['sort_by' => 'name'])->getContent();
         $suggesters = $api->search('search_suggesters', ['sort_by' => 'name'])->getContent();
 
-        // For simplicity in settings management, the list of all search configs
-        // is stored one time here.
-        $searchConfigPaths = [];
-        foreach ($searchConfigs as $searchConfig) {
-            $searchConfigPaths[$searchConfig->id()] = $searchConfig->path();
-        }
-        $this->settings()->set('advancedsearch_all_configs', $searchConfigPaths);
+        $this->updateListSearchSlugs($searchConfigs);
+
+        $runningJobs = $this->listRunningSearchJobs();
 
         return new ViewModel([
-            'engines' => $engines,
+            'searchEngines' => $searchEngines,
             'searchConfigs' => $searchConfigs,
             'suggesters' => $suggesters,
+            'runningJobs' => $runningJobs,
         ]);
+    }
+
+    /**
+     * Store all slugs in settings.
+     *
+     * This setting "advancedsearch_all_configs" simplifies settings management.
+     */
+    protected function updateListSearchSlugs(array $searchConfigs): void
+    {
+        $searchConfigSlugs = [];
+        foreach ($searchConfigs as $searchConfig) {
+            $searchConfigSlugs[$searchConfig->id()] = $searchConfig->slug();
+        }
+        $this->settings()->set('advancedsearch_all_configs', $searchConfigSlugs);
+    }
+
+    /**
+     * List running jobs for search indexing and suggesters.
+     *
+     * @return array Keys: "engines" and "suggesters", each an
+     * array of JobRepresentation keyed by engine/suggester id.
+     */
+    protected function listRunningSearchJobs(): array
+    {
+        $connection = $this->getEvent()
+            ->getApplication()
+            ->getServiceManager()
+            ->get('Omeka\Connection');
+
+        $jobClasses = [
+            \AdvancedSearch\Job\IndexSearch::class,
+            \AdvancedSearch\Job\IndexSuggestions::class,
+        ];
+        $solrClass = 'SearchSolr\Job\CreateSolrSuggesters';
+        if (class_exists($solrClass)) {
+            $jobClasses[] = $solrClass;
+        }
+
+        $sql = 'SELECT id, class, args FROM job'
+            . ' WHERE class IN (?)'
+            . ' AND status IN (?, ?)'
+            . ' ORDER BY id DESC';
+        $rows = $connection->executeQuery($sql, [
+            $jobClasses,
+            \Omeka\Entity\Job::STATUS_STARTING,
+            \Omeka\Entity\Job::STATUS_IN_PROGRESS,
+        ], [
+            \Doctrine\DBAL\Connection::PARAM_STR_ARRAY,
+            \Doctrine\DBAL\ParameterType::STRING,
+            \Doctrine\DBAL\ParameterType::STRING,
+        ])->fetchAllAssociative();
+
+        if (!$rows) {
+            return ['engines' => [], 'suggesters' => []];
+        }
+
+        $api = $this->api();
+        $jobRepresentations = [];
+        foreach (array_unique(array_column($rows, 'id')) as $jobId) {
+            try {
+                $jobRepresentations[$jobId] = $api
+                    ->read('jobs', $jobId)->getContent();
+            } catch (\Throwable $e) {
+                // Job may have completed between query and read.
+            }
+        }
+
+        $result = ['engines' => [], 'suggesters' => []];
+        foreach ($rows as $row) {
+            if (!isset($jobRepresentations[$row['id']])) {
+                continue;
+            }
+            $job = $jobRepresentations[$row['id']];
+            $args = json_decode($row['args'] ?? '{}', true) ?: [];
+            if ($row['class'] === \AdvancedSearch\Job\IndexSearch::class) {
+                foreach ($args['search_engine_ids'] ?? [] as $eid) {
+                    $result['engines'][$eid] = $job;
+                }
+            } else {
+                $sid = $args['search_suggester_id'] ?? null;
+                if ($sid) {
+                    $result['suggesters'][$sid] = $job;
+                }
+            }
+        }
+        return $result;
     }
 }

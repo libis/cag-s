@@ -4,48 +4,65 @@
 
 namespace Composer\Autoload;
 
-class ComposerStaticInitec459a669e6eb6101456e77a81ee3a34
+class ComposerStaticInit6203e46d47bd2c5fe8c19efc21c75aed
 {
+    public static $files = array (
+        'ace6d88241f812b4accb2d847454aef6' => __DIR__ . '/..' . '/halaxa/json-machine/src/functions.php',
+    );
+
     public static $prefixLengthsPsr4 = array (
-        'S' => 
+        'S' =>
         array (
             'Symfony\\Contracts\\EventDispatcher\\' => 34,
             'Symfony\\Component\\EventDispatcher\\' => 34,
             'Solarium\\' => 9,
+            'SearchSolr\\' => 11,
         ),
-        'P' => 
+        'P' =>
         array (
             'Psr\\Http\\Message\\' => 17,
             'Psr\\Http\\Client\\' => 16,
             'Psr\\EventDispatcher\\' => 20,
         ),
+        'J' =>
+        array (
+            'JsonMachine\\' => 12,
+        ),
     );
 
     public static $prefixDirsPsr4 = array (
-        'Symfony\\Contracts\\EventDispatcher\\' => 
+        'Symfony\\Contracts\\EventDispatcher\\' =>
         array (
             0 => __DIR__ . '/..' . '/symfony/event-dispatcher-contracts',
         ),
-        'Symfony\\Component\\EventDispatcher\\' => 
+        'Symfony\\Component\\EventDispatcher\\' =>
         array (
             0 => __DIR__ . '/..' . '/symfony/event-dispatcher',
         ),
-        'Solarium\\' => 
+        'Solarium\\' =>
         array (
             0 => __DIR__ . '/..' . '/solarium/solarium/src',
         ),
-        'Psr\\Http\\Message\\' => 
+        'SearchSolr\\' =>
         array (
-            0 => __DIR__ . '/..' . '/psr/http-message/src',
-            1 => __DIR__ . '/..' . '/psr/http-factory/src',
+            0 => __DIR__ . '/../..' . '/src',
         ),
-        'Psr\\Http\\Client\\' => 
+        'Psr\\Http\\Message\\' =>
+        array (
+            0 => __DIR__ . '/..' . '/psr/http-factory/src',
+            1 => __DIR__ . '/..' . '/psr/http-message/src',
+        ),
+        'Psr\\Http\\Client\\' =>
         array (
             0 => __DIR__ . '/..' . '/psr/http-client/src',
         ),
-        'Psr\\EventDispatcher\\' => 
+        'Psr\\EventDispatcher\\' =>
         array (
             0 => __DIR__ . '/..' . '/psr/event-dispatcher/src',
+        ),
+        'JsonMachine\\' =>
+        array (
+            0 => __DIR__ . '/..' . '/halaxa/json-machine/src',
         ),
     );
 
@@ -56,9 +73,9 @@ class ComposerStaticInitec459a669e6eb6101456e77a81ee3a34
     public static function getInitializer(ClassLoader $loader)
     {
         return \Closure::bind(function () use ($loader) {
-            $loader->prefixLengthsPsr4 = ComposerStaticInitec459a669e6eb6101456e77a81ee3a34::$prefixLengthsPsr4;
-            $loader->prefixDirsPsr4 = ComposerStaticInitec459a669e6eb6101456e77a81ee3a34::$prefixDirsPsr4;
-            $loader->classMap = ComposerStaticInitec459a669e6eb6101456e77a81ee3a34::$classMap;
+            $loader->prefixLengthsPsr4 = ComposerStaticInit6203e46d47bd2c5fe8c19efc21c75aed::$prefixLengthsPsr4;
+            $loader->prefixDirsPsr4 = ComposerStaticInit6203e46d47bd2c5fe8c19efc21c75aed::$prefixDirsPsr4;
+            $loader->classMap = ComposerStaticInit6203e46d47bd2c5fe8c19efc21c75aed::$classMap;
 
         }, null, ClassLoader::class);
     }

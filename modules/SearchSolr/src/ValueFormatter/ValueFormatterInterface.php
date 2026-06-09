@@ -2,7 +2,7 @@
 
 /*
  * Copyright BibLibre, 2016-2017
- * Copyright Daniel Berthereau 2020-2023
+ * Copyright Daniel Berthereau, 2020-2026
  *
  * This software is governed by the CeCILL license under French law and abiding
  * by the rules of distribution of free software.  You can use, modify and/ or
@@ -40,7 +40,14 @@ interface ValueFormatterInterface
     public function getLabel(): string;
 
     /**
+     * Get the comment of the formatter.
+     */
+    public function getComment(): ?string;
+
+    /**
      * Set services to be used by the formatter.
+     *
+     * @deprecated Use factories.
      */
     public function setServiceLocator(ServiceLocatorInterface $services): self;
 
@@ -50,11 +57,32 @@ interface ValueFormatterInterface
     public function setSettings(array $settings): self;
 
     /**
-     * Convert a value (Omeka Value, string…) into a list of values to index.
+     * Pre-format a value, so extract the requested parts.
      *
-     * Most of the time, a value is formatted into one string or integer.
+     * @param mixed $value
+     */
+    public function preFormat($value): array;
+
+    /**
+     * Convert a value (Omeka Value, string…) into indexable values.
+     *
+     * Most of the times, a value is output as it is as string, integer or date.
      *
      * @param mixed $value
      */
     public function format($value): array;
+
+    /**
+     * Post-format a list of scalar values.
+     *
+     * @param mixed $value Should be a scalar value.
+     */
+    public function postFormat($value): array;
+
+    /**
+     * Finalize formatting.
+     *
+     * @param mixed $value Should be an array of scalar values.
+     */
+    public function finalizeFormat(array $values): array;
 }

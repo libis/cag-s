@@ -1,7 +1,7 @@
 <?php
 /*
  * Copyright BibLibre, 2016
- * Copyright Daniel Berthereau, 2017-2018
+ * Copyright Daniel Berthereau, 2017-2026
  *
  * This software is governed by the CeCILL license under French law and abiding
  * by the rules of distribution of free software.  You can use, modify and/ or
@@ -28,428 +28,525 @@
  */
 
 /**
- * @var \Zend\View\Renderer\PhpRenderer $this
- * @var \Search\Query $query
- * @var \Search\Response $response
- * @var array $sortOptions
- * @var array $facets
- * @var bool $isPartial
+ * @var \Laminas\View\Renderer\PhpRenderer $this
+ * @var \Omeka\Api\Representation\SiteRepresentation|null $site
+ * @var \AdvancedSearch\Api\Representation\SearchConfigRepresentation $searchConfig
+ * @var \Omeka\Api\Representation\ItemSetRepresentation|null $itemSet
+ * @var \AdvancedSearch\Query $query
+ * @var \AdvancedSearch\Response $response
+ *
+ * For block layout:
+ * @var bool $skipFormAction Remove action of the form, so it uses current page.
+ * @var bool $formAction Specific url for form action.
  */
 
 $plugins = $this->getHelperPluginManager();
-$api = $plugins->get('api');
+$url = $plugins->get('url');
 $partial = $plugins->get('partial');
+$escape = $plugins->get('escapeHtml');
 $assetUrl = $plugins->get('assetUrl');
 $translate = $plugins->get('translate');
-$translatePlural = $plugins->get('translatePlural');
+$hyperlink = $plugins->get('hyperlink');
+$easyMeta = $plugins->get('easyMeta');
+
+$breadcrumbs = $plugins->has('breadcrumbs') ? $plugins->get('breadcrumbs') : null;
 
 $vars = $this->vars();
 
-// Used in case of a redirect of item-set/show to search, when used like item/browse.
-$itemSetId = $this->params()->fromRoute('item-set-id');
-// TODO Use site item set ?
-/** @var \Omeka\Api\Representation\ItemSetRepresentation $itemSet */
-$itemSet = $itemSetId ? $api->searchOne('item_sets', ['id' => $itemSetId])->getContent() : null;
+$isAdmin = !isset($site);
+$setting = $plugins->get($isAdmin ? 'setting' : 'siteSetting');
+
+$filterLocale = (bool) $setting('filter_locale_values');
+$lang = $this->lang();
+$langValue = $filterLocale ? [$lang, ''] : null;
+
+$variables = $vars->getArrayCopy();
 
 $isPartial = $skipFormAction = !empty($skipFormAction);
 
-$documentCount = isset($response) ? $response->getTotalResults() : 0;
-if ($documentCount):
-    $itemSetsCount = $response->getResourceTotalResults('item_sets');
-    $itemsCount = $response->getResourceTotalResults('items');
-    $displayParts = $searchConfig->setting('display', []);
-    $displayPartsHeader = array_filter($displayParts, function ($v) { return in_array($v, ['header', 'both']); });
-    $displayPartsFooter = array_filter($displayParts, function ($v) { return in_array($v, ['footer', 'both']); });
-endif;
+$documentCount = $response->getTotalResults();
+$displayParts = $searchConfig->setting('results', []);
+$displayPartsHeader = array_filter($displayParts, fn($v) => in_array($v, ['header', 'both']));
+$displayPartsFooter = array_filter($displayParts, fn($v) => in_array($v, ['footer', 'both']));
+$displayFacets = $displayParts ? $displayParts['facets'] ?? 'before' : 'none';
+$autoscroll = !empty($searchConfig->subSetting('results', 'autoscroll'));
 
-$this->htmlElement('body')->appendAttribute('class', 'search-page page resource browse');
-$this->headScript()->appendFile($this->assetUrl('jquery-ui.min.js', 'jQueryUI'));
-$this->headLink()->appendStylesheet($this->assetUrl('jquery-ui.min.css', 'jQueryUI'));
-$this->headLink()->appendStylesheet($assetUrl('css/search.css', 'AdvancedSearch'));
-$this->headScript()->appendFile($assetUrl('js/search.js', 'AdvancedSearch'), 'text/javascript', ['defer' => 'defer']);
+if ($itemSet && $site) {
+    $redirectItemSets = $this->siteSetting('advancedsearch_item_sets_redirects', ['default' => 'browse']);
+    $redirectItemSet = $redirectItemSets[$itemSet->id()] ?? $redirectItemSets['default'] ?? 'browse';
+    $displayItemSet = $redirectItemSet !== 'first' || $response->getCurrentPage() <= 1;
+    $displayItemSets = false;
+} else {
+    $displayItemSet = false;
+    $displayItemSets = $this->params()->fromRoute('redirected') === 'item-sets';
+}
+
+$this->headLink()
+    ->prependStylesheet($assetUrl('vendor/chosen-js/chosen.css', 'Omeka'))
+    ->appendStylesheet($assetUrl('css/common-autocomplete.css', 'Common'))
+    ->appendStylesheet($assetUrl('css/search.css', 'AdvancedSearch'));
+$this->headScript()
+    ->appendFile($assetUrl('vendor/chosen-js/chosen.jquery.min.js', 'Omeka'), 'text/javascript', ['defer' => 'defer'])
+    ->appendFile($assetUrl('js/search.js', 'AdvancedSearch'), 'text/javascript', ['defer' => 'defer']);
+
+// Check if Mapping module is active and map display is enabled.
+$mapDisplayEnabled = (bool) $searchConfig->subSetting('results', 'map_display');
+$hasMappingModule = class_exists('Mapping\Module', false);
+$showMapView = $mapDisplayEnabled && $hasMappingModule && !$isAdmin;
+
+if ($showMapView) {
+    // Include Mapping module assets for map view.
+    $this->headLink()
+        ->appendStylesheet($assetUrl('node_modules/leaflet/dist/leaflet.css', 'Mapping'))
+        ->appendStylesheet($assetUrl('node_modules/leaflet.markercluster/dist/MarkerCluster.css', 'Mapping'))
+        ->appendStylesheet($assetUrl('node_modules/leaflet.markercluster/dist/MarkerCluster.Default.css', 'Mapping'))
+        ->appendStylesheet($assetUrl('node_modules/leaflet.fullscreen/Control.FullScreen.css', 'Mapping'))
+        ->appendStylesheet($assetUrl('css/mapping.css', 'Mapping'));
+    $this->headScript()
+        ->appendFile($assetUrl('node_modules/leaflet/dist/leaflet.js', 'Mapping'))
+        ->appendFile($assetUrl('node_modules/leaflet.markercluster/dist/leaflet.markercluster-src.js', 'Mapping'))
+        ->appendFile($assetUrl('node_modules/leaflet-providers/leaflet-providers.js', 'Mapping'))
+        ->appendFile($assetUrl('node_modules/leaflet.fullscreen/Control.FullScreen.js', 'Mapping'))
+        ->appendFile($assetUrl('node_modules/Leaflet.Deflate/dist/L.Deflate.js', 'Mapping'))
+        ->appendFile($assetUrl('js/MappingModule.js', 'Mapping'))
+        ->appendFile($assetUrl('js/control.fit-bounds.js', 'Mapping'));
+
+    // Build URLs for Mapping API endpoints.
+    $mappingFeaturesUrl = $url('site/mapping', ['controller' => 'index', 'action' => 'get-features'], true);
+    $mappingPopupUrl = $url('site/mapping', ['controller' => 'index', 'action' => 'get-feature-popup-content'], true);
+    $mappingBasemapProvider = $this->siteSetting('mapping_basemap_provider') ?: 'OpenStreetMap.Mapnik';
+    $mappingDisableClustering = $this->siteSetting('mapping_disable_clustering') ? '1' : '0';
+}
 ?>
-<!-- intro + image -->
-<div class="section section--lrg section--light">
-   <div class="container">
-      <?php $page = $searchPage;?>
 
-       <!-- breadcrumbs -->
-       <div class="breadcrumb spacer">
-           <span class="breadcrumb__scope">
-               <a href="/" class="breadcrumb__item"><span>Home</span></a>
-           </span>
-           <span class="breadcrumb__scope">
-              <?php if($searchPage->name() == "Tijdschriften"):?>                
-                <a href="/page/digitale-leeszaal-tijdschriften" class="breadcrumb__item">
-                  <span>Tijdschriften</span>
-                </a>
-              <?php elseif(htmlspecialchars($query->getQuery())):?>
-                <span><a href="<?= parse_url($_SERVER["REQUEST_URI"], PHP_URL_PATH).'?q=' ?>"><?php echo $page->name();?></a></span></span>
+<?php if (empty($isPartial)): ?>
+    <?php if ($searchConfig->subSetting('results', 'breadcrumbs')): ?>
+        <?php if ($breadcrumbs): ?>
+            <?= $breadcrumbs() ?>
+        <?php else: ?>
+            <div class="breadcrumbs-parent">
+                <nav id="breadcrumb" class="breadcrumbs" aria-label="<?= $translate('Breadcrumbs') ?>">
+                    <ul>
+                        <?php if (!$isAdmin): ?>
+                            <li><?= $hyperlink($translate('Home'), $site->siteUrl()) ?></li>
+                        <?php endif; ?>
+                        <?php if ($itemSet): ?>
+                            <li><?= $hyperlink($translate('Collections'), $url($isAdmin ? 'admin/default' : 'site/resource', ['controller' => 'item-set', 'action' => 'browse'], true)) ?></li>
+                            <?php // It may be a span or a link + search. 
+                            ?>
+                            <li><span aria-current="page"><?= $escape($itemSet->displayTitle(null, $langValue)) ?></span></li>
+                            <?php /*
+            <li><?= $hyperlink($itemSet->displayTitle(null, $langValue), $isAdmin ? $itemSet->adminUrl() : $itemSet->siteUrl($site->slug())) ?></li>
+            */ ?>
+                        <?php else: ?>
+                            <li><span aria-current="page"><?= $escape($translate('Search')) ?></span></li>
+                        <?php endif; ?>
+                    </ul>
+                </nav>
+            </div>
+        <?php endif; ?>
+    <?php endif; ?>
+
+    <!-- intro + image -->
+    <div class="section section--lrg section--light">
+        <div class="container">
+            <?php $searchPage = $searchConfig; ?>
+            <?php $page = $searchPage; ?>
+
+            <!-- breadcrumbs -->
+            <div class="breadcrumb spacer">
                 <span class="breadcrumb__scope">
-                <span><?= htmlspecialchars($query->getQuery())?></span></span>
-              <?php else:?>
-               <span><?php echo $page->name();?></span>
-              <?php endif;?>
-           </span>
-       </div>
-       <h1 class="spacer">
-         <?php echo $page->name()." (".$response->getTotalResults().")";?>
-       </h1>
+                    <a href="/" class="breadcrumb__item"><span>Home</span></a>
+                </span>
+                <span class="breadcrumb__scope">
+                    <?php if ($searchPage->name() == "Tijdschriften"): ?>
+                        <a href="/page/digitale-leeszaal-tijdschriften" class="breadcrumb__item">
+                            <span>Tijdschriften</span>
+                        </a>
+                    <?php elseif ($searchPage->name() == "Beeldbank"): ?>
+                        <a href="/page/beeldbank" class="breadcrumb__item">
+                            <span>Beeldbank</span>
+                        </a>
+                    <?php elseif ($searchPage->name() == "Cinema Rural Filmdatabank"): ?>
+                        <a href="/page/cinema-rural-filmdatabank" class="breadcrumb__item">
+                            <span>Cinema Rural Filmdatabank</span>
+                        </a>
+                    <?php elseif ($searchPage->name() == "Collecties"): ?>
+                        <a href="/page/collecties" class="breadcrumb__item">
+                            <span>Collecties</span>
+                        </a>
+                    <?php elseif ($searchPage->name() == "Verhalen"): ?>
+                        <a href="/page/verhalen" class="breadcrumb__item">
+                            <span>Verhalen</span>
+                        </a>
+                    <?php else: ?>
+                        <span><a href="<?= parse_url($_SERVER["REQUEST_URI"], PHP_URL_PATH) . '?q=' ?>"><?php echo $page->name(); ?></a></span>
+                    <?php endif; ?>
+                </span>
+                <span class="breadcrumb__scope">
+                    <?php if (htmlspecialchars($query->getQuery())): ?>
+                        <span><?= htmlspecialchars($query->getQuery()) ?></span>
+                    <?php else: ?>
+                        <span>Zoeken</span>
+                    <?php endif; ?>
+                </span>
+                </span>
+            </div>
+            <h1 class="spacer">
+                <?php echo $page->name() . " (" . $response->getTotalResults() . ")"; ?>
+            </h1>
 
-        <?php
-        $intro = array(
-          "Verhalen" => "De verhalen laten je in woord en beeld de geschiedenis en het erfgoed van landbouw, voeding en landelijke leven vanaf 1750 ontdekken. Zes keer per jaar verschijnt een nieuw verhaal.",
-          "Projecten" => "CAG werkt als initiatiefnemer, uitvoerder en deelnemer aan tal van projecten in het themaveld landbouw, voeding en landelijk leven. Sommige projecten hebben een onderzoekskarakter, andere zijn gericht op een breed publiek. Zowel roerend als immaterieel erfgoed komen aan bod.",
-          "Beeldbank" => "De beeldbank van CAG bevat een grote variatie aan digitale reproducties van agrarisch erfgoed (objecten, foto’s, prenten, boeken ...). Dankzij die rijkdom neemt de beeldbank je mee naar het virtuele land van 1750 tot vandaag.",
-          "Collecties" => "Ben je op zoek naar een publiek toegankelijke collectie met erfgoed van landbouw, voeding en landelijk leven? Hier vind je een overzicht.",
-          "Cinema Rural Filmdatabank" => "De Cinema Rural Filmdatabank biedt een overzicht met uitgebreide inhoudelijke en materiële beschrijvingen van het bewegend beeldmateriaal van landbouw, voeding en landelijk leven dat wordt bewaard in Belgische collecties."
-          );
-        ?>
-        <?php if(isset($intro[$page->name()])):?>
-         <div class="text--lead spacer">
-           <?php echo $intro[$page->name()];?>
-         </div>
-        <?php endif;?>
-   </div>
-</div>
-<?php if($searchPage->name() == "Tijdschriften"):?>  
-  <div class="section section--default ledenbladen">
-<?php else:?>  
-  <div class="section section--default">
-<?php endif;?>    
-  <div class="container">
-
-    <?php if($page->name() != 'Verhalen'):?>
-      <div class="facet-filter-nav">
-        <div class="filter-icon">
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-                <path d="M3.9 54.9C10.5 40.9 24.5 32 40 32l432 0c15.5 0 29.5 8.9 36.1 22.9s4.6 30.5-5.2 42.5L320 320.9 320 448c0 12.1-6.8 23.2-17.7 28.6s-23.8 4.3-33.5-3l-64-48c-8.1-6-12.8-15.5-12.8-25.6l0-79.1L9 97.3C-.7 85.4-2.8 68.8 3.9 54.9z" fill="none" stroke="black" transform="scale(0.9) translate(25,25)"/>
-            </svg>
+            <?php
+            $intro = array(
+                "Verhalen" => "De verhalen laten je in woord en beeld de geschiedenis en het erfgoed van landbouw, voeding en landelijke leven vanaf 1750 ontdekken. Zes keer per jaar verschijnt een nieuw verhaal.",
+                "Projecten" => "CAG werkt als initiatiefnemer, uitvoerder en deelnemer aan tal van projecten in het themaveld landbouw, voeding en landelijk leven. Sommige projecten hebben een onderzoekskarakter, andere zijn gericht op een breed publiek. Zowel roerend als immaterieel erfgoed komen aan bod.",
+                "Beeldbank" => "De beeldbank van CAG bevat een grote variatie aan digitale reproducties van agrarisch erfgoed (objecten, foto’s, prenten, boeken ...). Dankzij die rijkdom neemt de beeldbank je mee naar het virtuele land van 1750 tot vandaag.",
+                "Collecties" => "Ben je op zoek naar een publiek toegankelijke collectie met erfgoed van landbouw, voeding en landelijk leven? Hier vind je een overzicht.",
+                "Cinema Rural Filmdatabank" => "De Cinema Rural Filmdatabank biedt een overzicht met uitgebreide inhoudelijke en materiële beschrijvingen van het bewegend beeldmateriaal van landbouw, voeding en landelijk leven dat wordt bewaard in Belgische collecties."
+            );
+            ?>
+            <?php if (isset($intro[$page->name()])): ?>
+                <div class="text--lead spacer">
+                    <?php echo $intro[$page->name()]; ?>
+                </div>
+            <?php endif; ?>
         </div>
-        <a role="button" class="close-icon">
-            <span></span>
-            <span></span>
-        </a>
-      </div>
-    <?php endif; ?>
-      
-    <?php if($searchPage->name() == "Tijdschriften"):?>  
-      
-      <div class="panel panel--light ledenbladen-advanced">
-        <?php //echo $this->searchForm($searchPage, null,true); ?>
-            <?php if($query->getQuery()):?>
+    </div>
+    <?php if ($searchPage->name() == "Tijdschriften"): ?>
+        <div class="section section--default ledenbladen">
+        <?php else: ?>
+            <div class="section section--default">
+            <?php endif; ?>
+
+            <div class="container">
+            <?php endif; // End NOT partial.?>            
+                <?php
+                if ($query->isBrowse()) {
+                    // No search query.
+                    $mainTitle = $translate($searchConfig->subSetting('results', 'label_default') ?: 'Search');
+                } else {
+                    $mainTitle = $response->getTotalResults()
+                        ? $translate($searchConfig->subSetting('results', 'label_results') ?: 'Search results')
+                        : $translate($searchConfig->subSetting('results', 'label_no_results') ?: 'No results');
+                }
+
+                $this->htmlElement('body')->appendAttribute('class', 'search-page resource browse');
+                ?>
+                <?= $this->pageTitle($mainTitle, 2) ?>
+
+                <!--<div class="panel panel--light ledenbladen-advanced">
+                    <?php //echo $this->searchForm($searchPage, null,true); ?>          
             
-            <?php endif;?>
+                        <div class="spacer">
+                        <span class="search-loop"><i class="fas fa-search"></i></span>  
+                        
+                        <?= $searchConfig->renderForm(['template' => null, 'skip_form_action' => $skipFormAction]) ?>
+                        <button class="add_field_button" type="button"><i class='fas fa-plus'></i> Een extra veld toevoegen</button>
+                        <a id="advanced-toggleold" class="active">Uitgebreid zoeken <i class="fas fa-chevron-down"></i></a>          
+                        
+                    </div>    
+                </div>    -->
             
-           
-            
-            <div class="spacer">
-            <span class="search-loop"><i class="fas fa-search"></i></span>  
-            
-            <?php echo $this->searchForm(); ?>
-            <button class="add_field_button" type="button"><i class='fas fa-plus'></i> Een extra veld toevoegen</button>
-            <a id="advanced-toggle" class="active">Uitgebreid zoeken <i class="fas fa-chevron-down"></i></a>
-          
-            
-          </div>    
-      </div>    
-    <?php endif; ?>
-    <?php if (isset($response)): ?>
-        <?php if ($response->getTotalResults() > 0): ?>
-           <?php
-               echo $this->partial('search/results-header', [
-                'site' => $site,
-                'searchConfig' => $searchConfig,
-                // Kept for compatibility with old themes.
-                'searchPage' => $searchConfig,
-                'query' => $query,
-                'response' => $response,
-                'itemSet' => $itemSet,
-                'resultPart' => 'header',
-                'documentCount' => $documentCount,
-               ]);
-           ?>
-       <?php endif; ?>
-    <?php endif; ?>
-    <div class="grid">
+                <div class="panel panel--light libis-search-advanced">
+                    
+                    <?= $searchConfig->renderForm(['template' => null, 'skip_form_action' => $skipFormAction, 'form_action' => $formAction ?? null]) ?>
+                    <span class="search-loop"><i class="fas fa-search"></i></span>  
+                    <button class="add_field_button" type="button"><i class='fas fa-plus'></i> Een extra veld toevoegen</button>
+                        
+                    <a id="advanced-toggle" class="active">Uitgebreid zoeken <i class="fas fa-chevron-down"></i></a>          
+                            
+                </div>
 
-     <!-- search filter -->
-     
-     <?php if($page->name() != 'Verhalen'):?>
-      <?= $partial('search/facets', [
-        'site' => $site,
-        'searchPage' => $searchPage,
-        'query' => $query,
-        'response' => $response,
-        'itemSet' => $itemSet,
-    ]) ?>
-         <?php endif;?>
+                <?php if ($displayPartsHeader): ?>
+                    <div class="search-results-part search-results-header">
+                        <?= $partial('search/results-header-footer', $variables + ['resultPart' => 'header']) ?>
+                    </div>
+                <?php endif; ?>
+
+                <?php $this->trigger('view.browse.before'); ?>
+
+                <?php if ($documentCount): ?>
+
+                    <div class="grid">
+                        <?php if ($displayFacets === 'before'): ?>
+                            <?= $partial('search/facets-list') ?>
+                        <?php endif; ?>
+                        <?php foreach (array_filter($response->getResourceTotalResults()) as $resourceType => $count): ?>
+                            <?= $partial('search/results', $variables + ['resourceType' => $resourceType]) ?>
+                        <?php endforeach; ?>
+                        <?php if ($displayFacets === 'after'): ?>
+                            <?= $partial('search/facets-list') ?>
+                        <?php endif; ?>
+                    </div>
+
+                    <?php // Map view container (hidden by default, shown when map view is selected). 
+                    ?>
+                    <?php if (!empty($showMapView)): ?>
+                        <?php
+                        // For map view, determine if we should pass item IDs or let Mapping show all.
+                        // - If browse (no query): don't pass IDs, show all features
+                        // - If filtered search with reasonable count: pass IDs
+                        // - If filtered search with too many results: don't pass IDs (would be excessive)
+                        $isBrowse = $query->isBrowse();
+                        $totalItems = $response->getResourceTotalResults('items') ?: 0;
+                        $maxItemsForMap = 10000; // Reasonable limit for passing IDs
+                        // Use comma-separated format (Omeka supports "id=x,y,z").
+                        $itemIdsString = (!$isBrowse && $totalItems > 0 && $totalItems <= $maxItemsForMap)
+                            ? implode(',', $response->getAllResourceIds('items'))
+                            : '';
+                        ?>
+                        <div class="search-results-part search-results-map" style="display: none;">
+                            <div id="search-map"
+                                data-basemap-provider="<?= $escape($mappingBasemapProvider) ?>"
+                                data-disable-clustering="<?= $mappingDisableClustering ?>"
+                                data-features-url="<?= $escape($mappingFeaturesUrl) ?>"
+                                data-feature-popup-content-url="<?= $escape($mappingPopupUrl) ?>"
+                                data-item-ids="<?= $escape($itemIdsString) ?>">
+                            </div>
+                        </div>
+                    <?php endif; ?>
+
+                <?php else: ?>
+
+                    <div class="noresults">
+                        <?php if (empty($query) && !$itemSet): ?>
+                            <?= $translate('Fill a query and get results.') ?>
+                        <?php elseif (empty($query) && $itemSet): ?>
+                            <?= $translate('This item set has no items.') ?>
+                        <?php else: ?>
+                            <?php if (in_array($searchConfig->subSetting('results', 'search_filters', 'header'), ['header', 'both'])): ?>
+                                <div class="search-results-part search-results-header">
+                                    <?= $searchConfig->renderSearchFilters($query, ['template' => 'common/search-filters-links']) ?>
+                                </div>
+                            <?php endif; ?>
+                            <?= $translate('The query returned no results') ?>
+                        <?php endif; ?>
+                    </div>
+
+                <?php endif; ?>
+
+                <?php $this->trigger('view.browse.after'); ?>
+
+                <?php if ($displayPartsFooter): ?>
+                    <div class="search-results-part search-results-footer">
+                        <?= $partial('search/results-header-footer', $variables + ['resultPart' => 'footer']) ?>
+                    </div>
+                <?php endif; ?>
+
+            </div>
 
 
-     <!-- filter results -->
-     <?php if (isset($response)): ?>
-          <?php if ($response->getTotalResults() > 0): ?>
+            </div>
 
-              <?php $itemSetsCount = $response->getResourceTotalResults('item_sets'); ?>
-              <?php
-              echo $this->partial('search/resource-list', [
-                  'title' => sprintf($this->translatePlural('%s item set', '%s item sets', $itemSetsCount), $itemSetsCount),
-                  'response' => $response,
-                  'resourceName' => 'item_sets',
-                  'site' => $site
-              ]);
-              ?>
+            <?php if (empty($isPartial)): ?>
+            </div>
+        <?php endif; ?>
+        </div>
+       
+        <script>
+            $(document).ready(function() {
+                $(".more-link a").click(function(e) {
+                    e.preventDefault();
+                    $(this).parent().hide();
+                    $(this).parent().next("div").show();
+                });
+                $(".less-link a").click(function(e) {
+                    e.preventDefault();
+                    $(this).parent().parent().hide();
+                    $(this).parent().parent().prev(".more-link").show();
+                });
+                $('#q').change(function(e) {
+                    $('input[type=submit].search-submit').focus();
+                });
+            });
+        </script>
+        <script>
+            $(document).ready(function() {
+                <?php if ($searchPage->name() == "Beeldbank"): ?>
+                    var dateFrom = $('#psl-search-form input[name="dcterms_temporal_drm[from]"]');
+                    var dateTo = $('#psl-search-form input[name="dcterms_temporal_drm[to]"]');
+                    var dateMin = 1500;
+                    var dateMax = 2023;
+                <?php endif; ?>
+                <?php
+                //if ($searchPage->name() == "Tijdschriften"): ?>
+                    var dateFrom = $('#psl-search-form input[name="dcterms_date_drm[from]"]');
+                    var dateTo = $('#psl-search-form input[name="dcterms_date_drm[to]"]');
+                    var dateMin = 1890;
+                    var dateMax = 2025;
+                   
+                    var filter_i = 0;
+                    $('#search-filters').find('.filter').each(function(index) {
+                        if (index > 1) {
+                            var button = "<a href='#' class='removefilter'><i class='fas fa-trash-alt'></i></a>";
+                            $(this).append(button);
+                        }
+                    });
 
-              <?php $itemsCount = $response->getResourceTotalResults('items'); ?>
-              <?php
-              echo $this->partial('search/resource-list', [
-                  'title' => sprintf($this->translatePlural('%s item', '%s items', $itemsCount), $itemsCount),
-                  'response' => $response,
-                  'resourceName' => 'items',
-                  'site' => $site,
-                  'pagename' => $page->name()
-              ]);
-              ?>
+                    $('#form-search').on('submit', function(e) {
+                        e.preventDefault();
+                        const params = new URLSearchParams(window.location.search)
 
+                        params.set('q', '"' + $('[name="q"]').val() + '"');
+                        window.location.href = location.protocol + '//' + location.host + location.pathname + '?' + params.toString();
+                    });
 
-              <?php echo $this->pagination(); ?>
-          <?php else: ?>
-              <div class="noresults"><?php echo $translate('Your query returned no results'); ?></div>
-          <?php endif; ?>
-      <?php endif; ?>
-      <?php if (empty($isPartial)): ?>
+                    var wrapper = $("#search-filters span");
+                    var filter = $(".filter").first();
+                    var add_button = $(".add_field_button");
+                    var adv_button = $("#advanced-toggle");
+                    var submit_button = $("#search-submit");
+                    var search_loop = $(".search-loop");
 
-      <?php endif; ?>
-      </div>
-  </div>
-</div>
-<?php 
-  $dates = $query->getDateRangeFilters();
-  //var_dump($dates);
-  $to = date("Y");$from = '1500';
-  if($dates && isset($dates["dcterms_temporal_drm"])):
-    $from = $dates["dcterms_temporal_drm"][0]["from"];                  
-    $to = $dates["dcterms_temporal_drm"][0]["to"];
-    if(!$from){$from = "1500";}       
-    if(!$to){$from = date("Y");}   
-  endif;        
-  if($dates && isset($dates["dcterms_date_drm"])):
-    $from = $dates["dcterms_date_drm"][0]["from"];                  
-    $to = $dates["dcterms_date_drm"][0]["to"];
-    if(!$from){$from = "1890";}       
-    if(!$to){$from = date("Y");}   
-  endif;    
-  
-?>
-<script>
-    $(document).ready(function(){
-        $( ".more-link a" ).click(function(e) {
-            e.preventDefault();
-            $(this).parent().hide();
-            $(this).parent().next( "div" ).show();
-        });
-        $( ".less-link a" ).click(function(e) {
-            e.preventDefault();
-            $(this).parent().parent().hide();
-            $(this).parent().parent().prev( ".more-link" ).show();
-        });
-        $('#q').change(function(e) {
-          $('input[type=submit].search-submit').focus();
-        });
-    });
-</script>
-<script>
-    $(document).ready(function() {
-      <?php if($searchPage->name() == "Beeldbank"):?>
-        var dateFrom = $('#psl-search-form input[name="dcterms_temporal_drm[from]"]');
-        var dateTo = $('#psl-search-form input[name="dcterms_temporal_drm[to]"]');
-        var dateMin =1500;
-        var dateMax = 2023;      
-      <?php endif;?>
-      <?php 
-        if($searchPage->name() == "Tijdschriften"):?>   
-        var dateFrom = $('#psl-search-form input[name="dcterms_date_drm[from]"]');
-        var dateTo = $('#psl-search-form input[name="dcterms_date_drm[to]"]');
-        var dateMin =1890;
-        var dateMax = 2025;
+                    $("#search-filters").append(add_button);
+                    add_button.hide()
 
-        var filter_i = 0;
-        $('#search-filters').find('.filter').each(function (index) {
-            if(index > 1){
-              var button = "<a href='#' class='removefilter'><i class='fas fa-trash-alt'></i></a>";
-              $(this).append(button);
-            }        
-        });
+                    $('fieldset.search-form > div.field')
+                    .first()
+                    .addClass('query-search')
+                    .find('div.inputs')
+                    .addClass('query-inputs');
+                    $('fieldset.search-form > *:not(.query-search)')
+                    .wrapAll('<div class="advanced-container"></div>');
+                    //filter.prepend(search_loop);
+                    $('.query-inputs').prepend(search_loop);
+                    //filter.append(submit_button);
+                    $('.query-inputs').append(submit_button);
+                    $('.query-inputs').append(adv_button);
 
-        $('#search-form').on('submit',function(e){
-          e.preventDefault();
-          const params = new URLSearchParams(window.location.search)
-          
-          params.set('q','"' + $('[name="q"]').val() + '"');     
-          window.location.href = location.protocol + '//' + location.host + location.pathname+'?'+params.toString();
-      
-        });    
-     
-        var wrapper = $("#search-filters span");
-        var filter = $(".filter").first();
-        var add_button = $(".add_field_button");
-        var adv_button = $("#advanced-toggle");
-        var submit_button = $("#submit");
-        var search_loop = $(".search-loop");
+                    $(document).on('click', ".removefilter", function(e) {
+                        e.preventDefault();
+                        $(this).parent().remove();
+                        filter_i--;
+                    });
 
-        $("#search-filters").append(add_button);
-        add_button.hide()
+                    /*$(add_button).click(function(e) {
+                        e.preventDefault();
+                        filter_i++;
+                        //$(wrapper).before('<fieldset class="filter"><select name="filter['+filter_i+'][field]"><option value="dcterms_title_txt">Titel</option><option value="media_txt2">Inhoud</option></select><input type="text" name="filter['+filter_i+'][value]" value=""><a class="removefilter"><i class="fas fa-trash-alt"></i></a></fieldset>'); //add input box
+                        wrapper.before('<fieldset class="filter show"><select name="filter[' + filter_i + '][join]"><option value="and" selected="selected">and</option><option value="or">or</option><option value="not">not</option></select><select name="filter[' + filter_i + '][field]"><option value="dcterms:title" selected="selected">Titel</option></select><input type="text" name="filter[' + filter_i + '][value]" value=""><a class="removefilter"><i class="fas fa-trash-alt"></i></a></fieldset>');
+                    });*/
 
-        filter.prepend(search_loop);
-        filter.append(submit_button);
-        filter.append(adv_button);     
+                    $(add_button).click(function(e) {
+                        e.preventDefault();
+                        filter_i++;
 
-        $(document).on('click',".removefilter",function(e) {
-          e.preventDefault();
-          $(this).parent().remove();
-          filter_i--;
-        });
+                        var $original = $('fieldset.filter[name="filter[0]"]');
+                        var $clone = $original.clone();
 
-        $(add_button).click(function (e) {
-            e.preventDefault();
-            filter_i++;
-            //$(wrapper).before('<fieldset class="filter"><select name="filter['+filter_i+'][field]"><option value="dcterms_title_txt">Titel</option><option value="media_txt2">Inhoud</option></select><input type="text" name="filter['+filter_i+'][value]" value=""><a class="removefilter"><i class="fas fa-trash-alt"></i></a></fieldset>'); //add input box
-            wrapper.before('<fieldset class="filter show"><select name="filter['+filter_i+'][join]"><option value="and" selected="selected">and</option><option value="or">or</option><option value="not">not</option></select><select name="filter['+filter_i+'][field]"><option value="dcterms:title" selected="selected">Titel</option></select><input type="text" name="filter['+filter_i+'][value]" value=""><a class="removefilter"><i class="fas fa-trash-alt"></i></a></fieldset>');
-        });
-      
-        $("#advanced-toggle").click(function(e) {
-          e.preventDefault();
-          add_button.toggle();
-          //$(".ledenbladen-advanced #form-search fieldset").toggle();
-          $('.ledenbladen-advanced #form-search').find('fieldset').each(function (index) {
-            if (index > 0) {
-              $(this).toggleClass("show");
+                        // Update all name attributes with the new index
+                        $clone.find('[name]').each(function() {
+                            var newName = $(this).attr('name').replace('[0]', '[' + filter_i + ']');
+                            $(this).attr('name', newName);
+                        });
+
+                        // Update the fieldset's own name attribute
+                        $clone.attr('name', 'filter[' + filter_i + ']');
+
+                        // Clear any input values in the clone
+                        $clone.find('input[type="text"]').val('');
+
+                        // Add show class and insert before wrapper
+                        $clone.addClass('show');
+
+                        wrapper.before($clone);
+                    });
+
+                    $("#advanced-toggle").click(function(e) {
+                        e.preventDefault();
+                        //add_button.toggle();
+                        
+                        $('.advanced-container').toggle();
+                        //$('fieldset.search-form').children(':first-child').show();
+
+                        $("#advanced-search-form").toggleClass('active');
+                        $("#advanced-toggle").toggleClass('active');
+
+                        if ($("#advanced-toggle").hasClass('active')) {
+                            $("#advanced-toggle").html('Uitgebreid zoeken <i class="fas fa-chevron-down"></i>');
+                            $('.query-inputs').append(submit_button);
+                            $('.query-inputs').append(adv_button);
+                        } else {
+                            $("#advanced-toggle").html('Uitgebreid zoeken <i class="fas fa-chevron-up"></i>');
+                            
+                            $('.search-form-buttons').append(submit_button);
+                            $('.search-form-buttons').append(adv_button);
+                        }
+                    });
+
+                <?php //endif; ?>
+            });
+        
+            $(".facet-active").on("click touchstart", function(e) {
+                e.preventDefault();
+                var href = $(this).attr("href");
+                if ($(this).closest('div').hasClass('facets')) {
+                    localStorage.setItem('openPopUp', 'true');
+                }
+                window.location.href = href;
+            });
+
+            function activeLink(event) {
+                event.preventDefault();
+                var facetLink = event.currentTarget.dataset.facetLink;
+                localStorage.setItem('openPopUp', 'true');
+                window.location.href = facetLink;
             }
-          });
 
-          $("#advanced-search-form").toggleClass('active');
-          $("#advanced-toggle").toggleClass('active');
+            $(window).on('load', function() {
+                var openPopUp = localStorage.getItem('openPopUp');
+                var filterIcon = $(".filter-icon");
+                var closeIcon = $(".close-icon");
+                var page = $('.page');
+                var facetsList = $('.facets').parent();
 
-          if($("#advanced-toggle").hasClass('active')){
-            $("#advanced-toggle").html('Uitgebreid zoeken <i class="fas fa-chevron-down"></i>');
-            $(adv_button).before(submit_button);
-          }else{        
-            $("#advanced-toggle").html('Uitgebreid zoeken <i class="fas fa-chevron-up"></i>');
-            $(".ledenbladen-advanced #form-search div").last().append(submit_button);
-          }
-        });
-      
-    <?php endif;?>
+                if (window.innerWidth < 1024) {
+                    if (openPopUp === "true") {
+                        var filterNav = $(".facet-filter-nav");
+                        $(facetsList).addClass("open-facets-list");
+                        $(filterNav).addClass("filter-nav-fixed");
+                        $(filterIcon).addClass("active-item");
+                        $(page).addClass("pageFixed");
+                        localStorage.removeItem('openPopUp');
+                    }
+                }
 
-    <?php if($searchPage->name() == "Beeldbank"):?>
-      $('#psl-search-form-date-slider').slider({
-        range: true,
-        min: dateMin,
-        max: dateMax,        
-        step: 10,
-          
-        //values: [dateFrom.val() || dateMin, dateTo.val() || dateMax],
-        values: [<?php echo $from;?>, <?php echo $to;?>],
-        change: function(event, ui) {
-            var from = ui.values[0] > dateMin ? ui.values[0] : '';
-            var to = ui.values[1] < dateMax ? ui.values[1] : '';
-            if (from != dateFrom.val()) {
-                dateFrom.val(from).change();
+                filterIcon.off("click", filterIconClickHandler);
+                closeIcon.off("click", closeIconClickHandler);
+
+                filterIcon.on("click", filterIconClickHandler);
+                closeIcon.on("click", closeIconClickHandler);
+            });
+
+            function clickOnButton(facetsList, filterNav, filterIcon, page) {
+                var filterOpen = $(facetsList).hasClass("open-facets-list");
+
+                if (!filterOpen) {
+                    $(facetsList).addClass("open-facets-list");
+                    $(filterNav).addClass("filter-nav-fixed");
+                    $(filterIcon).addClass("active-item");
+                    $(page).addClass("pageFixed");
+                } else {
+                    $(facetsList).removeClass("open-facets-list");
+                    $(filterNav).removeClass("filter-nav-fixed");
+                    $(filterIcon).removeClass("active-item");
+                    $(page).removeClass("pageFixed");
+                }
             }
-            if (to != dateTo.val()) {
-                dateTo.val(to).change();
+
+            function filterIconClickHandler() {
+                var filterNav = $(".facet-filter-nav");
+                var filterIcon = $(".filter-icon");
+                var page = $('.page');
+                var facetsList = $('.facets').parent();
+                clickOnButton(facetsList, filterNav, filterIcon, page);
             }
 
-            var fromv = from;
-            if(from == 0){
-              fromv = dateMin;
+            function closeIconClickHandler() {
+                var filterNav = $(".facet-filter-nav");
+                var filterIcon = $(".filter-icon");
+                var page = $('.page');
+                var facetsList = $('.facets').parent();
+                clickOnButton(facetsList, filterNav, filterIcon, page);
             }
-            var tov = to;
-            if(to == ''){
-              tov = dateMax;
-            }
-            $('.currentDate').text((fromv) + ' - ' + tov);
-        }
-      });
-
-      dateFrom.parents('.field').hide();
-      dateTo.parents('.field').hide();
-    <?php endif;?>
-  });
-</script>
-
-<?php  // search on mobile behind a button ?>
-<script>
-  $(".facet-active").on("click touchstart", function(e) {
-      e.preventDefault();
-      var href = $(this).attr("href");
-      if ($(this).closest('div').hasClass('facets')) {
-          localStorage.setItem('openPopUp', 'true');
-      }
-      window.location.href = href;
-  });
-
-  function activeLink(event) {  
-      event.preventDefault();
-      var facetLink = event.currentTarget.dataset.facetLink;
-      localStorage.setItem('openPopUp', 'true');
-      window.location.href = facetLink;
-  }
-
-  $(window).on('load', function() {
-      var openPopUp = localStorage.getItem('openPopUp');
-      var filterIcon = $(".filter-icon");
-      var closeIcon = $(".close-icon");
-      var page = $('.page');
-      var facetsList = $('.facets').parent();
-
-      if (window.innerWidth < 1024) {
-          if (openPopUp === "true") {
-              var filterNav = $(".facet-filter-nav");
-              $(facetsList).addClass("open-facets-list");
-              $(filterNav).addClass("filter-nav-fixed");
-              $(filterIcon).addClass("active-item");
-              $(page).addClass("pageFixed");
-              localStorage.removeItem('openPopUp');
-          }
-      }
-
-      filterIcon.off("click", filterIconClickHandler);
-      closeIcon.off("click", closeIconClickHandler);
-
-      filterIcon.on("click", filterIconClickHandler);
-      closeIcon.on("click", closeIconClickHandler);
-  });
-
-  function clickOnButton(facetsList, filterNav, filterIcon, page) {
-      var filterOpen = $(facetsList).hasClass("open-facets-list");
-
-      if (!filterOpen) {
-          $(facetsList).addClass("open-facets-list");
-          $(filterNav).addClass("filter-nav-fixed");
-          $(filterIcon).addClass("active-item");
-          $(page).addClass("pageFixed");
-      } else {
-          $(facetsList).removeClass("open-facets-list");
-          $(filterNav).removeClass("filter-nav-fixed");
-          $(filterIcon).removeClass("active-item");
-          $(page).removeClass("pageFixed");
-      }
-  }
-
-  function filterIconClickHandler() {
-      var filterNav = $(".facet-filter-nav");
-      var filterIcon = $(".filter-icon");
-      var page = $('.page');
-      var facetsList = $('.facets').parent();
-      clickOnButton(facetsList, filterNav, filterIcon, page);
-  }
-
-  function closeIconClickHandler() {
-      var filterNav = $(".facet-filter-nav");
-      var filterIcon = $(".filter-icon");
-      var page = $('.page');
-      var facetsList = $('.facets').parent();
-      clickOnButton(facetsList, filterNav, filterIcon, page);
-  }
-</script>
+        </script>

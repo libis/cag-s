@@ -3,7 +3,7 @@
 /*
  * Copyright BibLibre, 2016
  * Copyright Paul Sarrassat, 2018
- * Copyright Daniel Berthereau, 2017-2025
+ * Copyright Daniel Berthereau, 2017-2026
  *
  * This software is governed by the CeCILL license under French law and abiding
  * by the rules of distribution of free software.  You can use, modify and/ or
@@ -85,6 +85,12 @@
             var source = $('select[name="o:source[0][source]"]').val();
             source = source.replace(/[^a-zA-Z0-9]/g, '_');
             fieldName = field.replace('*', source);
+
+            var inputIndexForLink = $('input[name="o:settings[index_for_link]"]');
+            if (inputIndexForLink.is(':checked')) {
+                var linkInsertPos = indexOfStar + source.length;
+                fieldName = fieldName.slice(0, linkInsertPos) + '_link' + fieldName.slice(linkInsertPos);
+            }
 
             setTimeout(function() {
                 var htmlInput = input.get(0);
@@ -221,10 +227,15 @@
             });
 
         // Sub-property managing.
+        // Other checkboxes are added dynamically.
         $('input[name="o:source[0][set_sub]"]')
             .on('change', function() {
                 subPropertyChange(this, 0);
             });
+
+        // On load, check all sub-properties except last one.
+        const checkboxes = $('fieldset#o-source .field input[type=checkbox][name^="o:source"][name$="[set_sub]"]');
+        checkboxes.slice(0, -1).prop('checked', true);
 
         // Init main select and input.
 
@@ -232,6 +243,10 @@
             id: 'field-selector',
             'data-placeholder': Omeka.jsTranslate('Choose a field…'),
         });
+
+        var inputIndexForLink = $('input[name="o:settings[index_for_link]"]');
+
+        var inputParts = $('input[name="o:settings[parts][]"]');
 
         var emptyOption = $('<option>').val('');
         select.append(emptyOption);
@@ -301,6 +316,13 @@
 
         select.chosen(chosenOptions);
 
+        inputIndexForLink.on('change', function() {
+            generateFieldName();
+            if ($(this).is(':checked')) {
+                inputParts.filter('[value="link"]').prop('checked', true);
+            }
+        });
+
         var timeout = 0;
         var regexps = {};
         input
@@ -366,16 +388,27 @@
         // Display the specific settings of each normalization.
 
         function toggleSettingsNormalization() {
-            // Hide all settings unchecked, then display the ones checked.
-            $('input[type=checkbox][name="o:settings[normalization]"]:not(checked)').closest('.field').hide();
-            const checkeds = $('input[type=checkbox][name="o:settings[normalization]"]:checked').closest('.field').show();
+            // Hide all fields linked to a normalization, then show those
+            // whose normalization checkbox is checked.
+            $('[data-normalization]').closest('.field').hide();
+            $('input[name="o:settings[normalization][]"]:checked').each(function () {
+                $('[data-normalization="' + $(this).val() + '"]').closest('.field').show();
+            });
         }
 
-        $('input[type=checkbox][name="o:settings[normalization]"]')
-            .on('change',toggleSettingsNormalization);
+        $('input[name="o:settings[normalization][]"]')
+            .on('change', toggleSettingsNormalization);
+
+        toggleSettingsNormalization();
 
         // On submit.
-        $('#form-solr-map').on('submit', function() {
+        $('#solr-map-form').on('submit', function() {
+            // Remove all empty selects for source, except the first one.
+            const selects = $('fieldset#o-source select[name^="o:source["]');
+            selects
+                .slice(1).filter((_, el) => $(el).val() === '')
+                .remove();
+            // Cleaning. Still needed?
             $('input[name^="o:source/"]').remove();
         });
 

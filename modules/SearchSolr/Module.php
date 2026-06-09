@@ -2,7 +2,7 @@
 
 /*
  * Copyright BibLibre, 2016-2017
- * Copyright Daniel Berthereau, 2017-2023
+ * Copyright Daniel Berthereau, 2017-2026
  *
  * This software is governed by the CeCILL license under French law and abiding
  * by the rules of distribution of free software.  You can use, modify and/ or
@@ -30,28 +30,40 @@
 
 namespace SearchSolr;
 
-if (!class_exists(\Generic\AbstractModule::class)) {
-    require file_exists(dirname(__DIR__) . '/Generic/AbstractModule.php')
-        ? dirname(__DIR__) . '/Generic/AbstractModule.php'
-        : __DIR__ . '/src/Generic/AbstractModule.php';
+if (!class_exists('Common\TraitModule', false)) {
+    require_once file_exists(dirname(__DIR__) . '/Common/src/TraitModule.php')
+        ? dirname(__DIR__) . '/Common/src/TraitModule.php'
+        : dirname(__DIR__) . '/Common/TraitModule.php';
 }
 
 use AdvancedSearch\Api\Representation\SearchConfigRepresentation;
 use AdvancedSearch\Api\Representation\SearchEngineRepresentation;
-use Generic\AbstractModule;
+use Common\Stdlib\PsrMessage;
+use Common\TraitModule;
 use Laminas\EventManager\Event;
 use Laminas\EventManager\SharedEventManagerInterface;
 use Laminas\ModuleManager\ModuleManager;
 use Laminas\Mvc\MvcEvent;
+use Omeka\Module\AbstractModule;
 use Omeka\Module\Exception\ModuleCannotInstallException;
 
+/**
+ * SearchSolr
+ *
+ * Use search engine Solr with Omeka.
+ *
+ * @copyright Daniel Berthereau, 2017-2026
+ * @license http://www.cecill.info/licences/Licence_CeCILL_V2.1-en.txt
+ */
 class Module extends AbstractModule
 {
+    use TraitModule;
+
     const NAMESPACE = __NAMESPACE__;
 
     protected $dependencies = [
         'AdvancedSearch',
-     ];
+    ];
 
     public function init(ModuleManager $moduleManager): void
     {
@@ -82,67 +94,55 @@ class Module extends AbstractModule
     {
         parent::onBootstrap($event);
 
-        // Manage the dependency upon Search, in particular when upgrading.
-        // Once disabled, this current method and other ones are no more called.
-        if (!$this->isModuleActive('AdvancedSearch')) {
-            $this->disableModule(__NAMESPACE__);
-            return;
-        }
-
-        $this->addAclRules();
+        /** @var \Omeka\Permissions\Acl $acl */
+        $acl = $this->getServiceLocator()->get('Omeka\Acl');
+        $acl
+            ->allow(null, [
+                \SearchSolr\Api\Adapter\SolrCoreAdapter::class,
+                \SearchSolr\Api\Adapter\SolrMapAdapter::class,
+            ])
+            ->allow(null, [\SearchSolr\Entity\SolrCore::class], 'read');
     }
 
     protected function preInstall(): void
     {
         $services = $this->getServiceLocator();
         $translator = $services->get('MvcTranslator');
-        $messenger = $services->get('ControllerPluginManager')->get('messenger');
+        $translator = $services->get('MvcTranslator');
+
+        if (!method_exists($this, 'checkModuleActiveVersion') || !$this->checkModuleActiveVersion('Common', '3.4.84')) {
+            $message = new \Omeka\Stdlib\Message(
+                $translator->translate('The module %1$s should be upgraded to version %2$s or later.'), // @translate
+                'Common', '3.4.84'
+            );
+            throw new \Omeka\Module\Exception\ModuleCannotInstallException((string) $message);
+        }
+
+        $errors = [];
+
+        if (PHP_VERSION_ID < 80100) {
+            $errors[] = (string) (new PsrMessage(
+                'This version of module {module} requires a version of php ≥ {version}.', // @translate
+                ['module' => 'SearchSolr', 'version' => '8.1']
+            ))->setTranslator($translator);
+        }
 
         if (!file_exists(__DIR__ . '/vendor/solarium/solarium/src/Client.php')) {
-            $message = new \Omeka\Stdlib\Message(
-                'The composer library "%s" is not installed. See readme.', // @translate
-                'Solarium'
-            );
-            throw new ModuleCannotInstallException((string) $message);
+            $errors[] = (string) (new PsrMessage(
+                'The composer library "{library}" is not installed. See readme.', // @translate
+                ['library' => 'Solarium']
+            ))->setTranslator($translator);
         }
 
-        /** @var \Omeka\Module\Manager $moduleManager */
-        $moduleManager = $services->get('Omeka\ModuleManager');
-
-        // Module AdvancedSearch is already checked as dependency.
-        $advancedSearchVersion = $moduleManager->getModule('AdvancedSearch')->getIni('version');
-        if (version_compare($advancedSearchVersion, '3.4.15', '<')) {
-            $message = new \Omeka\Stdlib\Message(
-                $translator->translate('This module requires module "%s" version "%s" or greater.'), // @translate
-                'Advanced Search', '3.4.15'
-            );
-            throw new ModuleCannotInstallException((string) $message);
+        if (!$this->checkModuleActiveVersion('AdvancedSearch', '3.4.61')) {
+            $errors[] = (string) (new PsrMessage(
+                'This module requires module "{module}" version "{version}" or greater.', // @translate
+                ['module' => 'Advanced Search', 'version' => '3.4.61']
+            ))->setTranslator($translator);
         }
 
-        $moduleVersion = $moduleManager->getModule('SearchSolr')->getIni('version');
-        $module = $moduleManager->getModule('Solr');
-        $moduleSolrVersion = $module ? $module->getIni('version') : null;
-        if ($moduleSolrVersion) {
-            if (version_compare($moduleSolrVersion, '3.5.5', '<')
-                || version_compare($moduleSolrVersion, '3.5.14', '>')
-            ) {
-                if ($module->getState() === \Omeka\Module\Manager::STATE_ACTIVE) {
-                    $message = new \Omeka\Stdlib\Message(
-                        'To be upgraded automatically, the module Solr should be between versions 3.5.5 and 3.5.14. Upgrade it or disable it to install this module.' // @translate
-                    );
-                    throw new ModuleCannotInstallException((string) $message);
-                }
-                $messenger->addWarning($translator->translate('The module Solr can be upgraded only for version between 3.5.5 and 3.5.14.')); // @translate
-            } elseif (version_compare($moduleVersion, '3.5.30.3', '>=')) {
-                if ($module->getState() === \Omeka\Module\Manager::STATE_ACTIVE) {
-                    $message = new \Omeka\Stdlib\Message(
-                        'To upgrade module Solr automatically, this module should be lower or equal to 3.5.30.3. Install this version of this module, then upgrade it.' // @translate
-                    );
-                    throw new ModuleCannotInstallException((string) $message);
-                }
-                $messenger->addWarning($translator->translate('To upgrade module Solr automatically, this module should be lower or equal to 3.5.30.3.')); // @translate
-            }
-            $messenger->addWarning('A new config will be created instead.'); // @translate
+        if ($errors) {
+            throw new ModuleCannotInstallException(implode("\n", $errors));
         }
     }
 
@@ -153,32 +153,19 @@ class Module extends AbstractModule
 
     protected function postUninstall(): void
     {
-        $serviceLocator = $this->getServiceLocator();
-        $moduleManager = $serviceLocator->get('Omeka\ModuleManager');
+        $services = $this->getServiceLocator();
+        $moduleManager = $services->get('Omeka\ModuleManager');
         $module = $moduleManager->getModule('AdvancedSearch');
         if ($module && in_array($module->getState(), [
             \Omeka\Module\Manager::STATE_ACTIVE,
             \Omeka\Module\Manager::STATE_NOT_ACTIVE,
         ])) {
             $sql = <<<'SQL'
-DELETE FROM `search_engine` WHERE `adapter` = 'solarium';
-SQL;
-            $connection = $serviceLocator->get('Omeka\Connection');
+                DELETE FROM `search_engine` WHERE `adapter` = 'solarium';
+                SQL;
+            $connection = $services->get('Omeka\Connection');
             $connection->executeStatement($sql);
         }
-    }
-
-    /**
-     * Add ACL rules for this module.
-     */
-    protected function addAclRules(): void
-    {
-        $acl = $this->getServiceLocator()->get('Omeka\Acl');
-        $acl->allow(null, [
-            \SearchSolr\Api\Adapter\SolrCoreAdapter::class,
-            \SearchSolr\Api\Adapter\SolrMapAdapter::class,
-        ]);
-        $acl->allow(null, \SearchSolr\Entity\SolrCore::class, 'read');
     }
 
     public function attachListeners(SharedEventManagerInterface $sharedEventManager): void
@@ -187,6 +174,27 @@ SQL;
             \AdvancedSearch\Controller\Admin\IndexController::class,
             'view.browse.after',
             [$this, 'appendBrowseCores']
+        );
+
+        // Handle suggester form for Solr engines.
+        $sharedEventManager->attach(
+            \AdvancedSearch\Form\Admin\SearchSuggesterForm::class,
+            'form.add_elements',
+            [$this, 'handleSuggesterFormAddElements']
+        );
+
+        // Handle suggester save for Solr engines.
+        $sharedEventManager->attach(
+            \AdvancedSearch\Controller\Admin\SearchSuggesterController::class,
+            'advancedsearch.suggester.save',
+            [$this, 'handleSuggesterSave']
+        );
+
+        // Handle suggester reindex for Solr engines.
+        $sharedEventManager->attach(
+            \AdvancedSearch\Controller\Admin\SearchSuggesterController::class,
+            'advancedsearch.suggester.index',
+            [$this, 'handleSuggesterIndex']
         );
 
         $sharedEventManager->attach(
@@ -214,6 +222,35 @@ SQL;
             'api.delete.post',
             [$this, 'deletePostSolrMap']
         );
+
+        // Append solr documents in admin.
+        $controllers = [
+            'Omeka\Controller\Admin\Item',
+            'Omeka\Controller\Admin\ItemSet',
+            'Omeka\Controller\Admin\Media',
+        ];
+        foreach ($controllers as $controller) {
+            $sharedEventManager->attach(
+                $controller,
+                'view.show.sidebar',
+                [$this, 'handleViewShowAfterAdmin']
+            );
+            $sharedEventManager->attach(
+                $controller,
+                'view.details',
+                [$this, 'handleViewShowAfterAdmin']
+            );
+            $sharedEventManager->attach(
+                $controller,
+                'view.browse.after',
+                [$this, 'handleViewBrowseAfterAdmin']
+            );
+        }
+        $sharedEventManager->attach(
+            \AdvancedSearch\Controller\SearchController::class,
+            'view.browse.after',
+            [$this, 'appendBrowseAfterAdmin']
+        );
     }
 
     public function appendBrowseCores(Event $event): void
@@ -221,10 +258,233 @@ SQL;
         $view = $event->getTarget();
         $api = $this->getServiceLocator()->get('Omeka\ApiManager');
         $response = $api->search('solr_cores');
-        $cores = $response->getContent();
+        $solrCores = $response->getContent();
         echo $view->partial('search-solr/admin/core/browse-table', [
-            'cores' => $cores,
+            'solrCores' => $solrCores,
         ]);
+    }
+
+    /**
+     * Add Solr-specific fields to the suggester form.
+     */
+    public function handleSuggesterFormAddElements(Event $event): void
+    {
+        /** @var \AdvancedSearch\EngineAdapter\EngineAdapterInterface $engineAdapter */
+        $engineAdapter = $event->getParam('engine_adapter');
+        if (!$engineAdapter instanceof \SearchSolr\EngineAdapter\Solarium) {
+            return;
+        }
+
+        /** @var \Laminas\Form\Fieldset $fieldset */
+        $fieldset = $event->getParam('fieldset');
+
+        $solrCore = $engineAdapter->getSolrCore();
+        $indexFields = $this->getSolrFieldsForSuggester($solrCore);
+
+        // Build optgroups: recommended single indexes first,
+        // then individual indexes to group into one suggester.
+        $recommended = [
+            'suggest_txt' => 'suggest_txt (unified field, recommended)', // @translate
+            'auto' => 'All text and string fields', // @translate
+        ];
+        $fieldOptions = [
+            'Recommended' => ['label' => 'Recommended', 'options' => $recommended], // @translate
+            'Individual fields' => ['label' => 'Individual fields', 'options' => $indexFields], // @translate
+        ];
+
+        $fieldset
+            ->add([
+                'name' => 'solr_suggester_name',
+                'type' => \Laminas\Form\Element\Text::class,
+                'options' => [
+                    'label' => 'Solr suggester name', // @translate
+                    'info' => 'Base name of the suggester component in Solr. If empty, will be auto-generated. When multiple fields are selected, a suffix is added for each field.', // @translate
+                ],
+                'attributes' => [
+                    'id' => 'solr_suggester_name',
+                    'placeholder' => 'omeka_suggester', // @translate
+                ],
+            ])
+            ->add([
+                'name' => 'solr_fields',
+                'type' => \Common\Form\Element\OptionalSelect::class,
+                'options' => [
+                    'label' => 'Solr fields for suggestions', // @translate
+                    'info' => 'The unified field "suggest_txt" is the most efficient option: single suggester, short-value fields only. "All fields" creates one suggester per text/string field (including long values). Individual indexes can be grouped.', // @translate
+                    'value_options' => $fieldOptions,
+                ],
+                'attributes' => [
+                    'id' => 'solr_fields',
+                    'class' => 'chosen-select',
+                    'multiple' => true,
+                    'data-placeholder' => 'Select fields…', // @translate
+                ],
+            ])
+            ->add([
+                'name' => 'solr_lookup_implementation',
+                'type' => \Common\Form\Element\OptionalSelect::class,
+                'options' => [
+                    'label' => 'Algorithm for suggestions', // @translate
+                    'value_options' => [
+                        'AnalyzingInfixLookupFactory' => 'AnalyzingInfixLookup (matches anywhere)', // @translate
+                        'BlendedInfixLookupFactory' => 'BlendedInfixLookup (prefix weighted)', // @translate
+                        'AnalyzingLookupFactory' => 'AnalyzingLookup (prefix only)', // @translate
+                        'FuzzyLookupFactory' => 'FuzzyLookup (fuzzy matching)', // @translate
+                    ],
+                ],
+                'attributes' => [
+                    'id' => 'solr_lookup_implementation',
+                    'value' => 'AnalyzingInfixLookupFactory',
+                ],
+            ])
+            ->add([
+                'name' => 'solr_skip_build_on_commit',
+                'type' => \Laminas\Form\Element\Checkbox::class,
+                'options' => [
+                    'label' => 'Skip automatic reindex on resource save', // @translate
+                    'info' => 'By default, the suggester dictionary is rebuilt each time documents are committed. Check to disable this on very large indexes.', // @translate
+                ],
+                'attributes' => [
+                    'id' => 'solr_skip_build_on_commit',
+                ],
+            ])
+        ;
+
+        // Mark the form as handled so AdvancedSearch doesn't show
+        // the "no settings" message.
+        $event->setParam('handled', true);
+    }
+
+    /**
+     * Handle suggester save/reindex for Solr engines.
+     *
+     * Dispatches a background job to create Solr suggesters and build
+     * dictionaries. Field resolution ("auto") is done inside the job.
+     */
+    public function handleSuggesterSave(Event $event): void
+    {
+        /** @var \AdvancedSearch\EngineAdapter\EngineAdapterInterface $engineAdapter */
+        $engineAdapter = $event->getParam('engine_adapter');
+        if (!$engineAdapter instanceof \SearchSolr\EngineAdapter\Solarium) {
+            return;
+        }
+
+        /** @var \AdvancedSearch\Api\Representation\SearchSuggesterRepresentation $suggester */
+        $suggester = $event->getParam('suggester');
+        /** @var \Omeka\Mvc\Controller\Plugin\Messenger $messenger */
+        $messenger = $event->getParam('messenger');
+
+        $services = $this->getServiceLocator();
+
+        // Skip if a suggester build job is already running.
+        /** @var \Doctrine\DBAL\Connection $connection */
+        $connection = $services->get('Omeka\Connection');
+        $runningJob = $connection->fetchOne(
+            'SELECT id FROM job WHERE class = ? AND status IN (?, ?)',
+            [
+                \SearchSolr\Job\CreateSolrSuggesters::class,
+                \Omeka\Entity\Job::STATUS_STARTING,
+                \Omeka\Entity\Job::STATUS_IN_PROGRESS,
+            ]
+        );
+        if ($runningJob) {
+            $messenger->addWarning(
+                'A suggester build job is already running (job #{job_id}). Skipping.' // @translate
+            );
+            return;
+        }
+
+        $dispatcher = $services->get(\Omeka\Job\Dispatcher::class);
+        $job = $dispatcher->dispatch(\SearchSolr\Job\CreateSolrSuggesters::class, [
+            'search_suggester_id' => $suggester->id(),
+        ]);
+
+        $urlHelper = $services->get('ViewHelperManager')->get('url');
+        $message = new PsrMessage(
+            'Processing indexation of Solr suggestions in background (job {link_job}#{job_id}{link_end}, {link_log}logs{link_end}).', // @translate
+            [
+                'link_job' => sprintf('<a href="%s">', htmlspecialchars($urlHelper('admin/id', ['controller' => 'job', 'id' => $job->getId()]))),
+                'job_id' => $job->getId(),
+                'link_end' => '</a>',
+                'link_log' => class_exists('Log\Module', false)
+                    ? sprintf('<a href="%1$s">', $urlHelper('admin/default', ['controller' => 'log'], ['query' => ['job_id' => $job->getId()]]))
+                    : sprintf('<a href="%1$s" target="_blank">', $urlHelper('admin/id', ['controller' => 'job', 'action' => 'log', 'id' => $job->getId()])),
+            ]
+        );
+        $message->setEscapeHtml(false);
+        $messenger->addSuccess($message);
+    }
+
+    /**
+     * Handle suggester reindex for Solr engines.
+     */
+    public function handleSuggesterIndex(Event $event): void
+    {
+        $this->handleSuggesterSave($event);
+    }
+
+    /**
+     * Get stored Solr fields suitable for suggestions.
+     *
+     * Only stored fields with human-readable values are returned:
+     * - `*_txt` (text_general, stored): full text, word-level matching
+     * - `*_ss` (strings, stored): exact values (only if no _txt exists
+     *   for the same property)
+     * - `*_s` (string, stored): idem
+     * Fields like `_text_` (not stored) or `*_str` (not stored) are excluded.
+     */
+    protected function getSolrFieldsForSuggester(
+        ?Api\Representation\SolrCoreRepresentation $solrCore,
+        bool $deduplicate = false
+    ): array {
+        if (!$solrCore) {
+            return [];
+        }
+
+        $allowedSuffixes = ['_txt', '_ss', '_s'];
+        $schema = $solrCore->schema();
+
+        // Collect all matching stored fields.
+        $allFields = [];
+        $txtPrefixes = [];
+        foreach ($solrCore->mapsOrderedByStructure() as $map) {
+            $fieldName = $map->fieldName();
+            foreach ($allowedSuffixes as $suffix) {
+                if (substr($fieldName, -strlen($suffix)) === $suffix) {
+                    if (!$schema->getField($fieldName)) {
+                        break;
+                    }
+                    $prefix = substr($fieldName, 0, -strlen($suffix));
+                    $allFields[] = [
+                        'name' => $fieldName,
+                        'suffix' => $suffix,
+                        'prefix' => $prefix,
+                        'label' => $map->setting('label', ''),
+                    ];
+                    if ($suffix === '_txt') {
+                        $txtPrefixes[$prefix] = true;
+                    }
+                    break;
+                }
+            }
+        }
+
+        // When deduplicating, skip _ss/_s when _txt exists for the same
+        // property prefix (used for "auto" resolution, not for the form).
+        $fields = [];
+        foreach ($allFields as $field) {
+            if ($deduplicate
+                && $field['suffix'] !== '_txt'
+                && isset($txtPrefixes[$field['prefix']])
+            ) {
+                continue;
+            }
+            $fields[$field['name']] = $field['label']
+                ? sprintf('%s (%s)', $field['label'], $field['name'])
+                : $field['name'];
+        }
+
+        return $fields;
     }
 
     public function deletePostSolrCore(Event $event): void
@@ -249,6 +509,7 @@ SQL;
             'solr_core_id' => $solrMap->solrCore()->id(),
             'resource_name' => $solrMap->resourceName(),
             'field_name' => $solrMap->fieldName(),
+            'alias' => $solrMap->alias(),
             'source' => $solrMap->source(),
             'settings' => $solrMap->settings(),
         ];
@@ -333,6 +594,142 @@ SQL;
         }
     }
 
+    public function handleViewShowAfterAdmin(Event $event): void
+    {
+        /**
+         * @var \Omeka\Api\Manager $api
+         * @var \Omeka\Permissions\Acl $acl
+         */
+        $services = $this->getServiceLocator();
+        $acl = $this->getServiceLocator()->get('Omeka\Acl');
+
+        // TODO Check rights? Useless: the ids are a list of allowed ids.
+        $user = $services->get('Omeka\AuthenticationService')->getIdentity();
+        if (!$user || !$acl->isAdminRole($user->getRole())) {
+            return;
+        }
+
+        $view = $event->getTarget();
+        $vars = $view->vars();
+
+        /** @var \Omeka\Api\Representation\AbstractResourceEntityRepresentation $resource */
+        $resource = $vars->offsetGet('resource');
+        if (!$resource) {
+            return;
+        }
+
+        // Get the solr core configured for admin.
+        $solrCore = $this->getSolrCoreAdmin();
+        if (!$solrCore) {
+            return;
+        }
+
+        $vars->offsetSet('heading', $view->translate('Solr')); // @translate
+        $vars->offsetSet('resourceName', $resource->resourceName());
+        $vars->offsetSet('ids', [$resource->id()]);
+        $vars->offsetSet('solrCore', $solrCore);
+        echo $view->partial('common/solr-documents-sidebar');
+    }
+
+    public function handleViewBrowseAfterAdmin(Event $event): void
+    {
+        /**
+         * @var \Omeka\Api\Manager $api
+         * @var \Omeka\Permissions\Acl $acl
+         */
+        $services = $this->getServiceLocator();
+        $acl = $this->getServiceLocator()->get('Omeka\Acl');
+
+        // TODO Check rights? Useless: the ids are a list of allowed ids.
+        $user = $services->get('Omeka\AuthenticationService')->getIdentity();
+        if (!$user || !$acl->isAdminRole($user->getRole())) {
+            return;
+        }
+
+        $view = $event->getTarget();
+        $vars = $view->vars();
+
+        /** @var \Omeka\Api\Representation\AbstractResourceEntityRepresentation[] $resources */
+        $resources = $vars->offsetGet('resources');
+        if (!$resources) {
+            return;
+        }
+
+        // Get the solr core configured for admin.
+        $solrCore = $this->getSolrCoreAdmin();
+        if (!$solrCore) {
+            return;
+        }
+
+        $ids = [];
+        foreach ($resources as $resource) {
+            $ids[] = $resource->id();
+        }
+
+        $vars->offsetSet('resourceName', $resource->resourceName());
+        $vars->offsetSet('ids', $ids);
+        $vars->offsetSet('solrCore', $solrCore);
+        echo $view->partial('common/solr-documents-link');
+    }
+
+    public function appendBrowseAfterAdmin(Event $event): void
+    {
+        /**
+         * @var \Omeka\Mvc\Status $status
+         */
+        $services = $this->getServiceLocator();
+        $status = $services->get('Omeka\Status');
+        if (!$status->isAdminRequest()) {
+            return;
+        }
+
+        /** @var \AdvancedSearch\Response $respoonse */
+        $view = $event->getTarget();
+        $response = $view->response;
+        $view->resources = $response->getResources();
+        $this->handleViewBrowseAfterAdmin($event);
+    }
+
+    /**
+     * Adapted:
+     * @see \SearchSolr\Module::getSearchConfigAdmin()
+     * @see \SearchSolr\Controller\Admin\CoreController::getSearchConfigAdmin()
+     */
+    protected function getSearchConfigAdmin(): ?SearchConfigRepresentation
+    {
+        /**
+         * @var \Omeka\Api\Manager $api
+         * @var \Common\Stdlib\EasyMeta $easyMeta
+         */
+        $services = $this->getServiceLocator();
+        $settings = $services->get('Omeka\Settings');
+
+        $searchConfig = $settings->get('advancedsearch_main_config');
+        if (!$searchConfig) {
+            return null;
+        }
+
+        $api = $services->get('Omeka\ApiManager');
+        try {
+            return $api->read('search_configs', [is_numeric($searchConfig) ? 'id' : 'slug' => $searchConfig])->getContent();
+        } catch (\Throwable $e) {
+            return null;
+        }
+    }
+
+    protected function getSolrCoreAdmin(): ?\SearchSolr\Api\Representation\SolrCoreRepresentation
+    {
+        $searchConfig = $this->getSearchConfigAdmin();
+        if (!$searchConfig) {
+            return null;
+        }
+
+        $engineAdapter = $searchConfig->engineAdapter();
+        return $engineAdapter instanceof \SearchSolr\EngineAdapter\Solarium
+            ? $engineAdapter->getSolrCore()
+            : null;
+    }
+
     /**
      * Find all search indexes related to a specific solr core.
      *
@@ -347,7 +744,7 @@ SQL;
         /** @var \AdvancedSearch\Api\Representation\SearchEngineRepresentation[] $searchEngines */
         $searchEngines = $api->search('search_engines', ['adapter' => 'solarium'])->getContent();
         foreach ($searchEngines as $searchEngine) {
-            if ($searchEngine->settingAdapter('solr_core_id') == $solrCoreId) {
+            if ($searchEngine->settingEngineAdapter('solr_core_id') == $solrCoreId) {
                 $result[$searchEngine->id()] = $searchEngine;
             }
         }
@@ -396,43 +793,46 @@ SQL;
 
         // Check if the internal index exists.
         $sqlSolrCoreId = <<<'SQL'
-SELECT `id`
-FROM `solr_core`
-ORDER BY `id` ASC
-SQL;
-        $solrCoreId = (int) $connection->fetchColumn($sqlSolrCoreId);
+            SELECT `id`
+            FROM `solr_core`
+            ORDER BY `id` ASC
+            SQL;
+        $solrCoreId = (int) $connection->fetchOne($sqlSolrCoreId);
         if ($solrCoreId) {
             return;
         }
 
-        // Set the default server id, used in some cases (shared core with Drupal).
+        // Set the default server id, used in some cases (shared
+        // core with Drupal).
         $settings = $services->get('Omeka\Settings');
-        $serverId = strtolower(substr(str_replace(['+', '/', '='], ['', '', ''], base64_encode(random_bytes(128))), 0, 6));
+        $serverId = strtolower(substr(strtr(base64_encode(random_bytes(128)), ['+' => '', '/' => '', '=' => '']), 0, 6));
         $settings->set('searchsolr_server_id', $serverId);
 
         // Install a default config.
         $sql = <<<'SQL'
-INSERT INTO `solr_core` (`name`, `settings`)
-VALUES (?, ?);
-SQL;
-        $solrCoreData = require __DIR__ . '/data/solr_cores/default.php';
+            INSERT INTO `solr_core` (`name`, `settings`)
+            VALUES (?, ?);
+            SQL;
+        $solrCoreData = require __DIR__ . '/data/configs/solr_core.default.php';
         $connection->executeStatement($sql, [
             $solrCoreData['o:name'],
             json_encode($solrCoreData['o:settings'], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE),
         ]);
-        $solrCoreId = (int) $connection->fetchColumn($sqlSolrCoreId);
+        $solrCoreId = (int) $connection->fetchOne($sqlSolrCoreId);
 
         // Install a default mapping.
         $sql = <<<'SQL'
-INSERT INTO `solr_map` (`solr_core_id`, `resource_name`, `field_name`, `source`, `pool`, `settings`)
-VALUES (?, ?, ?, ?, ?, ?);
-SQL;
+            INSERT INTO `solr_map` (`solr_core_id`, `resource_name`, `field_name`, `alias`, `source`, `pool`, `settings`)
+            VALUES (?, ?, ?, ?, ?, ?, ?);
+            SQL;
+        // $defaultMaps = require __DIR__ . '/config/default_mappings.php';
         $defaultMaps = require __DIR__ . '/config/default_mappings.php';
         foreach ($defaultMaps as $map) {
             $connection->executeStatement($sql, [
                 $solrCoreId,
                 $map['resource_name'],
                 $map['field_name'],
+                $map['alias'],
                 $map['source'],
                 json_encode($map['pool'], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE),
                 json_encode($map['settings'], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE),
@@ -441,11 +841,108 @@ SQL;
 
         $message = new \Omeka\Stdlib\Message(
             'The default core can be configured in the %1$ssearch manager%2$s.', // @translate
-            // Don't use the url helper, the route is not available during install.
+            // Don't use the url helper, the route is not available
+            // during install.
             sprintf('<a href="%s">', $urlHelper('admin') . '/search-manager/solr/core/' . $solrCoreId . '/edit'),
             '</a>'
         );
         $message->setEscapeHtml(false);
         $messenger->addSuccess($message);
+
+        // Create a default search engine using Solr adapter.
+        $searchEngineId = $this->createDefaultSearchEngine($connection, $solrCoreId, $messenger, $urlHelper);
+        if ($searchEngineId) {
+            // Create a default suggester for the search engine.
+            $this->createDefaultSuggester($connection, $searchEngineId, $messenger);
+        }
+    }
+
+    /**
+     * Create a default search engine using Solr adapter.
+     *
+     * @return int|null The search engine ID or null on failure.
+     */
+    protected function createDefaultSearchEngine(
+        \Doctrine\DBAL\Connection $connection,
+        int $solrCoreId,
+        $messenger,
+        $urlHelper
+    ): ?int {
+        // Check if a Solr search engine already exists.
+        $sqlSearchEngineId = <<<'SQL'
+            SELECT `id`
+            FROM `search_engine`
+            WHERE `adapter` = 'solarium'
+            ORDER BY `id` ASC
+            SQL;
+        $searchEngineId = (int) $connection->fetchOne($sqlSearchEngineId);
+        if ($searchEngineId) {
+            return $searchEngineId;
+        }
+
+        // Load default search engine config.
+        $searchEngineData = require __DIR__ . '/data/configs/search_engine.solr.php';
+        $searchEngineSettings = $searchEngineData['o:settings'];
+        $searchEngineSettings['engine_adapter']['solr_core_id'] = $solrCoreId;
+
+        $sql = <<<'SQL'
+            INSERT INTO `search_engine` (`name`, `adapter`, `settings`, `created`, `modified`)
+            VALUES (?, ?, ?, NOW(), NOW());
+            SQL;
+        $connection->executeStatement($sql, [
+            $searchEngineData['o:name'],
+            $searchEngineData['o:engine_adapter'],
+            json_encode($searchEngineSettings, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE),
+        ]);
+
+        $searchEngineId = (int) $connection->fetchOne($sqlSearchEngineId);
+
+        $message = new \Omeka\Stdlib\Message(
+            'A default Solr search engine has been created. Configure it in the %1$ssearch manager%2$s.', // @translate
+            sprintf('<a href="%s">', $urlHelper('admin') . '/search-manager/engine/' . $searchEngineId . '/edit'),
+            '</a>'
+        );
+        $message->setEscapeHtml(false);
+        $messenger->addSuccess($message);
+
+        return $searchEngineId;
+    }
+
+    /**
+     * Create a default suggester for the Solr search engine.
+     */
+    protected function createDefaultSuggester(
+        \Doctrine\DBAL\Connection $connection,
+        int $searchEngineId,
+        $messenger
+    ): void {
+        // Check if a suggester already exists for this engine.
+        $sqlSuggesterId = <<<'SQL'
+            SELECT `id`
+            FROM `search_suggester`
+            WHERE `engine_id` = ?
+            ORDER BY `id` ASC
+            SQL;
+        $suggesterId = (int) $connection->fetchOne($sqlSuggesterId, [$searchEngineId]);
+        if ($suggesterId) {
+            return;
+        }
+
+        // Load default suggester config.
+        $suggesterData = require __DIR__ . '/data/configs/search_suggester.solr.php';
+
+        $sql = <<<'SQL'
+            INSERT INTO `search_suggester` (`engine_id`, `name`, `settings`, `created`, `modified`)
+            VALUES (?, ?, ?, NOW(), NOW());
+            SQL;
+        $connection->executeStatement($sql, [
+            $searchEngineId,
+            $suggesterData['o:name'],
+            json_encode($suggesterData['o:settings'], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE),
+        ]);
+
+        $messenger->addSuccess(new \Omeka\Stdlib\Message(
+            'A default Solr suggester has been created.' // @translate
+        ));
     }
 }

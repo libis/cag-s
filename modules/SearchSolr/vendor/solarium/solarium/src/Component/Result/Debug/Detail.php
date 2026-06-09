@@ -87,7 +87,7 @@ class Detail implements \ArrayAccess
     /**
      * @param \Solarium\Component\Result\Debug\Detail[]|array $subDetails
      *
-     * @return self
+     * @return self Provides fluent interface
      */
     public function setSubDetails(array $subDetails): self
     {
@@ -123,7 +123,6 @@ class Detail implements \ArrayAccess
         return \in_array($offset, ['match', 'value', 'description']);
     }
 
-    #[\ReturnTypeWillChange]
     /**
      * ArrayAccess implementation.
      *
@@ -131,6 +130,7 @@ class Detail implements \ArrayAccess
      *
      * @return mixed
      */
+    #[\ReturnTypeWillChange]
     public function offsetGet($offset)
     {
         return $this->{$offset};
@@ -182,7 +182,7 @@ class Detail implements \ArrayAccess
     /**
      * {@inheritdoc}
      */
-    public function __toString()
+    public function __toString(): string
     {
         return $this->debugDump();
     }

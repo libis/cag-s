@@ -6,10 +6,9 @@ use Omeka\Api\Representation\ValueRepresentation;
 
 class Point extends AbstractValueFormatter
 {
-    public function getLabel(): string
-    {
-        return 'Point'; // @translate
-    }
+    protected $label = 'Point'; // @translate
+
+    protected $comment = 'Create a geographic point from data types geometry, geography and place (modules Data Type Geometry and Data Type Place)'; // @translate
 
     public function format($value): array
     {

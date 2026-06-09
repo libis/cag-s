@@ -2,7 +2,7 @@
 
 /*
  * Copyright BibLibre, 2016-2017
- * Copyright Daniel Berthereau, 2020-2023
+ * Copyright Daniel Berthereau, 2020-2026
  *
  * This software is governed by the CeCILL license under French law and abiding
  * by the rules of distribution of free software.  You can use, modify and/ or
@@ -32,10 +32,9 @@ namespace SearchSolr\ValueFormatter;
 
 class DateRange extends AbstractValueFormatter
 {
-    public function getLabel(): string
-    {
-        return 'Date range'; // @translate
-    }
+    protected $label = 'Date range'; // @translate
+
+    protected $comment = 'Date range from two dates separated with a "/".'; // @translate
 
     public function format($value): array
     {

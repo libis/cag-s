@@ -2,7 +2,7 @@
 
 /*
  * Copyright BibLibre, 2016
- * Copyright Daniel Berthereau, 2020-2023
+ * Copyright Daniel Berthereau, 2020-2026
  *
  * This software is governed by the CeCILL license under French law and abiding
  * by the rules of distribution of free software.  You can use, modify and/ or
@@ -41,6 +41,7 @@ class SolrCore extends AbstractEntity
 {
     /**
      * @var int
+     *
      * @Id
      * @Column(type="integer")
      * @GeneratedValue
@@ -49,6 +50,7 @@ class SolrCore extends AbstractEntity
 
     /**
      * @var string
+     *
      * @Column(
      *     type="string",
      *     length=190
@@ -58,12 +60,24 @@ class SolrCore extends AbstractEntity
 
     /**
      * @var array
+     *
      * @Column(
      *     type="json",
      *     nullable=false
      * )
      */
     protected $settings = [];
+
+    /**
+     * @var array|null
+     *
+     * @Column(
+     *     name="backup_maps",
+     *     type="json",
+     *     nullable=true
+     * )
+     */
+    protected $backupMaps;
 
     /**
      * @OneToMany(
@@ -74,6 +88,7 @@ class SolrCore extends AbstractEntity
      *     indexBy="id"
      * )
      * @OrderBy({
+     *     "resourceName" = "ASC",
      *     "source" = "ASC"
      * })
      */
@@ -114,5 +129,16 @@ class SolrCore extends AbstractEntity
     public function getMaps(): Collection
     {
         return $this->maps;
+    }
+
+    public function setBackupMaps(?array $backupMaps): self
+    {
+        $this->backupMaps = $backupMaps;
+        return $this;
+    }
+
+    public function getBackupMaps(): ?array
+    {
+        return $this->backupMaps;
     }
 }

@@ -2,8 +2,8 @@
 
 namespace AdvancedSearch\View\Helper;
 
+use Exception;
 use Laminas\View\Helper\AbstractHelper;
-use Omeka\Stdlib\Message;
 
 class SearchingUrl extends AbstractHelper
 {
@@ -21,21 +21,26 @@ class SearchingUrl extends AbstractHelper
 
         // Check if the current site/admin has a search form.
         $isSiteRequest = $view->status()->isSiteRequest();
-        $searchMainPage = $isSiteRequest
+
+        $searchMainConfig = $isSiteRequest
             ? $view->siteSetting('advancedsearch_main_config')
             : $view->setting('advancedsearch_main_config');
-        if ($searchMainPage) {
-            /** @var \AdvancedSearch\Api\Representation\SearchConfigRepresentation $searchConfig */
-            $searchConfig = $view->api()->searchOne('search_configs', ['id' => $searchMainPage])->getContent();
-            if ($searchConfig) {
-                try {
-                    return $view->url('search-page-' . $searchConfig->id(), [], $options, true);
-                } catch (\Exception $e) {
-                    $this->getView()->logger()->err(
-                        'Search engine {name} (#{search_config_id}) is not available.', // @translate
-                        ['name' => $searchConfig->name(), 'search_config_id' => $searchConfig->id()]
-                    );
-                }
+
+        if ($searchMainConfig) {
+            try {
+                /** @var \AdvancedSearch\Api\Representation\SearchConfigRepresentation $searchConfig */
+                $searchConfig = $view->api()->read('search_configs', [is_numeric($searchMainConfig) ? 'id' : 'slug' => $searchMainConfig])->getContent();
+                return $view->url('search-page-' . $searchConfig->slug(), [], $options, true);
+            } catch (\Omeka\Api\Exception\NotFoundException $e) {
+                $view->logger()->err(
+                    'Search engine #{search_config} does not exist.', // @translate
+                    ['search_config' => $searchMainConfig]
+                );
+            } catch (Exception $e) {
+                $view->logger()->err(
+                    'Search engine {name} (#{search_config}) is not available.', // @translate
+                    ['name' => $searchConfig->name(), 'search_config' => $searchConfig->id()]
+                );
             }
         }
 

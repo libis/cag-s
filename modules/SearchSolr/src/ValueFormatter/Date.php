@@ -8,44 +8,72 @@ use Omeka\Api\Representation\ValueRepresentation;
 
 class Date extends AbstractValueFormatter
 {
-    public function getLabel(): string
-    {
-        return 'Date'; // @translate
-    }
+    protected $label = 'Date'; // @translate
+
+    protected $comment = 'Check and get date and time'; // @translate
 
     public function format($value): array
     {
+        // Ideally, value should be an interval or a timestamp. Else, check the string early.
+
         if ($value instanceof ValueRepresentation && $value->type() === 'numeric:interval') {
             $value = strtok((string) $value, '/');
         } elseif (!($value instanceof ValueRepresentation && $value->type() === 'numeric:timestamp')) {
+            // A value that is not managed as timestamp.
             $value = trim((string) $value);
             // Manage the common case where the date is uncertain and wrapped
             // with "[]" or "()" or "{}". Wrap may be on part of the date only.
-            $value = str_replace(['[', ']', '(', ')', '{', '}'], '', $value);
+            $value = strtr($value, ['[' => '', ']' => '', '(' => '', ')' => '', '{' => '', '}' => '', '?' => '', '!' => '']);
             $matches = [];
             // Check for another format than ISO 8601 (partial or full) too.
             // Of course, garbage in, garbage out.
             if (preg_match('~^([+-]?)(\d+)$~', $value, $matches)) {
                 // A single year, but without leading 0. "0" is not a year.
                 $val = (int) $matches[2];
-                return $val ? [str_replace('+', '', $matches[1]) . sprintf('%04s', $val)] : [];
+                if (!$val) {
+                    return [];
+                }
+                // The year should be at least 4 digits for next process.
+                $value = strtr($matches[1], ['+' => '']) . sprintf('%04s', $val);
+                $value = $this->fillFullDate($value);
             } elseif (strpos($value, '/') > 0) {
-                // Manage "1914/1918". To be improved to avoid American dates.
-                $value = trim(strtok($value, '/'));
+                // Manage "1914/1918" via a recursive call.
+                // To be improved to avoid American dates.
+                return $this->format($value = trim(strtok($value, '/')));
             } elseif (preg_match('~^([+-]?\d+)\s*-\s*-?\s*(?:[\D]+|[+-]?\s*\d\d\d+|[a-zA-Z].*)\s*\??$~', $value, $matches)) {
                 // Manage the common but unstandard case "1914-1918" that should
                 // not be the allowed "1918-11".
-                $value = $matches[1];
-            } elseif (preg_match('~^[+-]?\d\d\d\d-\d\d-\d\d \d\d:\d\d:\d\d$~', $value, $matches)) {
+                $value = $this->fillFullDate($matches[1]);
+            } elseif (preg_match('~^[+-]?\d+-\d\d-\d\d[ T]\d\d:\d\d:\d\dZ?$~', $value, $matches)) {
                 // This is a mysql date.
-                $value = str_replace(' ', 'T', $value);
-            } elseif (preg_match('~^([+-]?)(\d\d\d\d:\d\d:\d\d) (\d\d:\d\d:\d\d)$~', $value, $matches)) {
+                $value = strtr($value, ' ', 'T');
+            } elseif (preg_match('~^([+-]?)(\d+:\d\d:\d\d) (\d\d:\d\d:\d\d)Z?$~', $value, $matches)) {
                 // This is an old exif date.
-                $value = $matches[1] . str_replace(':', '-', $matches[2]) . 'T' . $matches[3];
+                $value = $matches[1] . strtr($matches[2], [':' => '-']) . 'T' . $matches[3];
             }
+        } elseif (!(is_scalar($value) || (is_object($value) && method_exists($value, '__toString')))) {
+            return [];
         }
-        $result = (string) $this->getDateTimeFromValue((string) $value);
-        return strlen($result) ? [$result] : [];
+
+        $value = (string) $this->getDateTimeFromValue((string) $value);
+
+        return strlen($value)
+            ? [$value]
+            : [];
+    }
+
+    /**
+     * Fill the full date time from a partial checked string.
+     */
+    protected function fillFullDate(string $value): string
+    {
+        // If the time is not set, it will be the current date or time.
+        if (substr($value, 0, 1) === '-' && strlen($value) < 21) {
+            $value = substr_replace('-0000-01-01T00:00:00Z', $value, 0, strlen($value) - 21);
+        } elseif (substr($value, 0, 1) !== '-' && strlen($value) < 20) {
+            $value = substr_replace('0000-01-01T00:00:00Z', $value, 0, strlen($value) - 20);
+        }
+        return (new DateTime($value, new DateTimeZone('UTC')))->format('Y-m-d\TH:i:s\Z');
     }
 
     /**
@@ -61,7 +89,7 @@ class Date extends AbstractValueFormatter
     {
         $yearMin = -292277022656;
         $yearMax = 292277026595;
-        $patternIso8601 = '^(?<date>(?<year>-?\d{4,})(-(?<month>\d{1,2}))?(-(?<day>\d{1,2}))?)(?<time>(T(?<hour>\d{1,2}))?(:(?<minute>\d{1,2}))?(:(?<second>\d{1,2}))?)(?<offset>((?<offset_hour>[+-]\d{1,2})?(:(?<offset_minute>\d{1,2}))?)|Z?)$';
+        $patternIso8601 = '^(?<date>(?<year>-?\d{4,})(-(?<month>\d{1,2}))?(-(?<day>\d{1,2}))?)(?<time>(T(?<hour>\d{1,2}))?(:(?<minute>\d{1,2}))?(:(?<second>\d{1,2}))?)(?<offset>((?<offset_hour>[+-]\d{1,2})?(:?(?<offset_minute>\d{1,2}))?)|Z?)$';
         static $dateTimes = [];
 
         $value = ltrim($value, '+');

@@ -29,10 +29,8 @@ for [Debian 10/11].
 Installation
 ------------
 
-This module uses the module [Advanced Search] that should be installed first
-(version 3.3.6 or above).
-
-The optional module [Generic] may be installed first.
+This module uses the modules [Advanced Search] (version 3.3.6 or above) and
+[Common], that should be installed first.
 
 The module uses an external library, [Solarium], so use the release zip to
 install it, or use and init the source.
@@ -53,23 +51,32 @@ the module to `SearchSolr`, go to the root of the module, and run:
 composer install --no-dev
 ```
 
+* For test
+
+The module includes a comprehensive test suite with unit and functional tests.
+Run them from the root of Omeka:
+
+```sh
+vendor/bin/phpunit -c modules/SearchSolr/phpunit.xml --testdox
+```
+
 ### Requirements
 
-- Module [Advanced Search] version 3.4.6.20 or above.
+- Module [Advanced Search] version 3.5.46 or above.
 - A running Apache Solr. Compatibility:
   - version 3.5.15 of this module has been tested with Solr 5 and Solr 6.
   - version 3.5.15.2 of this module has been tested with Solr 6 to Solr 8.
   - version 3.5.32.3 of this module has been tested with Solr 8 and above.
   - version 3.5.39.4 of this module has been tested with Solr 9 and above.
+  - version 3.5.47 of this module has been tested with Solr 9 and above.
 
 Quick start
 -----------
 
 1. Installation
     1. Install Solr (see a Solr tutorial or documentation, or [below for Debian]).
-    2. Create a Solr index (= "core", "collection", or "node") (see [below "Solr management"]),
-       that is named `omeka` or whatever you want (use it for the path in
-       point 2.1).
+    2. Create a Solr index (= "core") (see [below "Solr management"]), that is
+       named `omeka` or whatever you want (use it for the path in point 2.1).
     3. Install the module [Advanced Search].
     4. Install this module [Advanced Search adapter for Solr].
 2. In Solr admin
@@ -84,7 +91,12 @@ Quick start
     1. Create an index
         1. Add a new index with name `Default` or whatever you want, using the
         Solr adapter and the `default` core.
-        2. Launch the indexation by clicking on the "reindex" button (two arrows
+        2. Default mapping between omeka metadata and solr indexes are added
+        automatically, but it possible to add new ones for various purposes
+        (general search, specific search, display, link, facets, sort, etc.).
+        This is the main point to understand: it is recommended to index a value
+        multiple times.
+        3. Launch the indexation by clicking on the "reindex" button (two arrows
         forming a circle).
     2. Create a page
         1. Add a page with name `Default` or whatever you want, a path to access
@@ -97,9 +109,9 @@ Quick start
         aren’t. Some of them allow to prepare search indexes and some other
         facets or sort indexes. Some of them may be used for all uses.
         For example, you can use `dcterms_type_ss`, `dcterms_subject_ss`,
-        `resource_class_s`, `item_set_dcterms_title_ss`, `dcterms_creator_ss`,
+        `resource_class_s`, `item_set_title_ss`, `dcterms_creator_ss`,
         `dcterms_date_s`, `dcterms_spatial_ss`, `dcterms_language_ss` and
-        `dcterms_rights_ss` as facets, and `Relevance`, `dcterms_title_s`,
+        `dcterms_rights_ss` as facets, and `relevance`, `dcterms_title_s`,
         `dcterms_date_s`, and `dcterms_creator_s` as sort fields. See below more
         information about [indexation in Solr].
         3. Edit the name of the label that will be used for facets and sort
@@ -125,8 +137,8 @@ the results as grid or as list. The page can be themed.
 
 **IMPORTANT**
 
-The Search module does not replace the default search page neither the default
-search engine. So the theme should be updated.
+For now, the Search module does not replace the default search page neither the
+default search engine. So the theme should be updated.
 
 Don’t forget to check Search facets and sort fields of each search page each
 time that the list of core fields is modified: the fields that don’t exist
@@ -151,6 +163,45 @@ specific property, or a group of metadata, with pattern, and even combine them
 together with various joiners (and, or, not, near…). In that particular case, it
 will be required to create multiple indexes in details.
 
+### Type of indices
+
+The indices of the default Solr configuration work with names and suffixes
+matching type:
+
+- "_t" and "_txt" are used to store words individually.
+- "_s" and "_ss" are used to store whole string.
+- "_i" and "_is" are used to store integers.
+- "_dt" and "_dts" are used to store dates.
+- "_ancestor_path" and "_descendent_path" are used to store structures.
+
+The choice of type depends on what you need for a metadata:
+
+- For global searches, indices should be "_t" and "_txt".
+- For simple filters and facets, indices should be a multiple whole values
+  ("_ss", "_is" and "_dts").
+- For sort, it should be a single value ("_s", "_i" and "_dt").
+- For bounce links, it should be multiple values formatted for linking ("_link_ss").
+- For main autocompletion ("à-la-google search"), "_txt" should be used. There
+  is a default field "suggest_txt" that groups "_txt" fields.
+- For autocompletion in filters, you may use "_ss" for short values and "_txt"
+  for long ones. Here, autocompletion in filters is generally useless for long
+  values.
+- "_ancestor_path" and "_descendent_path" are generally used for search and
+  facets, generally with a thesaurus, a classification scheme, or geographic
+  names.
+
+Other indices are available for complex cases. Solr should be configured first
+if more types are needed.
+
+### Bounce links
+
+When indexing linked resources (local resource with another item, for example
+when [Custom Vocab] is used, or external resource with an uri, for example for
+values from module [Value Suggest]), it is recommended to add an index formatted
+as "link" for it and to name it as `*_link_ss` to simplify the browsing with
+bounce links. Automatic bounce links can be added via the module [Advanced Resource Template]
+and manual bounce links can be added manually via the theme or pages.
+
 ### Indexation with third party
 
 The module makes possible to store multiple indexes in the same core. This is an
@@ -164,6 +215,9 @@ With Drupal, the default fields to set in the core form are: `bs_is_public`,
 `ss_resource_name`, `im_site_id`, and `index_id`. The mapping should be created
 according to the config inside Drupal, for example: `ss_title` and `tm_body`.
 The sort fields are automatically managed.
+
+To get the default template for new core, copy or rename the mapping
+"config/default_mapping_drupal.php" in "config/default_mappings.php".
 
 
 Solr install <a id="solr-install"></a>
@@ -185,32 +239,36 @@ cd /tmp
 # Check if java is installed with the good version.
 java -version
 # If not installed, install it (uncomment line below).
-#sudo apt install default-jdk-headless
+#sudo apt install default-jre-headless
 # On CentOs:
-#sudo dnf install java-17-openjdk-headless
+#sudo dnf install java-17-openjre-headless
 # On CentOs, Solr requires lsof:
 #sudo dnf install lsof
 # If the certificate is obsolete on Apache server, add --no-check-certificate.
 # To install another version, just change all next version numbers below.
-wget https://dlcdn.apache.org/solr/solr/9.1.1/solr-9.1.1.tgz
+wget https://dlcdn.apache.org/solr/solr/9.7.0/solr-9.7.0.tgz
 # Extract the install script
-tar zxvf solr-9.1.1.tgz solr-9.1.1/bin/install_solr_service.sh --strip-components=2
+tar zxvf solr-9.7.0.tgz solr-9.7.0/bin/install_solr_service.sh --strip-components=2
 # Launch the install script (by default, Solr is installed in /opt; check other options if needed)
-sudo bash ./install_solr_service.sh solr-9.1.1.tgz
+sudo bash ./install_solr_service.sh solr-9.7.0.tgz
 # Add a symlink to simplify management (if not automatically created).
-#sudo ln -s /opt/solr-9.1.1 /opt/solr
+#sudo ln -s /opt/solr-9.7.0 /opt/solr
 # In some cases, there may be a issue on start due to missing log directory:
 #sudo mkdir /opt/solr/server/logs && sudo chown solr:adm /opt/solr/server/logs && sudo systemctl restart solr
 # Clean the sources.
-rm solr-9.1.1.tgz
+rm solr-9.7.0.tgz
 rm install_solr_service.sh
 ```
 
-If not protected by a firewall or a proxy, you will access to solr admin page at
-http://example.org:8983/solr. See below to create a ssh tunnel to access it when
-protected.
+If not protected by a firewall or a proxy or a complex environment, you will
+access to solr admin page at http://example.org:8983/solr. See below to create a
+ssh tunnel to access it when protected.
+
+Anyway, you don't need to access to the Solr user interface to use it with Omeka.
 
 ### Integration in the system
+
+#### Services
 
 Solr may be managed as a system service:
 
@@ -220,7 +278,7 @@ sudo systemctl stop solr
 sudo systemctl start solr
 ```
 
-The result may be more complete with direct command:
+The result may be more complete with direct commands:
 
 ```sh
 sudo su - solr -c "/opt/solr/bin/solr status"
@@ -230,7 +288,8 @@ sudo su - solr -c "/opt/solr/bin/solr restart"
 ```
 
 **Warning**: Solr is a java application, so it is very slow to start, stop and
-restart. You may need to wait until five minutes between two commands.
+restart on some environments. You may need to wait until five minutes between
+two commands stop/start/restart.
 
 In case of an issue, you may stop the service or kill it. In that case, you need
 to kill java too.
@@ -240,12 +299,15 @@ Solr is automatically launched and available in your browser at [http://localhos
 Solr is available via command line too at `/opt/solr/bin/solr`. If solr created
 a group "solr", you may need to add yourself to it (`sudo usermod -aG solr myName`).
 
-If the service is not available after the install, and ***only*** if the service
-is not available as init or service, you can create the file
-"/etc/systemd/system/solr.service", that may need to be adapted for the
-distribution, here for Debian 11 or CentOs 8 (see the [solr service gist]).
+#### Creation of the service in old versions of Solr or distributions
 
-It is usually useless if the file "/etc/init.d/solr" exists, since systemctl
+For some old versions of Solr on some linux distributionsn, the service may not
+be  available after the install. In that case, and ***only*** if the service is
+not available as init or service, you can create the file "/etc/systemd/system/solr.service",
+that may need to be adapted for the distribution, here for Debian 11 or CentOs 8
+(see the [solr service gist]).
+
+It is usually useless when the file "/etc/init.d/solr" exists, because systemctl
 manages old services managed as init. Note that the default init doesn't manage
 restart on failure. The following service sets it at 30 seconds. Furthermore,
 the logs are simpler with systemd.
@@ -302,6 +364,8 @@ LimitNPROC=1048576
 WantedBy=multi-user.target
 ```
 
+### Checks
+
 ***Warning*** Avoid to start solr by the cli and by systemctl, else you will
 find issues, port already used, nodes lost, etc.
 To check if there is only one server running in standalone mode:
@@ -311,10 +375,22 @@ sudo /opt/solr/bin/solr status
 sudo systemctl status solr
 ```
 
-Even if it seems that solr is stopped, wait a least 5 minutes between command
-start/restart/stop to let more time to java to stop really.
+Even if it seems that solr is stopped, wait at least 5 minutes between command
+start/restart/stop to let more time to java to stop really. There is a warning,
+but not in all cases:
 
-### Protect access to Solr (Solr 8 and above)
+```
+Sending stop command to Solr running on port 8983...
+waiting up to 180 seconds to allow Jetty process 2917645 to stop gracefully.
+```
+
+You may check if there is a remaining pid file `/var/solr/solr-8983.pid`, and
+remove if it is still present while solr is stopped.
+
+### Protect access to Solr when needed (Solr 8 and above)
+
+The protection of solr may not be required when there are other security
+measures. So you may skip all this point.
 
 For documentation before Solr 8, see the readme of this module until version 3.5.31.3.
 
@@ -328,8 +404,8 @@ admin board. Search on your not-favorite search engine to add such a protection.
 
 As indicated in [Solr Basic Authentication], add the file `security.json`,
 with the user roles you want (here the user `omeka_admin` is added as `admin`).
-The directory where to place the file is usually `/opt/solr/server/solr`, but it
-may be `/var/solr/data/` in some cases. The good one ("solr home") is visible
+The directory where to place the file is usually `/var/solr/data/`, but it may
+be `/opt/solr/server/solr` in some cases. The good one ("solr home") is visible
 when you check the status:
 
 ```sh
@@ -374,10 +450,10 @@ Don't forget to change rights of this file, then to restart Solr and wait some
 minutes for java:
 
 ```sh
-# if the directory is "/opt/solr/server/solr":
-sudo chown -R solr:solr /opt/solr/server/solr && sudo chmod -R g+r,o-rw /opt/solr/server/solr
-# or if it is "/var/solr/data":
+# if the directory is "/var/solr/data":
 sudo chown -R solr:solr /var/solr/data && sudo chmod -R g+r,o-rw /var/solr/data
+# else if the directory is "/opt/solr/server/solr":
+#sudo chown -R solr:solr /opt/solr/server/solr && sudo chmod -R g+r,o-rw /opt/solr/server/solr
 # If an issue occurs, it may be a previous java session not closed. Check it with:
 #sudo /opt/solr/bin/solr status
 # And try to stop it:
@@ -531,11 +607,11 @@ cd /tmp
 # Check if java 17 recommended (or 11).
 java -version
 #sudo apt install default-jre
-wget https://archive.apache.org/dist/lucene/solr/9.1.1/solr-9.1.1.tgz
-tar zxvf solr-9.1.1.tgz solr-9.1.1/bin/install_solr_service.sh --strip-components=2
+wget https://archive.apache.org/dist/lucene/solr/9.7.0/solr-9.7.0.tgz
+tar zxvf solr-9.7.0.tgz solr-9.7.0/bin/install_solr_service.sh --strip-components=2
 # The "-f" means "upgrade". The symlink /opt/solr is automatically updated.
-sudo bash ./install_solr_service.sh solr-9.1.1.tgz -f
-rm solr-9.1.1.tgz
+sudo bash ./install_solr_service.sh solr-9.7.0.tgz -f
+rm solr-9.7.0.tgz
 rm install_solr_service.sh
 # See below to upgrade the indexes.
 ```
@@ -556,7 +632,7 @@ sudo rm /etc/rc.d/init.d/solr
 sudo rm /etc/default/solr.in.sh
 sudo rm /etc/security/limits.d/200-solr.conf
 sudo rm -r /opt/solr
-sudo rm -r /opt/solr-9.1.1
+sudo rm -r /opt/solr-9.7.0
 # Only if you want to remove your indexes. WARNING: this will remove your configs too.
 # sudo rm -r /var/solr
 sudo deluser --remove-home solr
@@ -587,18 +663,32 @@ redirected to the real server.
 
 ### Create a config
 
-At least one index ("core", "collection", or "node")  should be created in Solr
-to be used with Omeka. The simpler is to create one via the command line to
-avoid permissions issues.
+At least one index ("core")  should be created in Solr to be used with Omeka.
+The simpler is to create one via the UI or via the command line.
+
+Most of the times, when installed manually, there are permissions issues and
+strange issues during the creation of the core. So if you want to create the
+core quicker without any issue, use the web interface or see below the "manual way".
+
+#### Automatic way
+
+The automatic way often creates issues. So see the official [full documentation].
+
+Important: don't mix old commands (`sudo su - solr -c "/opt/solr/bin/solr`) and
+curl ones. Check first if there are not multiple solr running (with or without
+sudo, with or without systemctl). See above to check them.
+
+In the following commands, skip the user and password when there is no such a
+security.
 
 ```sh
-# Via command ("old school"):
-sudo su - solr -c "/opt/solr/bin/solr create -c omeka -n data_driven_schema_configs"
-# Via api:
+# Via api, with a user:
 curl --user 'omeka_admin:MySecretPassPhrase' 'http://localhost:8983/solr/admin/cores?action=CREATE&name=omeka&instanceDir=omeka&schema=data_driven_schema_configs'
+# Via command ("old school"):
+#sudo su - solr -c "/opt/solr/bin/solr create -c omeka -n data_driven_schema_configs"
 ```
 
-Here, the user `solr` launches the command `solr` to create the core `omeka`,
+Here, the user `omeka_admin` launches the command `solr` to create the core `omeka`,
 and it will use the default config schema `data_driven_schema_configs`. This
 schema simplifies the management of fields, because they are guessed from the
 data.
@@ -618,8 +708,7 @@ Possible issues (always **restart solr after trying next commands**):
   ```sh
   sudo cp -r /opt/solr/server/solr/configsets/_default/conf /opt/solr/server/resources/
   ```
-- There may be remaining files after a failed creation, so run first `sudo su - solr -c "/opt/solr/bin/solr delete -c omeka"`
-  or `curl --user 'omeka_admin:MySecretPassPhrase' 'http://localhost:8983/solr/admin/cores?action=UNLOAD&core=omeka&deleteIndex=true&deleteDataDir=true&deleteInstanceDir=true'`
+- There may be remaining files after a failed creation, so run first `curl --user 'omeka_admin:MySecretPassPhrase' 'http://localhost:8983/solr/admin/cores?action=UNLOAD&core=omeka&deleteIndex=true&deleteDataDir=true&deleteInstanceDir=true'` (or `sudo su - solr -c "/opt/solr/bin/solr delete -c omeka"`)
 - There may be a remaining lock file after a kill, so check in solr home: `sudo rm /var/solr/solr-8983.pid`.
 - Check if it is a service issue: try to run it as a user the `sudo -u solr /opt/solr/bin/solr start`.
 - Check if it is a rights issue: try to run it as a user the `sudo /opt/solr/bin/solr start -force`.
@@ -627,24 +716,47 @@ Possible issues (always **restart solr after trying next commands**):
   from the data directory, then create the core with the command above, then
   restore the file "security.json".
 
+#### Manual way
+
 If nothing is working (you don't see the core inside the front-end), create the
 core yourself with these commands, here with a core named `omeka` (here when
 the solr home directory is /var/solr):
 
+First, you need to stop or kill all solr and associated java processes.
+
 ```sh
-# HERE, for solr home as "/var/solr/data". Change it if it is "/opt/solr/server/solr"
-sudo cp -r /opt/solr/server/solr/configsets/_default /var/solr/data
 # The destination directory inside data is the name of the core, here "omeka".
 # It should be updated in following command if the name is different.
 CORE="omeka"
+
+# Here, for solr home as "/var/solr/data". Change it if it is "/opt/solr/server/solr"
+# Clean previous failed installations.
+sudo rm -rf /var/solr/data/$CORE
+
+# Either:
+# When installed with the tarball or from the official docker images.
+sudo cp -r /opt/solr/server/solr/configsets/_default /var/solr/data
+# When installed with the debian package.
+sudo cp -r /usr/share/solr/server/solr/configsets/_default /var/solr/data
+
+# Rename and create the main file.
 sudo mv /var/solr/data/_default /var/solr/data/$CORE
+
+# Fill the core.properties (only the last line is really needed)
 sudo touch /var/solr/data/$CORE/core.properties
 sudo bash -c "echo '#Written by CorePropertiesLocator' >> /var/solr/data/$CORE/core.properties"
-sudo bash -c "echo 'Mon Jul 31 00:00:00 UTC 2023' >> /var/solr/data/$CORE/core.properties"
+sudo bash -c "echo '#Mon Jan 06 00:00:00 UTC 2025' >> /var/solr/data/$CORE/core.properties"
 sudo bash -c "echo 'name=$CORE' >> /var/solr/data/$CORE/core.properties"
 sudo chmod ug+rw /var/solr/data/$CORE/core.properties
+
+# Set the permissions
 sudo chown -R solr:solr /var/solr
+
+# Restart
 sudo systemctl restart solr
+
+# Test (no error output)
+curl "http://localhost:8983/solr/$CORE/select?omitHeader=true&wt=json&json.nl=flat&q=%2A%3A%2A&start=0&rows=10"
 ```
 
 The file `core.properties` above should contain the name of the core, that
@@ -652,9 +764,11 @@ should be the name of the directory:
 
 ```ini
 #Written by CorePropertiesLocator
-#Mon Jul 31 00:00:00 UTC 2023
+#Mon Jan 06 00:00:00 UTC 2025
 name=omeka
 ```
+
+It is possible to create the authentication file `security.json` manually too.
 
 ### Querying Solr
 
@@ -662,6 +776,9 @@ You can check if the Solr core is working via the user interface or via such a
 command:
 
 ```sh
+# When there is no security:
+curl 'http://localhost:8983/solr/omeka/select?q=*:*&indent=on&wt=json'
+# When there is a user with a password:
 curl --user 'omeka_admin:MySecretPassPhrase' 'http://localhost:8983/solr/omeka/select?q=*:*&indent=on&wt=json'
 ```
 
@@ -674,10 +791,89 @@ It can be done via the user interface (in the menu Schema). Or you can use this
 command, as indicated in the [reference guide to copy a field]:
 
 ```sh
+# Without user/password, with "omeka" as name of the core.
+curl -X POST --data-binary '{"add-copy-field":{"source":"*","dest":"_text_" }}' "http://localhost:8983/solr/omeka/schema"
+# Or with a user/password.
 curl --user 'omeka_admin:MySecretPassPhrase' -X POST --data-binary '{"add-copy-field":{"source":"*","dest":"_text_" }}' 'http://localhost:8983/solr/omeka/schema'
 ```
 
-Of course, you need to reindex resources after modifying schema.
+The response status should be 0. Of course, you need to reindex resources after
+this modification of the schema.
+
+### Suggester (autocompletion)
+
+For best performance, use a single suggester on a dedicated stored field rather
+than one suggester per field. Using more than some dozens of index for the same
+suggesters causes lock conflicts, slow builds in Solr and slow suggestions.
+
+The mode "auto" uses all indexes: even if it is filtered to avoid duplicate, it
+may be too much in some database with many various properties.
+
+The recommended approach is copy all the wanted index with `_txt` in a single
+field, like the one used for the main search.
+
+### Optimizing search for prefix matching (Google-like search)
+
+By default, Solr uses the `text_general` field type for `_text_`, which only
+matches exact tokens. For example, searching "napo" won't find "Napoléon".
+
+To enable prefix matching and provide a "Google-like" search experience, you can
+configure the `_text_` field with an optimized analyzer. This can be done via:
+
+1. Omeka interface: In Solr admin, click "Optimize search" button (appears after
+  `_text_` is created).
+
+2. Command line: Run these commands to create an optimized field type and apply
+  it to `_text_`:
+
+```sh
+# Create text_search field type with EdgeNGram for prefix matching
+curl -X POST -H "Content-Type: application/json" \
+  "http://localhost:8983/solr/omeka/schema" \
+  -d '{
+    "add-field-type": {
+      "name": "text_search",
+      "class": "solr.TextField",
+      "indexAnalyzer": {
+        "tokenizer": {"class": "solr.StandardTokenizerFactory"},
+        "filters": [
+          {"class": "solr.LowerCaseFilterFactory"},
+          {"class": "solr.ASCIIFoldingFilterFactory", "preserveOriginal": true},
+          {"class": "solr.EdgeNGramFilterFactory", "minGramSize": 2, "maxGramSize": 20}
+        ]
+      },
+      "queryAnalyzer": {
+        "tokenizer": {"class": "solr.StandardTokenizerFactory"},
+        "filters": [
+          {"class": "solr.LowerCaseFilterFactory"},
+          {"class": "solr.ASCIIFoldingFilterFactory", "preserveOriginal": true}
+        ]
+      }
+    }
+  }'
+
+# Apply text_search type to _text_ field
+curl -X POST -H "Content-Type: application/json" \
+  "http://localhost:8983/solr/omeka/schema" \
+  -d '{"replace-field": {"name": "_text_", "type": "text_search", "multiValued": true, "indexed": true, "stored": false}}'
+```
+
+This configuration provides:
+
+| Filter        | Function                                                |
+|---------------|---------------------------------------------------------|
+| LowerCase     | Case-insensitive search ("napoléon" = "Napoléon")       |
+| ASCIIFolding  | Accent-insensitive search ("napoleon" finds "napoléon") |
+| EdgeNGram     | Prefix matching ("napo" finds "napoléon")          |
+
+The `preserveOriginal: true` option on ASCIIFolding ensures that both accented
+and non-accented versions can be found.
+
+This configuration is multilingual and works for all languages (French, English,
+Greek, Arabic, etc.) without requiring language-specific stemmers.
+
+After applying this configuration, you should reindex all resources for the
+changes to take effect.
 
 ### Upgrade a config
 
@@ -726,20 +922,30 @@ sudo systemctl restart solr
 TODO
 ----
 
-- [ ] Create an automatic mode from the resource templates or from Dublin Core.
-- [ ] Create automatically multiple index by property (text, string, lower, latin, for query, order, facets, etc.).
+- [ ] Align all: Create an automatic mode from the resource templates or from Dublin Core.
+- [ ] Align all: Create automatically multiple index by property (text, string, lower, latin, for query, order, facets, etc.).
+- [ ] Align all: Create a a small form (with/without diacritic, with/without lang, from template or not, etc.).
+- [ ] Align all: Use the option "value_languages".
+- [ ] For advanced filters: search in _txt for contains since _ss does not supports diacritics.
 - [ ] Use the search engine directly without search api.
 - [ ] Check lazy loading and use serialized php as response format for [performance](https://solarium.readthedocs.io/en/stable/solarium-concepts/).
 - [x] Speed up indexation (in module Search too) via direct sql? BulkExport? Queue?
 - [ ] Replace class Schema and Field with solarium ones.
 - [ ] Rewrite and simplify querier to better handle solarium.
 - [ ] Improve management of value resources and uris, and other special types.
-- [ ] Add a separate indexer for medias and pages.
-- [ ] Add a redirect from item-set/browse to search page, like item-set/show.
+- [x] Add a separate indexer for medias.
+- [ ] Add a separate indexer for pages.
+- [x] Add a redirect from item-set/browse to search page, like item-set/show.
 - [ ] Remove the fix for indexation of string "0", replaced by "00".
 - [ ] Include all new advanced filters mode for properties.
-- [ ] Manage indexation of item sets when module Item Set Tree is used.
+- [x] Manage indexation of item sets when module Item Set Tree is used.
 - [ ] Facet range: determine start/end/gap automatically or add option.
+- [ ] Rename "resource_name" by "resource_type" anywhere.
+- [x] Fix indexing of boolean values with "*_b".
+- [ ] Find a better way to exclude fields than searching in other ones (not supported by solr anyway).
+- [ ] Disable `buildOnCommit` for suggester during batch reindexation to avoid costly intermediate rebuilds, then re-enable and rebuild once at the end.
+- [ ] Create suggest_txt to regroup all suggesters into a single index for performance.
+- [ ] Create a single suggest field approach automatically.
 
 
 Warning
@@ -797,14 +1003,14 @@ Copyright
 See commits for full list of contributors.
 
 * Copyright BibLibre, 2016-2017 (see [BibLibre])
-* Copyright Daniel Berthereau, 2017-2023 (see [Daniel-KM])
+* Copyright Daniel Berthereau, 2017-2026 (see [Daniel-KM])
 * Copyright Paul Sarrassat, 2018
 
-This module is a full replacement of the module [Solr], a deprecated fork of the
-module [Solr by BibLibre]. This later was built for the [digital library Explore]
-of [Université Paris Sciences & Lettres]. The fork [Advanced Search adapter for Solr]
-is built for the future [digital library Manioc] of [Université des Antilles et de la Guyane],
-currently managed with [Greenstone].
+This module is a full replacement of the module [Solr], a deprecated fork based
+on the version 0.4 of the module [Solr by BibLibre]. This later was built for
+the [digital library Explore] of [Université Paris Sciences & Lettres]. The fork
+[Advanced Search adapter for Solr] is built for the [digital library Manioc] of
+[Université des Antilles et de la Guyane], formerly managed with [Greenstone].
 
 
 [Advanced Search adapter for Solr]: https://gitlab.com/Daniel-KM/Omeka-S-module-SearchSolr
@@ -816,8 +1022,8 @@ currently managed with [Greenstone].
 [Apache Solr]: https://solr.apache.org/
 [Solarium]: https://www.solarium-project.org/
 [full documentation]: https://solarium.readthedocs.io/en/stable/
-[Generic]: https://gitlab.com/Daniel-KM/Omeka-S-module-Generic
-[Installing a module]: https://omeka.org/s/docs/user-manual/modules/#installing-modules
+[Common]: https://gitlab.com/Daniel-KM/Omeka-S-module-Common
+[installing a module]: https://omeka.org/s/docs/user-manual/modules/#installing-modules
 [documentation]: https://solr.apache.org/guide/the-dismax-query-parser.html#q-alt-parameter
 [this issue on omeka.org]: https://forum.omeka.org/t/search-field-doesnt-return-results-with-solr/11650/12
 [Solr PHP extension]: https://pecl.php.net/package/solr
@@ -825,6 +1031,9 @@ currently managed with [Greenstone].
 [below]: #manage-solr
 [below for Debian]: #solr-install
 [below "Solr management"]: #solr-management
+[Custom Vocab]: https://github.com/Omeka-S-modules/CustomVocab
+[Value Suggest]: https://github.com/Omeka-S-modules/ValueSuggest
+[Advanced Resource Template]: https://gitlab.com/Daniel-KM/Omeka-S-module-AdvancedResourceTemplate
 [Solr system requirements]: https://solr.apache.org/guide/solr/latest/deployment-guide/system-requirements.html
 [official guide for production]: https://solr.apache.org/guide/solr/latest/deployment-guide/taking-solr-to-production.html
 [http://localhost:8983]: http://localhost:8983

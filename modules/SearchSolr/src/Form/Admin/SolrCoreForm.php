@@ -2,7 +2,7 @@
 
 /*
  * Copyright BibLibre, 2016
- * Copyright Daniel Berthereau 2020-2023
+ * Copyright Daniel Berthereau, 2020-2026
  *
  * This software is governed by the CeCILL license under French law and abiding
  * by the rules of distribution of free software.  You can use, modify and/ or
@@ -38,6 +38,9 @@ class SolrCoreForm extends Form
 {
     public function init(): void
     {
+        $this
+            ->setAttribute('id', 'solr-core-form');
+
         $this
             ->add([
                 'name' => 'o:name',
@@ -255,8 +258,37 @@ class SolrCoreForm extends Form
         */
 
         $querySettingsFieldset = new Fieldset('query');
+        $querySettingsFieldset
+            ->setLabel('Query settings'); // @translate
         $settingsFieldset
             ->add($querySettingsFieldset);
+
+        // Add informational message about the copy field _text_.
+        $copyFieldInfo = $this->getOption('copy_field_info');
+        if ($copyFieldInfo) {
+            if ($copyFieldInfo['has_copy_field']) {
+                $fieldType = $copyFieldInfo['field_type'] ?? 'unknown';
+                $isOptimized = $fieldType === 'text_search';
+                $info = $isOptimized
+                    ? 'The catchall copy field "_text_" is present and uses the type "text_search" (Google-like search with EdgeNGram). To change it, use the "Search configuration" section in the core show page.' // @translate
+                    : 'The catchall copy field "_text_" is present and uses a standard type (strict matching). To change it, use the "Search configuration" section in the core show page.'; // @translate
+            } else {
+                $info = 'The catchall copy field "_text_" is not configured. Without it, full-text search will not return results. Use the "Create _text_" button in the core show page to create it.'; // @translate
+            }
+            $querySettingsFieldset
+                ->add([
+                    'name' => 'copy_field_info',
+                    'type' => Element\Hidden::class,
+                    'options' => [
+                        'label' => 'Catchall copy field', // @translate
+                        'info' => $info,
+                    ],
+                    'attributes' => [
+                        'id' => 'copy_field_info',
+                        'value' => '',
+                    ],
+                ]);
+        }
 
         $querySettingsFieldset
             ->add([
@@ -264,8 +296,10 @@ class SolrCoreForm extends Form
                 'type' => Element\Text::class,
                 'options' => [
                     'label' => 'Minimum match (or/and)', // @translate
-                    'info' => 'Integer "1" means "OR", "100%" means "AND". Complex expressions are possible, like "3<80%".
-If empty, the config of the solr core (solrconfig.xml) will be used.', // @translate
+                    'info' => <<<'TXT'
+                        Integer "1" means "OR", "100%" means "AND". Complex expressions are possible, like "3<80%".
+                        If empty, the config of the solr core (solrconfig.xml) will be used.
+                        TXT, // @translate
                     'documentation' => 'https://solr.apache.org/guide/the-dismax-query-parser.html#mm-minimum-should-match-parameter',
                 ],
                 'attributes' => [
@@ -279,8 +313,10 @@ If empty, the config of the solr core (solrconfig.xml) will be used.', // @trans
                 'type' => Element\Number::class,
                 'options' => [
                     'label' => 'Tie breaker', // @translate
-                    'info' => 'Increase score according to the number of matched fields.
-If empty, the config of the solr core (solrconfig.xml) will be used.', // @translate
+                    'info' => <<<'TXT'
+                        Increase score according to the number of matched fields.
+                        If empty, the config of the solr core (solrconfig.xml) will be used.
+                        TXT, // @translate
                     'documentation' => 'https://solr.apache.org/guide/the-dismax-query-parser.html#the-tie-tie-breaker-parameter',
                 ],
                 'attributes' => [
@@ -311,6 +347,10 @@ If empty, the config of the solr core (solrconfig.xml) will be used.', // @trans
         $settingFilters
             ->get('query')
             ->add([
+                'name' => 'copy_field_info',
+                'required' => false,
+            ])
+            ->add([
                 'name' => 'tie_breaker',
                 'required' => false,
             ]);
@@ -327,6 +367,7 @@ If empty, the config of the solr core (solrconfig.xml) will be used.', // @trans
             ->add([
                 'name' => 'http_request_type',
                 'required' => false,
-            ]);
+            ])
+        ;
     }
 }

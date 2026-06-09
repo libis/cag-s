@@ -4,52 +4,19 @@
 
 namespace Composer\Autoload;
 
-class ComposerStaticInitca33302eb3a9db936d60390f771a9cdb
+class ComposerStaticInitb64c4c20c9771f2e529839c84dbba098
 {
-    public static $files = array (
-        'c9d07b32a2e02bc0fc582d4f0c1b56cc' => __DIR__ . '/..' . '/laminas/laminas-servicemanager/src/autoload.php',
-    );
-
     public static $prefixLengthsPsr4 = array (
-        'P' => 
+        'A' =>
         array (
-            'Psr\\Container\\' => 14,
-        ),
-        'O' => 
-        array (
-            'OomphInc\\ComposerInstallersExtender\\' => 36,
-        ),
-        'L' => 
-        array (
-            'Laminas\\ServiceManager\\' => 23,
-            'Laminas\\Feed\\' => 13,
-        ),
-        'C' => 
-        array (
-            'Composer\\Installers\\' => 20,
+            'AdvancedSearch\\' => 15,
         ),
     );
 
     public static $prefixDirsPsr4 = array (
-        'Psr\\Container\\' => 
+        'AdvancedSearch\\' =>
         array (
-            0 => __DIR__ . '/..' . '/psr/container/src',
-        ),
-        'OomphInc\\ComposerInstallersExtender\\' => 
-        array (
-            0 => __DIR__ . '/..' . '/oomphinc/composer-installers-extender/src',
-        ),
-        'Laminas\\ServiceManager\\' => 
-        array (
-            0 => __DIR__ . '/..' . '/laminas/laminas-servicemanager/src',
-        ),
-        'Laminas\\Feed\\' => 
-        array (
-            0 => __DIR__ . '/..' . '/laminas/laminas-feed/src',
-        ),
-        'Composer\\Installers\\' => 
-        array (
-            0 => __DIR__ . '/..' . '/composer/installers/src/Composer/Installers',
+            0 => __DIR__ . '/../..' . '/src',
         ),
     );
 
@@ -60,9 +27,9 @@ class ComposerStaticInitca33302eb3a9db936d60390f771a9cdb
     public static function getInitializer(ClassLoader $loader)
     {
         return \Closure::bind(function () use ($loader) {
-            $loader->prefixLengthsPsr4 = ComposerStaticInitca33302eb3a9db936d60390f771a9cdb::$prefixLengthsPsr4;
-            $loader->prefixDirsPsr4 = ComposerStaticInitca33302eb3a9db936d60390f771a9cdb::$prefixDirsPsr4;
-            $loader->classMap = ComposerStaticInitca33302eb3a9db936d60390f771a9cdb::$classMap;
+            $loader->prefixLengthsPsr4 = ComposerStaticInitb64c4c20c9771f2e529839c84dbba098::$prefixLengthsPsr4;
+            $loader->prefixDirsPsr4 = ComposerStaticInitb64c4c20c9771f2e529839c84dbba098::$prefixDirsPsr4;
+            $loader->classMap = ComposerStaticInitb64c4c20c9771f2e529839c84dbba098::$classMap;
 
         }, null, ClassLoader::class);
     }

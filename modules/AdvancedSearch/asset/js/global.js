@@ -95,7 +95,6 @@ var Omeka = {
             parent.children('span.selector-child-count').text(count);
         });
         if (filter == '') {
-            selector.find('li.selector-parent').removeClass('show');
             $('.filter-match').removeClass('filter-match');
         }
         selector.find('span.selector-total-count').text(totalCount);
@@ -232,7 +231,8 @@ var Omeka = {
                 tableRowCell.text(tableRowValue);
             });
             selectorRow.addClass('added');
-            table.append(tableRow).removeClass('empty').trigger('appendRow');
+            table.children('.resource-rows').append(tableRow);
+            table.removeClass('empty').trigger('appendRow');
             updateResourceCount(id);
         }
 
@@ -240,6 +240,10 @@ var Omeka = {
             var resource = selector.find('[data-resource-id="' + id + '"]');
             var resourceParent = resource.parents('.selector-parent');
             var childCount = resourceParent.find('.selector-child-count').first();
+            // Update the count only when the resource exists in the selector.
+            if (!selector.find(`.selector-child[data-resource-id="${id}"]`).length) {
+                return;
+            }
             if (resource.hasClass('added')) {
                 var newTotalCount = parseInt(selectorCount.text()) - 1;
                 var newChildCount = parseInt(childCount.text()) - 1;
@@ -322,14 +326,26 @@ var Omeka = {
     // Disable query text according to query type.
     disableQueryTextInput: function() {
         var queryType = $(this);
+        var val = queryType.val();
         var queryText = queryType.siblings('.query-text');
-        queryText.prop('disabled',
-            ['ex', 'nex', 'exs', 'nexs', 'exm', 'nexm', 'resq', 'nresq', 'lex', 'nlex', 'lkq', 'nlkq', 'dtp', 'ndtp', 'tp', 'ntp', 'tpl', 'ntpl', 'tpr', 'ntpr', 'tpu', 'ntpu'].includes(queryType.val()));
+        var queryTextDataType = queryType.siblings('.query-text-data-type');
+        var isDataType = ['dt', 'ndt', 'dtp', 'ndtp'].includes(val);
+        var isNoText = ['ex', 'nex', 'exs', 'nexs', 'exm', 'nexm', 'resq', 'nresq', 'lex', 'nlex', 'lkq', 'nlkq', 'tp', 'ntp', 'tpl', 'ntpl', 'tpr', 'ntpr', 'tpu', 'ntpu', 'dup', 'ndup', 'dupl', 'ndupl', 'dupt', 'ndupt', 'duptl', 'nduptl', 'dupv', 'ndupv', 'dupvl', 'ndupvl', 'dupvt', 'ndupvt', 'dupvtl', 'ndupvtl', 'dupr', 'ndupr', 'duprl', 'nduprl', 'duprt', 'nduprt', 'duprtl', 'nduprtl', 'dupu', 'ndupu', 'dupul', 'ndupul', 'duput', 'nduput', 'duputl', 'nduputl'].includes(val);
+        if (isDataType) {
+            queryText.prop('disabled', true).val('');
+            queryTextDataType.prop('disabled', false).show();
+        } else if (isNoText) {
+            queryText.prop('disabled', true);
+            queryTextDataType.prop('disabled', true).hide();
+        } else {
+            queryText.prop('disabled', false);
+            queryTextDataType.prop('disabled', true).hide();
+        }
     },
 
     // Clean the search query of empty or otherwise unneeded inputs.
     cleanSearchQuery: function(form) {
-        form.find(":input[name]:not([name='']):not(:disabled)").each(function(index) {
+        form.find(':input[name]:not([name=""]):not(:disabled)').each(function(index) {
             const input = $(this);
             const inputName = input.attr('name');
             const inputValue = input.val();
@@ -354,7 +370,7 @@ var Omeka = {
                     const match = inputName.match(/property\[(\d+)\]\[text\]/);
                     if (match) {
                         const propertyType = form.find(`[name="property[${match[1]}][type]"]`);
-                        if (['eq', 'neq', 'in', 'nin', 'res', 'nres', 'resq', 'nresq', 'list', 'nlist', 'sw', 'nsw', 'ew', 'new', 'near', 'nnear', 'lres', 'nlres', 'lkq', 'nlkq', 'dtp', 'ndtp', 'tp', 'ntp', 'gt', 'gte', 'lte', 'lt']
+                        if (['eq', 'neq', 'in', 'nin', 'sw', 'nsw', 'ew', 'new', 'near', 'nnear', 'ma', 'nma', 'lt', 'lte', 'gte', 'gt', '<', '≤', '≥', '>', 'yreq', 'nyreq', 'yrlt', 'yrlte', 'yrgte', 'yrgt', 'list', 'nlist', 'res', 'nres', 'resq', 'nresq', 'lres', 'nlres', 'lkq', 'nlkq', 'dt', 'ndt', 'dtp', 'ndtp', 'tp', 'ntp']
                             .includes(propertyType.val())
                         ) {
                             form.find(`[name="property[${match[1]}][joiner]"]`).prop('name', '');
@@ -383,10 +399,10 @@ $(document).ready(function() {
             var toggle = $(this);
             toggle.toggleClass('collapse').toggleClass('expand');
             if (toggle.hasClass('expand')) {
-                toggle.attr('aria-label', Omeka.jsTranslate('Expand')).attr('title', Omeka.jsTranslate('Expand'));
+                toggle.attr('aria-label', Omeka.jsTranslate('Expand')).attr('title', Omeka.jsTranslate('Expand')).attr('aria-expanded', 'false');
                 toggle.trigger('o:collapsed');
             } else {
-                toggle.attr('aria-label', Omeka.jsTranslate('Collapse')).attr('title', Omeka.jsTranslate('Collapse'));
+                toggle.attr('aria-label', Omeka.jsTranslate('Collapse')).attr('title', Omeka.jsTranslate('Collapse')).attr('aria-expanded', 'true');
                 toggle.trigger('o:expanded');
             }
         });

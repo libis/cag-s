@@ -7,6 +7,16 @@ use Laminas\ServiceManager\ServiceLocatorInterface;
 abstract class AbstractValueFormatter implements ValueFormatterInterface
 {
     /**
+     * @var string
+     */
+    protected $label;
+
+    /**
+     * @var string|null
+     */
+    protected $comment = null;
+
+    /**
      * @var \Laminas\ServiceManager\ServiceLocatorInterface
      */
     protected $services;
@@ -15,6 +25,16 @@ abstract class AbstractValueFormatter implements ValueFormatterInterface
      * @var array
      */
     protected $settings = [];
+
+    public function getLabel(): string
+    {
+        return $this->label;
+    }
+
+    public function getComment(): ?string
+    {
+        return $this->comment;
+    }
 
     /**
      * Set the service locator.
@@ -29,5 +49,449 @@ abstract class AbstractValueFormatter implements ValueFormatterInterface
     {
         $this->settings = $settings;
         return $this;
+    }
+
+    public function preFormat($value): array
+    {
+        if ($value === '' || $value === [] || $value === null) {
+            return [];
+        }
+
+        $result = [];
+
+        $parts = empty($this->settings['parts']) ? ['full'] : $this->settings['parts'];
+
+        // Keep only scalar or ValueRepresentation.
+
+        foreach ($parts as $part) switch ($part) {
+            default:
+            case 'full':
+                if (is_object($value)) {
+                    // Full means all possible values.
+                    if ($value instanceof \Omeka\Api\Representation\ValueRepresentation) {
+                        $v = $value->value();
+                        $result['full_1'] = is_bool($v) ? ($v ? '1' : '0') : trim((string) $v);
+                        $v = trim((string) $value->uri());
+                        if ($v !== '') {
+                            $result['full_2'] = $v;
+                        }
+                        $vr = $value->valueResource();
+                        if ($vr) {
+                            $result['full_3'] = $vr->displayTitle();
+                        }
+                    } elseif ($value instanceof \Omeka\Api\Representation\AssetRepresentation) {
+                        $result['value'] = trim((string) $value->altText());
+                        $result['uri'] = trim((string) $value->assetUrl());
+                    } elseif (method_exists('__toString', $value)) {
+                        $result['string'] = trim((string) $value);
+                    }
+                } elseif (is_bool($value)) {
+                    $result['bool'] = $value ? '1' : "0";
+                } elseif (is_scalar($value)) {
+                    $result['string'] = trim((string) $value);
+                }
+                break;
+
+            case 'main':
+                if ($value instanceof \Omeka\Api\Representation\ValueRepresentation) {
+                    $v = $value->value();
+                    $v = is_bool($v) ? ($v ? '1' : '0') : trim((string) $v);
+                    if ($v === '') {
+                        $vr = $value->valueResource();
+                        $result['main'] = $vr
+                            ? trim((string) $vr->displayTitle())
+                            : trim((string) $value->uri());
+                    } else {
+                        $result['main'] = $v;
+                    }
+                } elseif ($value instanceof \Omeka\Api\Representation\AssetRepresentation) {
+                    $result['main'] = trim((string) $value->altText());
+                } elseif (is_object($value) && method_exists('__toString', $value)) {
+                    $result['string'] = trim((string) $value);
+                } elseif (is_bool($value)) {
+                    $result['main'] = $value ? '1' : "0";
+                } elseif (is_scalar($value)) {
+                    $result['main'] = trim((string) $value);
+                }
+                break;
+
+            case 'value':
+                if ($value instanceof \Omeka\Api\Representation\ValueRepresentation) {
+                    $v = $value->value();
+                    $result['value'] = is_bool($v) ? ($v ? '1' : '0') : trim((string) $v);
+                } elseif ($value instanceof \Omeka\Api\Representation\AssetRepresentation) {
+                    $result['value'] = trim((string) $value->altText());
+                }
+                break;
+
+            case 'uri':
+                if ($value instanceof \Omeka\Api\Representation\ValueRepresentation) {
+                    $result['uri'] = trim((string) $value->uri());
+                } elseif ($value instanceof \Omeka\Api\Representation\AssetRepresentation) {
+                    $result['uri'] = trim((string) $value->assetUrl());
+                }
+                break;
+
+            case 'vrid':
+                if ($value instanceof \Omeka\Api\Representation\ValueRepresentation) {
+                    $v = $value->valueResource();
+                    if ($v) {
+                        $result['vrid'] = $v->id();
+                    }
+                } elseif ($value instanceof \Omeka\Api\Representation\AssetRepresentation) {
+                    // TODO Get the list of all resources ids with this asset.
+                }
+                break;
+
+            case 'id':
+                if ($value instanceof \Omeka\Api\Representation\ValueRepresentation) {
+                    $result['id'] = $value->resource()->id();
+                } elseif ($value instanceof \Omeka\Api\Representation\AssetRepresentation) {
+                    $result['id'] = $value->id();
+                }
+                break;
+
+            case 'link':
+                if ($value instanceof \Omeka\Api\Representation\ValueRepresentation) {
+                    $vr = $value->valueResource();
+                    if ($vr) {
+                        $result['link'] = (string) $vr->id();
+                    } elseif ($v = trim((string) $value->uri())) {
+                        $result['link'] = $v;
+                    } else {
+                        $result['link'] = trim((string) $value->value());
+                    }
+                }
+                break;
+
+            case 'html':
+                if ($value instanceof \Omeka\Api\Representation\ValueRepresentation) {
+                    $result['html'] = trim((string) $value->asHtml());
+                }
+                break;
+        }
+
+        return array_values(array_filter($result, fn ($v) => $v !== '' && $v !== [] && $v !== null));
+    }
+
+    abstract public function format($value): array;
+
+    public function postFormat($value): array
+    {
+        if ($value === '' || $value === [] || $value === null) {
+            return [];
+        }
+
+        $normalizations = $this->settings['normalization'] ?? [];
+
+        if (is_bool($value)) {
+            $value = (int) $value;
+        }
+
+        if (in_array('html_escaped', $normalizations)) {
+            // New default for php 8.1.
+            // @link https://forum.omeka.org/t/solr-text-field-length/13430
+            $value = htmlspecialchars((string) $value, ENT_QUOTES | ENT_SUBSTITUTE | ENT_HTML401);
+        }
+
+        if (in_array('strip_tags', $normalizations)) {
+            $value = strip_tags((string) $value);
+        }
+
+        if (in_array('lowercase', $normalizations)) {
+            $value = mb_strtolower((string) $value);
+        }
+
+        if (in_array('uppercase', $normalizations)) {
+            $value = mb_strtoupper((string) $value);
+        }
+
+        if (in_array('ucfirst', $normalizations)) {
+            $value = mb_ucfirst((string) $value);
+        }
+
+        if (in_array('remove_diacritics', $normalizations)) {
+            if (extension_loaded('intl')) {
+                static $transliterator;
+                $transliterator ??= \Transliterator::createFromRules(':: NFD; :: [:Nonspacing Mark:] Remove; :: NFC;');
+                $value = $transliterator->transliterate((string) $value);
+            } elseif (extension_loaded('iconv')) {
+                $value = iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', (string) $value);
+            }
+        }
+
+        if (in_array('alphanumeric', $normalizations)) {
+            // Remove space recursively.
+            $value = str_replace('  ', ' ', preg_replace('~[^\p{L}\p{N}-]++~u', ' ', (string) $value));
+        }
+
+        if (in_array('alphabetic', $normalizations)) {
+            // Remove space recursively.
+            $value = str_replace('  ', ' ', preg_replace('~[^\p{L}\p{N}-]++~u', ' ', (string) $value));
+            // Remove digits.
+            $value = preg_replace('~\p{N}+~u', '', (string) $value);
+        }
+
+        if (in_array('max_length', $normalizations)) {
+            $maxLength = !empty($this->settings['max_length'])
+                ? (int) $this->settings['max_length']
+                : 0;
+            if ($maxLength) {
+                $value = mb_substr((string) $value, 0, $maxLength);
+            }
+        }
+
+        if (in_array('truncate', $normalizations)) {
+            $rawSeparators = $this->settings['truncate_at'] ?? '';
+            if (strlen($rawSeparators)) {
+                $separators = array_filter(
+                    array_map('trim', explode('|', $rawSeparators)),
+                    'strlen'
+                );
+                if ($separators) {
+                    $str = (string) $value;
+                    $pos = strlen($str);
+                    foreach ($separators as $sep) {
+                        $p = strpos($str, $sep);
+                        if ($p !== false && $p < $pos) {
+                            $pos = $p;
+                        }
+                    }
+                    $value = trim(substr($str, 0, $pos));
+                }
+            }
+        }
+
+        if (in_array('integer', $normalizations)) {
+            $value = (int) $value;
+        }
+
+        if (in_array('year', $normalizations)) {
+            $value = $this->extractYear((string) $value);
+        }
+
+        // Year-month as a packed integer YYYYMM (e.g. 197504 for April
+        // 1975). Supports negative years via the sign of the year:
+        // -450004 for April, year -4500.
+        if (in_array('year_month', $normalizations)) {
+            $parts = $this->extractYearMonth((string) $value);
+            if ($parts === null) {
+                $value = null;
+            } else {
+                [$year, $month] = $parts;
+                $value = $year >= 0
+                    ? $year * 100 + $month
+                    : $year * 100 - $month;
+            }
+        }
+
+        // Rounded year buckets. Input may be a signed integer (from
+        // EdtfYear formatter), an ISO date string, or any value
+        // starting with a year. Rounding uses floor division so that
+        // BCE years group toward the older end (e.g. -1975 → century
+        // -2000, decade -1980).
+        if (in_array('decade', $normalizations)) {
+            $year = $this->extractYear((string) $value);
+            $value = $year === null
+                ? null
+                : (int) floor($year / 10) * 10;
+        }
+        if (in_array('century', $normalizations)) {
+            $year = $this->extractYear((string) $value);
+            $value = $year === null
+                ? null
+                : (int) floor($year / 100) * 100;
+        }
+        if (in_array('millennium', $normalizations)) {
+            $year = $this->extractYear((string) $value);
+            $value = $year === null
+                ? null
+                : (int) floor($year / 1000) * 1000;
+        }
+
+        if (in_array('table', $normalizations)) {
+            $value = $this->formatTable($value);
+        }
+
+        if ($value === '' || $value === [] || $value === null) {
+            return [];
+        }
+
+        return is_array($value) ? $value : [$value];
+    }
+
+    public function finalizeFormat(array $values): array
+    {
+        $values = array_filter($values, fn ($v) => $v !== '' && $v !== [] && $v !== null);
+        if (!$values) {
+            return [];
+        }
+
+        $usePath = !empty($this->settings['finalization']['path']);
+        if ($usePath) {
+            // Check for the default separator
+            $logger = $this->services->get('Omeka\Logger');
+            foreach ($values as &$value) {
+                if (mb_strpos($value, '/') !== false) {
+                    $logger->warn(
+                        'The value "{value}" cannot be included in a path. The "/" is replaced by " - ".', // @translate
+                        ['value' => $value]
+                    );
+                    $value = trim(strtr($value, ['/' => ' - ']));
+                }
+            }
+            unset($value);
+            $values = [implode('/', $values)];
+        }
+
+        // FIXME Indexation of string "0" breaks Solr, so currently replaced by "00".
+        foreach ($values as &$value) {
+            if ($value === '0') {
+                $value = '00';
+            }
+        }
+        unset($value);
+
+        // Don't use array_unique early, because objects may not be stringable.
+        $values = array_values(array_unique($values));
+
+        // Aggregate the array of values to a single scalar. Used for interval
+        // bound fields (min / max) on multivalued sources, e.g. value
+        // annotations holding several dates: keep only the smallest start and
+        // the largest end on the document.
+        $aggregate = $this->settings['aggregate'] ?? null;
+        if ($aggregate === 'min' || $aggregate === 'max') {
+            $numerics = array_values(array_filter(
+                $values,
+                fn ($v) => is_numeric($v)
+            ));
+            if ($numerics) {
+                return [(string) ($aggregate === 'min' ? min($numerics) : max($numerics))];
+            }
+            // Lexicographic fallback for non-numeric values.
+            sort($values);
+            return [$aggregate === 'min' ? reset($values) : end($values)];
+        }
+
+        return $values;
+    }
+
+    public function formatTable($value): array
+    {
+        /** @var \Table\Api\Representation\TableRepresentation[] $tables */
+        static $tables = [];
+
+        // TODO Add an option to force output when there is no table.
+
+        $value = trim(strip_tags((string) $value));
+        if (!strlen($value)) {
+            return [];
+        }
+
+        $tableId = $this->settings['table'] ?? null;
+        if (!$tableId) {
+            $this->services->get('Omeka\Logger')->err(
+                'For formatter "Table", the table is not set.' // @translate
+            );
+            return [$value];
+        }
+
+        // Check if table is available one time only.
+        if (!array_key_exists($tableId, $tables)) {
+            /** @var \Omeka\Api\Manager $api */
+            $api = $this->services->get('Omeka\ApiManager');
+            try {
+                $tables[$tableId] = $api->read('tables', is_numeric($tableId) ? ['id' => $tableId] : ['slug' => $tableId])->getContent();
+            } catch (\Throwable $e) {
+                $tables[$tableId] = null;
+                $this->services->get('Omeka\Logger')->err(
+                    'For formatter "Table", the table #{table_id} does not exist and values are not normalized.', // @translate
+                    ['table_id' => $tableId]
+                );
+                return [$value];
+            }
+        }
+        if (!$tables[$tableId]) {
+            return [$value];
+        }
+
+        $table = $tables[$tableId];
+
+        // Keep original order of values.
+
+        $mode = $this->settings['table_mode'] ?? 'label';
+        $indexOriginal = !empty($this->settings['table_index_original']);
+        $checkStrict = !empty($this->settings['table_check_strict']);
+
+        $result = [];
+        switch ($mode) {
+            default:
+            case 'label':
+                if ($indexOriginal) {
+                    $result[] = $value;
+                }
+                $result[] = $table->labelFromCode($value, $checkStrict) ?? '';
+                break;
+
+            case 'code':
+                if ($indexOriginal) {
+                    $result[] = $value;
+                }
+                $result[] = $table->codeFromLabel($value, $checkStrict) ?? '';
+                break;
+
+            case 'both':
+                if ($indexOriginal) {
+                    $result[] = $value;
+                }
+                $result[] = $table->labelFromCode($value, $checkStrict) ?? '';
+                $result[] = $table->codeFromLabel($value, $checkStrict) ?? '';
+                break;
+        }
+
+        return array_values(array_unique(array_filter($result, 'strlen')));
+    }
+
+    /**
+     * Extract a signed year from a string.
+     *
+     * Accepts plain integers ("1975", "-4500"), ISO 8601 dates
+     * ("1975-04-17T00:00:00Z", "-4500-01-01T00:00:00Z") and any
+     * value starting with an optional minus sign followed by digits.
+     * Returns null when no year can be extracted or the year is zero.
+     */
+    protected function extractYear(string $value): ?int
+    {
+        $value = trim($value);
+        if ($value === '') {
+            return null;
+        }
+        if (preg_match('/^(-?)(\d+)/', $value, $m)) {
+            $year = (int) ($m[1] . $m[2]);
+            return $year ?: null;
+        }
+        return null;
+    }
+
+    /**
+     * Extract [year, month] from a string.
+     *
+     * Accepts ISO 8601 dates and similar formats. Returns null when
+     * month cannot be determined.
+     */
+    protected function extractYearMonth(string $value): ?array
+    {
+        $value = trim($value);
+        if ($value === '') {
+            return null;
+        }
+        if (preg_match('/^(-?)(\d+)-(\d{1,2})/', $value, $m)) {
+            $year = (int) ($m[1] . $m[2]);
+            $month = (int) $m[3];
+            if ($month >= 1 && $month <= 12) {
+                return [$year, $month];
+            }
+        }
+        return null;
     }
 }

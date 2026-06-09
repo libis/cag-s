@@ -11,6 +11,8 @@ if (count($options) <= 1) return;
 ?>
 
 <div class="search-pagination-per-page<?= $asUrl ? ' as-url' : '' ?>">
-    
-    <?= $this->formSelect($select) ?>
+    <?= $this->formLabel($select) ?>
+    <div class="select-parent">
+        <?= $this->formSelect($select) ?>
+    </div>
 </div>

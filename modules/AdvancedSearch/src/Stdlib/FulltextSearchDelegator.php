@@ -3,12 +3,13 @@
 namespace AdvancedSearch\Stdlib;
 
 use Doctrine\DBAL\Connection;
+use Doctrine\ORM\EntityManager;
 use Omeka\Api\Adapter\AdapterInterface;
 use Omeka\Api\ResourceInterface;
-use PDO;
-use Omeka\Stdlib\FulltextSearch;
 use Omeka\Entity\Item;
 use Omeka\Entity\Media;
+use Omeka\Stdlib\FulltextSearch;
+use PDO;
 
 /**
  * This delegator is skipped in factory when the option is not set.
@@ -21,6 +22,16 @@ class FulltextSearchDelegator extends FulltextSearch
     protected $basePath;
 
     /**
+     * @var \Doctrine\DBAL\Connection
+     */
+    protected $conn;
+
+    /**
+     * @var \Doctrine\ORM\EntityManager
+     */
+    protected $em;
+
+    /**
      * @var \Omeka\Stdlib\FulltextSearch
      */
     protected $realFulltextSearch;
@@ -28,10 +39,13 @@ class FulltextSearchDelegator extends FulltextSearch
     public function __construct(
         FulltextSearch $realFulltextSearch,
         Connection $connection,
+        // For compatibility with Omeka S < v4.1.
+        EntityManager $em,
         string $basePath
     ) {
         $this->realFulltextSearch = $realFulltextSearch;
         $this->conn = $connection;
+        $this->em = $em;
         $this->basePath = $basePath;
     }
 
@@ -43,7 +57,7 @@ class FulltextSearchDelegator extends FulltextSearch
      * {@inheritDoc}
      * @see \Omeka\Stdlib\FulltextSearch::save()
      */
-    public function save(ResourceInterface $resource, AdapterInterface $adapter)
+    public function save(ResourceInterface $resource, AdapterInterface $adapter): void
     {
         $this->realFulltextSearch->save($resource, $adapter);
 
@@ -94,6 +108,12 @@ class FulltextSearchDelegator extends FulltextSearch
         $stmt->executeStatement();
     }
 
+    /**
+     * Copy:
+     * @see \AdvancedSearch\Stdlib\FulltextSearchDelegator::extractText()
+     * @see \SearchSolr\ValueExtractor\AbstractResourceEntityValueExtractor::extractContentAlto()
+     * @see \IiifServer\View\Helper\IiifAnnotationPageLine2::__invoke()
+     */
     protected function extractText(Media $media): string
     {
         if ($media->getMediaType() !== 'application/alto+xml') {
@@ -109,8 +129,8 @@ class FulltextSearchDelegator extends FulltextSearch
 
         try {
             $xmlContent = file_get_contents($filepath);
-            $xml = @simplexml_load_string($xmlContent);
-        } catch (\Exception $e) {
+            $xml = @simplexml_load_string($xmlContent, null, LIBXML_NONET);
+        } catch (\Throwable $e) {
             // No log.
             return '';
         }

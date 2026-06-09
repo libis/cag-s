@@ -2,7 +2,7 @@
 
 /*
  * Copyright BibLibre, 2017
- * Copyright Daniel Berthereau, 2020-2023
+ * Copyright Daniel Berthereau, 2020-2026
  *
  * This software is governed by the CeCILL license under French law and abiding
  * by the rules of distribution of free software.  You can use, modify and/ or
@@ -35,6 +35,11 @@ use Omeka\Api\Representation\AbstractEntityRepresentation;
 class SolrMapRepresentation extends AbstractEntityRepresentation
 {
     /**
+     * @var \SearchSolr\Entity\SolrMap
+     */
+    protected $resource;
+
+    /**
      * @var array
      */
     protected $pool;
@@ -47,9 +52,10 @@ class SolrMapRepresentation extends AbstractEntityRepresentation
     public function getJsonLd(): array
     {
         return [
-            'o:solr_core' => $this->solrCore()->getReference(),
+            'o:solr_core' => $this->solrCore()->getReference()->jsonSerialize(),
             'o:resource_name' => $this->resource->getResourceName(),
             'o:field_name' => $this->resource->getFieldName(),
+            'o:alias' => $this->resource->getAlias(),
             'o:source' => $this->resource->getSource(),
             'o:pool' => $this->resource->getPool(),
             'o:settings' => $this->resource->getSettings(),
@@ -62,8 +68,8 @@ class SolrMapRepresentation extends AbstractEntityRepresentation
         $params = [
             'action' => $action,
             'id' => $this->id(),
-            'resourceName' => $this->resourceName(),
-            'coreId' => $this->solrCore()->id(),
+            'core-id' => $this->solrCore()->id(),
+            'resource-name' => $this->resourceName(),
         ];
         $options = [
             'force_canonical' => $canonical,
@@ -87,6 +93,11 @@ class SolrMapRepresentation extends AbstractEntityRepresentation
         return $this->resource->getFieldName();
     }
 
+    public function alias(): ?string
+    {
+        return $this->resource->getAlias();
+    }
+
     public function source(): string
     {
         return $this->resource->getSource();
@@ -94,8 +105,8 @@ class SolrMapRepresentation extends AbstractEntityRepresentation
 
     public function pool(?string $name = null, $default = null)
     {
-        if (!is_null($this->pool)) {
-            return is_null($name) ? $this->pool : ($this->pool[$name] ?? $default);
+        if ($this->pool !== null) {
+            return $name === null ? $this->pool : ($this->pool[$name] ?? $default);
         }
 
         $this->pool = $this->resource->getPool();
@@ -106,6 +117,11 @@ class SolrMapRepresentation extends AbstractEntityRepresentation
         } else {
             $test = @preg_match($this->pool['filter_values'], '');
             if ($test === false) {
+                $this->getServiceLocator()->get('Omeka\Logger')
+                    ->err(
+                        'The regex for values in the solr map "{solr_map_id}" of search engine "{solr_core_name}" is invalid: {regex}', // @translate
+                        ['solr_map_id' => $this->id(), 'search_engine_name' => $this->solrCore()->name(), 'regex' => $this->pool['filter_values']]
+                    );
                 $this->pool['filter_values'] = null;
             }
         }
@@ -145,7 +161,7 @@ class SolrMapRepresentation extends AbstractEntityRepresentation
             $this->pool['filter_visibility'] = null;
         }
 
-        return is_null($name) ? $this->pool : ($this->pool[$name] ?? $default);
+        return $name === null ? $this->pool : ($this->pool[$name] ?? $default);
     }
 
     public function settings(): array
@@ -176,6 +192,7 @@ class SolrMapRepresentation extends AbstractEntityRepresentation
             [, $subField] = explode('/', $source, 2);
         }
         $subMap = new SolrSubMap($this->resource, $this->adapter);
+        // TODO Manage a sub pool something like dcterms:creator/skos:altLabel[xxx].
         return $subMap
             ->setSubSource($subField);
     }

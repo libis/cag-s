@@ -2,7 +2,7 @@
 
 /*
  * Copyright BibLibre, 2017
- * Copyright Daniel Berthereau, 2017-2023
+ * Copyright Daniel Berthereau, 2017-2026
  * Copyright Paul Sarrassat, 2018
  *
  * This software is governed by the CeCILL license under French law and abiding
@@ -32,209 +32,147 @@
 namespace SearchSolr\Controller\Admin;
 
 use AdvancedSearch\Api\Representation\SearchConfigRepresentation;
+use Common\Stdlib\PsrMessage;
 use Doctrine\DBAL\Connection;
 use Laminas\Mvc\Controller\AbstractActionController;
 use Laminas\View\Model\ViewModel;
 use Omeka\Form\ConfirmForm;
-use Omeka\Stdlib\Message;
+use SearchSolr\Api\Adapter\TraitArrayFilterRecursiveEmptyValue;
 use SearchSolr\Api\Representation\SolrMapRepresentation;
 use SearchSolr\Form\Admin\SolrMapForm;
 use SearchSolr\ValueExtractor\Manager as ValueExtractorManager;
 
 class MapController extends AbstractActionController
 {
+    use TraitArrayFilterRecursiveEmptyValue;
+    use TraitSolrController;
+
+    /**
+     * @var \Doctrine\DBAL\Connection
+     */
+    protected $connection;
+
     /**
      * @var ValueExtractorManager
      */
     protected $valueExtractorManager;
 
     /**
-     * @var Connection
+     * @var array
      */
-    protected $connection;
+    protected $solrLangs = [
+        'cjk' => 'cjk',
+        'zh' => 'cjk',
+        'zho' => 'cjk',
+        'chi' => 'cjk',
+        // 'ja' => 'cjk',
+        // 'jpn' => 'cjk',
+        // 'ko' => 'cjk',
+        // 'kor' => 'cjk',
+        'en' => 'en',
+        'eng' => 'en',
+        'ar' => 'ar',
+        'ara' => 'ar',
+        'bg' => 'bg',
+        'bul' => 'bg',
+        'ca' => 'ca',
+        'cat' => 'ca',
+        'cz' => 'cz',
+        'ces' => 'cz',
+        'cze' => 'cz',
+        'da' => 'da',
+        'dan' => 'da',
+        'de' => 'de',
+        'deu' => 'de',
+        'ger' => 'de',
+        'el' => 'el',
+        'ell' => 'el',
+        'gre' => 'el',
+        'es' => 'es',
+        'spa' => 'es',
+        'et' => 'et',
+        'est' => 'et',
+        'eu' => 'eu',
+        'eus' => 'eu',
+        'bas' => 'eu',
+        'fa' => 'fa',
+        'fas' => 'fa',
+        'per' => 'fa',
+        'fi' => 'fi',
+        'fin' => 'fi',
+        'fr' => 'fr',
+        'fra' => 'fr',
+        'fre' => 'fr',
+        'ga' => 'ga',
+        'gle' => 'ga',
+        'gl' => 'gl',
+        'glg' => 'gl',
+        'hi' => 'hi',
+        'hin' => 'hi',
+        'hu' => 'hu',
+        'hun' => 'hu',
+        'hy' => 'hy',
+        'hye' => 'hy',
+        'arm' => 'hy',
+        'id' => 'id',
+        'ind' => 'id',
+        'it' => 'it',
+        'ita' => 'it',
+        'ja' => 'ja',
+        'jpn' => 'ja',
+        'ko' => 'ko',
+        'kor' => 'ko',
+        'lv' => 'lv',
+        'lav' => 'lv',
+        'nl' => 'nl',
+        'nld' => 'nl',
+        'dut' => 'nl',
+        'no' => 'no',
+        'nor' => 'no',
+        'pt' => 'pt',
+        'por' => 'pt',
+        'ro' => 'ro',
+        'ron' => 'ro',
+        'rum' => 'ro',
+        'ru' => 'ru',
+        'rus' => 'ru',
+        'sv' => 'sv',
+        'swe' => 'sv',
+        'th' => 'th',
+        'tha' => 'th',
+        'tr' => 'tr',
+        'tur' => 'tr',
+    ];
 
-    public function setValueExtractorManager(ValueExtractorManager $valueExtractorManager): void
-    {
+    public function __construct(
+        Connection $connection,
+        ValueExtractorManager $valueExtractorManager
+    ) {
+        $this->connection = $connection;
         $this->valueExtractorManager = $valueExtractorManager;
     }
 
-    public function setConnection(Connection $connection): void
-    {
-        $this->connection = $connection;
-    }
-
-    public function browseAction()
-    {
-        /** @var \SearchSolr\Api\Representation\SolrCoreRepresentation $solrCore */
-        $solrCoreId = $this->params('coreId');
-        $solrCore = $this->api()->read('solr_cores', $solrCoreId)->getContent();
-
-        $missingMaps = $solrCore->missingRequiredMaps();
-        if ($missingMaps) {
-            $this->messenger()->addError(new Message(
-                'Some required fields are missing or not available in the core: "%s". Update the generic or the resource mappings.', // @translate
-                implode('", "', array_unique($missingMaps))
-            ));
-        }
-
-        $valueExtractors = [];
-        foreach ($this->valueExtractorManager->getRegisteredNames() as $name) {
-            $valueExtractors[$name] = $this->valueExtractorManager->get($name);
-        }
-
-        return new ViewModel([
-            'solrCore' => $solrCore,
-            'valueExtractors' => $valueExtractors,
-        ]);
-    }
-
+    /**
+     * Redirect to the core show page. The dedicated browse-resource
+     * page has been removed. Kept for backward compatibility of
+     * bookmarks and external links.
+     */
     public function browseResourceAction()
     {
-        $solrCoreId = $this->params('coreId');
-        $resourceName = $this->params('resourceName');
-
-        /** @var \SearchSolr\Api\Representation\SolrCoreRepresentation $solrCore */
-        $solrCore = $this->api()->read('solr_cores', $solrCoreId)->getContent();
-        $maps = $solrCore->mapsByResourceName($resourceName);
-
-        if (!$solrCore->schema()->checkDefaultField()) {
-            $this->messenger()->addWarning(new Message(
-                'This core seems to have no default field. If there are no results to a default query, add the copy field "_text_" with source "*".' // @translate
-            ));
-        }
-
-        return new ViewModel([
-            'solrCore' => $solrCore,
-            'resourceName' => $resourceName,
-            'maps' => $maps,
-        ]);
-    }
-
-    public function completeAction()
-    {
-        $solrCoreId = $this->params('coreId');
-        $resourceName = $this->params('resourceName');
-
-        $solrCore = $this->api()->read('solr_cores', $solrCoreId)->getContent();
-
-        $api = $this->api();
-
-        // Get all existing indexed properties.
-        /** @var \SearchSolr\Api\Representation\SolrMapRepresentation[] $maps */
-        $maps = $solrCore->mapsByResourceName($resourceName);
-        // Keep only the source.
-        $maps = array_map(function ($v) {
-            return $v->source();
-        }, $maps);
-
-        // Add all missing maps with a generic multivalued text field.
-        // Don't add a map if it exists at a upper level.
-        $result = [];
-        $properties = $api->search('properties')->getContent();
-        $usedPropertyIds = $this->listUsedPropertyIds($resourceName);
-        foreach ($properties as $property) {
-            // Skip property that are not used.
-            if (!in_array($property->id(), $usedPropertyIds)) {
-                continue;
-            }
-
-            $term = $property->term();
-            // Skip property that are already mapped.
-            if (in_array($term, $maps)) {
-                continue;
-            }
-
-            $data = [];
-            $data['o:solr_core']['o:id'] = $solrCoreId;
-            $data['o:resource_name'] = $resourceName;
-            $data['o:field_name'] = str_replace(':', '_', $term) . '_txt';
-            $data['o:source'] = $term;
-            $data['o:pool'] = [];
-            $data['o:settings'] = ['formatter' => '', 'label' => $property->label()];
-            $api->create('solr_maps', $data);
-
-            $result[] = $term;
-        }
-
-        if ($result) {
-            $this->messenger()->addSuccess(new Message('%d maps successfully created: "%s".', // @translate
-                count($result), implode('", "', $result)));
-            $this->messenger()->addWarning('Check all new maps and remove useless ones.'); // @translate
-            $this->messenger()->addWarning('Don’t forget to run the indexation of the core.'); // @translate
-        } else {
-            $this->messenger()->addWarning('No new maps added.'); // @translate
-        }
-
-        return $this->redirect()->toRoute('admin/search/solr/core-id-map-resource', [
-            'coreId' => $solrCoreId,
-            'resourceName' => $resourceName,
-        ]);
-    }
-
-    public function cleanAction()
-    {
-        $solrCoreId = $this->params('coreId');
-        $resourceName = $this->params('resourceName');
-        $api = $this->api();
-
-        /** @var \SearchSolr\Api\Representation\SolrCoreRepresentation $solrCore */
-        $solrCore = $api->read('solr_cores', $solrCoreId)->getContent();
-
-        // Get all existing indexed properties.
-        $maps = $solrCore->mapsByResourceName($resourceName);
-
-        // Map as associative array by map id and keep only the source.
-        $mapList = [];
-        foreach ($maps as $map) {
-            // Only the maps with the current resource name are removed.
-            if ($map->resourceName() === $resourceName) {
-                $mapList[$map->id()] = $map->source();
-            }
-        }
-
-        // Add all missing maps.
-        $result = [];
-        $properties = $api->search('properties')->getContent();
-        $usedPropertyIds = $this->listUsedPropertyIds($resourceName);
-        foreach ($properties as $property) {
-            // Skip property that are used.
-            if (in_array($property->id(), $usedPropertyIds)) {
-                continue;
-            }
-
-            // Skip property that are not mapped.
-            $term = $property->term();
-            if (!in_array($term, $mapList)) {
-                continue;
-            }
-
-            // There may be multiple maps with the same term.
-            $ids = array_keys(array_filter($mapList, function ($v) use ($term) {
-                return $v === $term;
-            }));
-            $api->batchDelete('solr_maps', $ids);
-
-            $result[] = $term;
-        }
-
-        if ($result) {
-            $this->messenger()->addSuccess(new Message('%d maps successfully deleted: "%s".', // @translate
-                count($result), implode('", "', $result)));
-            $this->messenger()->addNotice('Don’t forget to run the indexation of the core.'); // @translate
-        } else {
-            $this->messenger()->addWarning('No maps deleted.'); // @translate
-        }
-
-        return $this->redirect()->toRoute('admin/search/solr/core-id-map-resource', [
-            'coreId' => $solrCoreId,
-            'resourceName' => $resourceName,
-        ]);
+        $solrCoreId = $this->params('core-id');
+        $resourceName = $this->params('resource-name');
+        $url = $this->url()->fromRoute(
+            'admin/search/solr/core-id',
+            ['id' => $solrCoreId]
+        );
+        return $this->redirect()
+            ->toUrl($url . '?resource_type=' . urlencode($resourceName));
     }
 
     public function addAction()
     {
-        $solrCoreId = $this->params('coreId');
-        $resourceName = $this->params('resourceName');
+        $solrCoreId = $this->params('core-id');
+        $resourceName = $this->params('resource-name');
 
         $solrCore = $this->api()->read('solr_cores', $solrCoreId)->getContent();
 
@@ -248,30 +186,47 @@ class MapController extends AbstractActionController
             $form->setData($data);
             if ($form->isValid()) {
                 $data = $form->getData();
+                $data = $this->arrayFilterRecursiveEmptyValue($data);
+                $data = $this->cleanMapSettings($data);
+                $data = $this->arrayFilterRecursiveEmptyValue($data);
                 $data['o:source'] = $this->sourceArrayToString($data['o:source']);
                 $data['o:solr_core']['o:id'] = $solrCoreId;
                 $data['o:resource_name'] = $resourceName;
                 $this->api()->create('solr_maps', $data);
 
-                $this->messenger()->addSuccess(new Message('Solr map created: %s.', // @translate
-                    $data['o:field_name']));
+                // Ideally, the update of the core should be done via event.
+                $this->updateFieldsBoost($solrCore);
 
-                return $this->redirect()->toRoute('admin/search/solr/core-id-map-resource', [
-                    'coreId' => $solrCoreId,
-                    'resourceName' => $resourceName,
-                ]);
+                $this->messenger()->addSuccess(new PsrMessage(
+                    'Solr map created: {solr_map_name}.', // @translate
+                    ['solr_map_name' => $data['o:field_name']]
+                ));
+
+                return $this->redirect()->toUrl(
+                    $this->url()->fromRoute(
+                        'admin/search/solr/core-id',
+                        ['id' => $solrCoreId]
+                    ) . '?resource_type=' . urlencode(
+                        $data['o:resource_name'] ?? $resourceName
+                    )
+                );
             } else {
                 $messages = $form->getMessages();
                 if (isset($messages['csrf'])) {
-                    $this->messenger()->addError('Invalid or missing CSRF token'); // @translate
+                    $this->messenger()->addError(
+                        'Invalid or missing CSRF token' // @translate
+                    );
                 } else {
-                    $this->messenger()->addError('There was an error during validation'); // @translate
+                    $this->messenger()->addError(
+                        'There was an error during validation' // @translate
+                    );
                 }
             }
         }
 
         return new ViewModel([
             'solrCore' => $solrCore,
+            'resourceName' => $resourceName,
             'form' => $form,
             'schema' => $this->getSolrSchema($solrCoreId),
             'sourceLabels' => $this->getSourceLabels(),
@@ -280,9 +235,15 @@ class MapController extends AbstractActionController
 
     public function editAction()
     {
-        $solrCoreId = $this->params('coreId');
-        $resourceName = $this->params('resourceName');
+        $solrCoreId = $this->params('core-id');
+        $resourceName = $this->params('resource-name');
         $id = $this->params('id');
+
+        /**
+         * @var \SearchSolr\Api\Representation\SolrCoreRepresentation $solrCore
+         * @var \SearchSolr\Api\Representation\SolrMapRepresentation $map
+         */
+        $solrCore = $this->api()->read('solr_cores', $solrCoreId)->getContent();
 
         /** @var \SearchSolr\Api\Representation\SolrMapRepresentation $map */
         $map = $this->api()->read('solr_maps', $id)->getContent();
@@ -300,20 +261,32 @@ class MapController extends AbstractActionController
             $form->setData($data);
             if ($form->isValid()) {
                 $data = $form->getData();
+                $data = $this->arrayFilterRecursiveEmptyValue($data);
+                $data = $this->cleanMapSettings($data);
+                $data = $this->arrayFilterRecursiveEmptyValue($data);
                 $data['o:source'] = $this->sourceArrayToString($data['o:source']);
                 $data['o:solr_core']['o:id'] = $solrCoreId;
                 $data['o:resource_name'] = $resourceName;
                 $this->api()->update('solr_maps', $id, $data);
 
-                $this->messenger()->addSuccess(new Message('Solr map modified: %s.', // @translate
-                    $data['o:field_name']));
+                // Ideally, the update of the core should be done via an event.
+                $this->updateFieldsBoost($solrCore);
+
+                $this->messenger()->addSuccess(new PsrMessage(
+                    'Solr map modified: {solr_map_name}.', // @translate
+                    ['solr_map_name' => $data['o:field_name']]
+                ));
 
                 $this->messenger()->addWarning('Don’t forget to check search pages that use this map.'); // @translate
 
-                return $this->redirect()->toRoute('admin/search/solr/core-id-map-resource', [
-                    'coreId' => $solrCoreId,
-                    'resourceName' => $resourceName,
-                ]);
+                return $this->redirect()->toUrl(
+                    $this->url()->fromRoute(
+                        'admin/search/solr/core-id',
+                        ['id' => $solrCoreId]
+                    ) . '?resource_type=' . urlencode(
+                        $data['o:resource_name'] ?? $resourceName
+                    )
+                );
             } else {
                 $messages = $form->getMessages();
                 if (isset($messages['csrf'])) {
@@ -325,6 +298,8 @@ class MapController extends AbstractActionController
         }
 
         return new ViewModel([
+            'solrCore' => $solrCore,
+            'resourceName' => $resourceName,
             'map' => $map,
             'form' => $form,
             'schema' => $this->getSolrSchema($solrCoreId),
@@ -334,6 +309,9 @@ class MapController extends AbstractActionController
 
     public function deleteConfirmAction()
     {
+        /**
+         * @var \SearchSolr\Api\Representation\SolrMapRepresentation $map
+         */
         $id = $this->params('id');
         $response = $this->api()->read('solr_maps', $id);
         $map = $response->getContent();
@@ -360,6 +338,9 @@ class MapController extends AbstractActionController
 
     public function deleteAction()
     {
+        /**
+         * @var \SearchSolr\Api\Representation\SolrMapRepresentation $map
+         */
         $id = $this->params('id');
         $map = $this->api()->read('solr_maps', $id)->getContent();
 
@@ -367,7 +348,10 @@ class MapController extends AbstractActionController
             $form = $this->getForm(ConfirmForm::class);
             $form->setData($this->getRequest()->getPost());
             if ($form->isValid()) {
+                $solrCore = $map->solrCore();
                 $this->api()->delete('solr_maps', $id);
+                // Ideally, the update of the core should be done via event.
+                $this->updateFieldsBoost($solrCore);
                 $this->messenger()->addSuccess('Solr map successfully deleted'); // @translate
                 $this->messenger()->addWarning('Don’t forget to check search pages that used this map.'); // @translate
             } else {
@@ -375,10 +359,7 @@ class MapController extends AbstractActionController
             }
         }
 
-        return $this->redirect()->toRoute('admin/search/solr/core-id-map-resource', [
-            'coreId' => $map->solrCore()->id(),
-            'resourceName' => $map->resourceName(),
-        ]);
+        return $this->redirect()->toRoute('admin/search/solr/core-id', ['id' => $map->solrCore()->id()]);
     }
 
     protected function getSolrSchema($solrCoreId)
@@ -442,41 +423,10 @@ class MapController extends AbstractActionController
     }
 
     /**
-     * Get all used properties.
+     * Get all used properties for a resource.
      *
-     * @param string $resourceName
-     * @return \Omeka\Api\Representation\PropertyRepresentation[]
-     */
-    protected function listUsedPropertyIds($resourceName): array
-    {
-        $resourceTypes = [
-            'resources' => \Omeka\Entity\Resource::class,
-            'items' => \Omeka\Entity\Item::class,
-            'item_sets' => \Omeka\Entity\ItemSet::class,
-            'media' => \Omeka\Entity\Media::class,
-        ];
-
-        // Manage "generic" type.
-        if (!isset($resourceTypes[$resourceName])) {
-            return [];
-        }
-
-        $qb = $this->connection->createQueryBuilder()
-            ->select('DISTINCT value.property_id')
-            ->from('value', 'value')
-            ->innerJoin('value', 'resource', 'resource', 'resource.id = value.resource_id')
-            ->orderBy('value.property_id', 'ASC');
-        if ($resourceName !== 'resources') {
-            $qb
-                ->where('resource.resource_type = :resource_type')
-                ->setParameter('resource_type', $resourceTypes[$resourceName]);
-        }
-
-        return $this->connection
-            ->executeQuery($qb, $qb->getParameters())
-            ->fetchFirstColumn();
-    }
-
+     * @todo Use EasyMeta (but filtered by resource).
+     *
     /**
      * Convert an array of sources into a string of sources separated by "/".
      *
@@ -497,15 +447,7 @@ class MapController extends AbstractActionController
      */
     protected function sourceArrayToString($source)
     {
-        return implode(
-            '/',
-            array_map(
-                function ($v) {
-                    return $v['source'];
-                },
-                $source
-            )
-        );
+        return implode('/', array_map(fn ($v) => $v['source'], $source));
     }
 
     /**
@@ -517,11 +459,27 @@ class MapController extends AbstractActionController
      */
     protected function sourceStringToArray($source)
     {
-        return array_map(
-            function ($v) {
-                return ['source' => $v];
-            },
-            explode('/', $source)
-        );
+        return array_map(fn ($v) => ['source' => $v], explode('/', $source));
+    }
+
+    protected function cleanMapSettings(array $data): array
+    {
+        $formatter = $data['o:settings']['formatter'] ?? '';
+        if (empty($data['o:settings']['index_for_link'])) {
+            unset($data['o:settings']['index_for_link']);
+        }
+        if ($formatter !== 'place') {
+            unset(
+                $data['o:settings']['place_mode']
+            );
+        }
+        if ($formatter !== 'thesaurus_self') {
+            unset(
+                $data['o:settings']['thesaurus_resources'],
+                $data['o:settings']['thesaurus_self'],
+                $data['o:settings']['thesaurus_metadata']
+            );
+        }
+        return $data;
     }
 }

@@ -2,7 +2,7 @@
 
 /*
  * Copyright BibLibre, 2016-2017
- * Copyright Daniel Berthereau, 2017-2023
+ * Copyright Daniel Berthereau, 2017-2026
  *
  * This software is governed by the CeCILL license under French law and abiding
  * by the rules of distribution of free software.  You can use, modify and/ or
@@ -33,16 +33,16 @@ namespace SearchSolr\Indexer;
 use AdvancedSearch\Indexer\AbstractIndexer;
 use AdvancedSearch\Indexer\IndexerInterface;
 use AdvancedSearch\Query;
-use Omeka\Entity\Resource;
-use Omeka\Stdlib\Message;
+use Exception;
+use Omeka\Api\Representation\AbstractResourceRepresentation;
 use SearchSolr\Api\Representation\SolrCoreRepresentation;
 use SearchSolr\Api\Representation\SolrMapRepresentation;
 use Solarium\Client as SolariumClient;
 use Solarium\QueryType\Update\Query\Document as SolariumInputDocument;
 
 /**
- * @link https://solarium.readthedocs.io/en/stable/getting-started/
- * @link https://solarium.readthedocs.io/en/stable/documents/
+ * @see https://solarium.readthedocs.io/en/stable/getting-started/
+ * @see https://solarium.readthedocs.io/en/stable/documents/
  */
 class SolariumIndexer extends AbstractIndexer
 {
@@ -67,6 +67,11 @@ class SolariumIndexer extends AbstractIndexer
     protected $apiAdapters;
 
     /**
+     * @var \Common\Stdlib\EasyMeta
+     */
+    protected $easyMeta;
+
+    /**
      * @var \SearchSolr\ValueExtractor\Manager
      */
     protected $valueExtractorManager;
@@ -77,9 +82,9 @@ class SolariumIndexer extends AbstractIndexer
     protected $valueFormatterManager;
 
     /**
-     * @var array
+     * @var \Solarium\Plugin\BufferedAdd\BufferedAdd
      */
-    protected $formatters = [];
+    protected $buffer;
 
     /**
      * @var array
@@ -127,9 +132,39 @@ class SolariumIndexer extends AbstractIndexer
     protected $vars = [];
 
     /**
-     * @var \Solarium\QueryType\Update\Query\Document[]
+     * Cached value extractors by resource name.
+     *
+     * @var \SearchSolr\ValueExtractor\ValueExtractorInterface[]
      */
-    protected $solariumDocuments = [];
+    protected $valueExtractorCache = [];
+
+    /**
+     * Cached value formatters by formatter name.
+     *
+     * @var \SearchSolr\ValueFormatter\ValueFormatterInterface[]
+     */
+    protected $valueFormatterCache = [];
+
+    /**
+     * Cached maps by resource name.
+     *
+     * @var array
+     */
+    protected $mapsByResourceNameCache = [];
+
+    /**
+     * Counter for soft commit threshold.
+     *
+     * @var int
+     */
+    protected $documentCount = 0;
+
+    /**
+     * Hard commit every N documents for durability during bulk indexing.
+     *
+     * @var int
+     */
+    protected $hardCommitThreshold = 10000;
 
     public function canIndex(string $resourceName): bool
     {
@@ -149,10 +184,10 @@ class SolariumIndexer extends AbstractIndexer
         $isQuery = false;
         if ($query) {
             /** @var \Solarium\QueryType\Select\Query\Query|null $solariumQuery */
-            $solariumQuery = $this->engine->querier()
+            $solariumQuery = $this->searchEngine->querier()
                 ->setQuery($query)
                 ->getPreparedQuery();
-            $isQuery = !is_null($solariumQuery);
+            $isQuery = $solariumQuery !== null;
         }
 
         if ($isQuery) {
@@ -174,21 +209,80 @@ class SolariumIndexer extends AbstractIndexer
         }
 
         $client = $this->getClient();
-        $update = $client
-            ->createUpdate()
-            ->addDeleteQuery($query)
-            ->addCommit();
-        $client->update($update);
+
+        // Delete + commit may be slow on large indexes or when Solr is busy. On
+        // timeout, poll until completion.
+        try {
+            $update = $client->createUpdate()
+                ->addDeleteQuery($query)
+                ->addCommit();
+            $client->update($update);
+        } catch (Exception $e) {
+            if (!str_starts_with($e->getMessage(),
+                'Solr HTTP error: HTTP request failed')
+            ) {
+                throw $e;
+            }
+            $this->getLogger()->info(
+                'Solr clear is processing, waiting for completion…' // @translate
+            );
+            $this->waitForSolrCommit($client);
+        }
+
         return $this;
     }
 
-    public function indexResource(Resource $resource): IndexerInterface
+    /**
+     * Poll Solr until a pending commit completes.
+     *
+     * After an HTTP timeout on a commit request, Solr is still processing. This
+     * method polls with ping until a subsequent commit succeeds, confirming
+     * that the heavy operation is done.
+     */
+    protected function waitForSolrCommit(
+        SolariumClient $client,
+        int $maxWait = 600
+    ): void {
+        $adapter = $client->getAdapter();
+        $previousTimeout = $adapter->getTimeout();
+        // Short timeout for polling requests.
+        $adapter->setTimeout(15);
+
+        try {
+            for ($waited = 0; $waited < $maxWait; $waited += 10) {
+                sleep(10);
+                try {
+                    // A successful commit means the previous heavy commit
+                    // finished and Solr is idle.
+                    $update = $client->createUpdate()
+                        ->addCommit();
+                    $client->update($update);
+                    $this->getLogger()->info(
+                        'Solr commit completed after ~{seconds} seconds of polling.', // @translate
+                        ['seconds' => $waited + 10]
+                    );
+                    return;
+                } catch (\Throwable $e) {
+                    // Still processing, continue polling.
+                }
+            }
+        } finally {
+            $adapter->setTimeout($previousTimeout);
+        }
+
+        $this->getLogger()->warn(
+            'Solr commit did not complete within {seconds} seconds. Check Solr admin.', // @translate
+            ['seconds' => $maxWait]
+        );
+    }
+
+    public function indexResource(AbstractResourceRepresentation $resource): IndexerInterface
     {
         return $this->indexResources([$resource]);
     }
 
     /**
-     * @param \Omeka\Entity\AbstractEntity[] $resources
+     * @param \Omeka\Api\Representation\AbstractResourceRepresentation[] $resources
      */
     public function indexResources(array $resources): IndexerInterface
     {
@@ -208,27 +302,125 @@ class SolariumIndexer extends AbstractIndexer
             return $this;
         }
 
-        $resourceNames = [
-            'items' => 'item',
-            'item_sets' => 'item set',
-            'media' => 'media',
-        ];
+        $batchSize = count($resources);
 
-        $resourcesIds = [];
+        $this->buffer = $this->getClient()->getPlugin('bufferedadd');
+        $this->buffer
+            ->setOverwrite(true)
+            ->setBufferSize($batchSize);
+
+        $successCount = 0;
         foreach ($resources as $resource) {
-            $resourcesIds[] = $resourceNames[$resource->getResourceName()] . ' #' . $resource->getId();
+            $document = $this->prepareDocument($resource);
+            if ($document) {
+                try {
+                    $this->buffer->addDocument($document);
+                    ++$successCount;
+                    ++$this->documentCount;
+                } catch (Exception $e) {
+                    $this->solrError($e, $resource, $document);
+                    // Remove the document with issue from the buffer.
+                    $documents = $this->buffer->getDocuments();
+                    array_pop($documents);
+                    $this->buffer->clear();
+                    $this->buffer->addDocuments(array_values($documents));
+                    unset($documents);
+                }
+            }
         }
 
-        $this->getLogger()->info(new Message(
-            'Indexing in Solr core "%1$s": %2$s', // @translate
-            $this->solrCore->name(), implode(', ', $resourcesIds)
-        ));
-
-        foreach ($resources as $resource) {
-            $this->addResource($resource);
+        // Flush buffer to send docs to Solr without committing. Commits are
+        // expensive (segment merge, searcher warming) especially with many
+        // fields. Only hard commit periodically for durability, and once at the
+        // end via commit().
+        try {
+            $this->buffer->flush();
+        } catch (Exception $e) {
+            $message = $e->getMessage();
+            if (str_starts_with($message,
+                'Solr HTTP error: HTTP request failed')
+            ) {
+                $savedDocs = $this->buffer->getDocuments();
+                $this->buffer->clear();
+                if ($savedDocs) {
+                    $this->getLogger()->warn(
+                        'Solr flush timed out for {count} documents. Retrying…', // @translate
+                        ['count' => count($savedDocs)]
+                    );
+                    sleep(5);
+                    try {
+                        $this->buffer->addDocuments($savedDocs);
+                        $this->buffer->flush();
+                    } catch (Exception $e2) {
+                        $this->getLogger()->err(
+                            'Solr retry failed for {count} documents. They may be missing from the index.', // @translate
+                            ['count' => count($savedDocs)]
+                        );
+                        $this->buffer->clear();
+                    }
+                }
+            } else {
+                $this->solrError($e);
+                $this->buffer->clear();
+            }
         }
-        $this->commit();
 
+        // No periodic commit: Solr's transaction log ensures durability for
+        // flushed data. Commits are done only at the end via commit() to avoid
+        // costly segment merges during bulk indexing.
+
+        return $this;
+    }
+
+    /**
+     * Force a hard commit to Solr (call after indexing is complete).
+     *
+     * Uses a long timeout because commits can trigger expensive segment merges,
+     * especially with many fields.
+     */
+    public function commit(): IndexerInterface
+    {
+        if (!$this->solariumClient) {
+            return $this;
+        }
+
+        // Flush any remaining buffered documents.
+        if ($this->buffer) {
+            try {
+                $this->buffer->flush();
+            } catch (\Throwable $e) {
+                $this->solrError($e);
+            }
+            $this->buffer->clear();
+        }
+
+        // Send commit with extended timeout (10 min) to handle large segment
+        // merges.
+        $adapter = $this->solariumClient->getAdapter();
+        $previousTimeout = $adapter->getTimeout();
+        $adapter->setTimeout(600);
+
+        try {
+            $update = $this->solariumClient->createUpdate()
+                ->addCommit();
+            $this->solariumClient->update($update);
+        } catch (\Throwable $e) {
+            $message = $e->getMessage();
+            if (str_starts_with($message,
+                'Solr HTTP error: HTTP request failed')
+            ) {
+                $this->getLogger()->info(
+                    'Solr commit is processing, waiting for completion…' // @translate
+                );
+                $this->waitForSolrCommit($this->solariumClient);
+            } else {
+                $this->solrError($e);
+            }
+        } finally {
+            $adapter->setTimeout($previousTimeout);
+        }
+
+        $this->documentCount = 0;
         return $this;
     }
 
@@ -258,30 +450,55 @@ class SolariumIndexer extends AbstractIndexer
         $services = $this->getServiceLocator();
         $this->api = $services->get('Omeka\ApiManager');
         $this->apiAdapters = $services->get('Omeka\ApiAdapterManager');
+        $this->easyMeta = $services->get('Common\EasyMeta');
         $this->valueExtractorManager = $services->get('SearchSolr\ValueExtractorManager');
         $this->valueFormatterManager = $services->get('SearchSolr\ValueFormatterManager');
-        $this->siteIds = $this->api->search('sites', [], ['returnScalar' => 'id'])->getContent();
 
         // Some values should be init to get the document id.
         $this->getServerId();
         $this->prepareIndexFieldAndName();
         $this->prepareSingleValuedFields();
         $this->getSupportFields();
-        $this->prepareFomatters();
 
         // Force indexation of required fields, in particular resource type,
         // visibility and sites, because they are the base of Omeka.
         // So check required fields one time and abord early.
         $missingMaps = $this->getSolrCore()->missingRequiredMaps();
         if ($missingMaps) {
-            $this->getLogger()->err(new Message(
-                'Unable to index resources in Solr core "%1$s". Some required fields are not mapped: %2$s', // @translate
-                $this->getSolrCore()->name(), implode(', ', $missingMaps)
-            ));
+            $this->getLogger()->err(
+                'Unable to index resources in Solr core "{solr_core}". Some required fields are not mapped: {list}', // @translate
+                ['solr_core' => $this->getSolrCore()->name(), 'list' => implode(', ', $missingMaps)]
+            );
             return null;
         }
 
         $this->mainLocale = $services->get('Omeka\Settings')->get('locale');
+
+        // Check Solr field count against maxFields limit.
+        $fieldStatus = $this->getSolrCore()->fieldLimitStatus();
+        if ($fieldStatus) {
+            if ($fieldStatus['exceeded']) {
+                $this->getLogger()->err(
+                    'The Solr core has {numFields} fields, exceeding the configured limit of {maxFields}. Indexing is stopped. To fix, either reduce or group field maps, or increase "maxFields" in solrconfig.xml and restart Solr.', // @translate
+                    [
+                        'numFields' => $fieldStatus['numFields'],
+                        'maxFields' => $fieldStatus['maxFields'],
+                    ]
+                );
+                return null;
+            } elseif ($fieldStatus['maxFields']
+                && $fieldStatus['numFields'] > $fieldStatus['maxFields'] * 0.9
+            ) {
+                $this->getLogger()->warn(
+                    'The Solr core has {numFields} fields, approaching the configured limit of {maxFields} ({percentage}%). It is recommended either to reduce or to group field maps, or to increase "maxFields" in solrconfig.xml and restart Solr.', // @translate
+                    [
+                        'numFields' => $fieldStatus['numFields'],
+                        'maxFields' => $fieldStatus['maxFields'],
+                        'percentage' => round($fieldStatus['numFields'] / $fieldStatus['maxFields'] * 100),
+                    ]
+                );
+            }
+        }
 
         return $this;
     }
@@ -302,37 +519,24 @@ class SolariumIndexer extends AbstractIndexer
             : sprintf('%s-%s-%s/%07s', $this->serverId, $this->indexName, $resourceName, $resourceId);
     }
 
-    protected function addResource(Resource $resource): void
+    protected function prepareDocument(AbstractResourceRepresentation $resource): ?SolariumInputDocument
     {
-        $resourceName = $resource->getResourceName();
-        $resourceId = $resource->getId();
+        $resourceName = $this->easyMeta->resourceName(get_class($resource));
+        $resourceId = $resource->id();
 
         /** @var \SearchSolr\ValueExtractor\ValueExtractorInterface $valueExtractor */
-        $valueExtractor = $this->valueExtractorManager->get($resourceName);
+        $valueExtractor = $this->getValueExtractor($resourceName);
 
         // This shortcut is not working on some databases: the representation is
         // not fully loaded, so when getting resource values ($representation->values()),
         // an error occurs when getting the property term: the vocabulary is not
         // loaded and the prefix cannot be get.
+        // TODO Is it still true with representation not created via adapter but api in AdvancedSearch?
         /** @see \Omeka\Api\Representation\AbstractResourceEntityRepresentation::values() */
-
-        /** @var \Omeka\Api\Representation\AbstractResourceRepresentation $representation */
-        // $adapter = $this->apiAdapters->get($resourceName);
-        // $representation = $adapter->getRepresentation($resource);
-
-        try {
-            $representation = $this->api->read($resourceName, $resourceId)->getContent();
-        } catch (\Exception $e) {
-            $this->getLogger()->notice(
-                new Message('The %1$s #%2$d is no more available and cannot be indexed.', // @translate
-                $resourceName, $resourceId
-            ));
-            return;
-        }
 
         $isSingleFieldFilled = [];
 
-        $document = new SolariumInputDocument;
+        $document = new SolariumInputDocument();
 
         $documentId = $this->getDocumentId($resourceName, $resourceId);
         $document->addField('id', $documentId);
@@ -342,7 +546,7 @@ class SolariumIndexer extends AbstractIndexer
         }
 
         /** @var \SearchSolr\Api\Representation\SolrMapRepresentation $solrMap */
-        foreach ($this->solrCore->mapsByResourceName($resourceName) as $solrMap) {
+        foreach ($this->getMapsByResourceName($resourceName) as $solrMap) {
             $solrField = $solrMap->fieldName();
             $source = $solrMap->source();
 
@@ -351,28 +555,31 @@ class SolariumIndexer extends AbstractIndexer
 
             // Resource name is not available through the representation.
             if ($source === 'resource_name') {
-                $document->addField($solrField, $resourceName);
+                if (empty($isSingleFieldFilled[$solrField])) {
+                    $isSingleFieldFilled[$solrField] = true;
+                    $document->addField($solrField, $resourceName);
+                }
             }
 
             if ($source === 'site/o:id') {
                 switch ($resourceName) {
                     case 'items':
-                        $sites = array_map(function (\Omeka\Entity\Site $v) {
-                            return $v->getId();
-                        }, $resource->getSites()->toArray());
-                        $document->addField($solrField, array_values($sites));
+                        $sites = $resource->sites();
+                        if ($sites) {
+                            $document->addField($solrField, array_keys($sites));
+                        }
                         break;
                     case 'item_sets':
-                        $sites = array_map(function (\Omeka\Entity\SiteItemSet $v) {
-                            return $v->getSite()->getId();
-                        }, $resource->getSiteItemSets()->toArray());
-                        $document->addField($solrField, $sites);
+                        $sites = $resource->sites();
+                        if ($sites) {
+                            $document->addField($solrField, array_keys($sites));
+                        }
                         break;
                     case 'media':
-                        $sites = array_map(function (\Omeka\Entity\Site $v) {
-                            return $v->getId();
-                        }, $resource->getItem()->getSites()->toArray());
-                        $document->addField($solrField, array_values($sites));
+                        $sites = $resource->item()->sites();
+                        if ($sites) {
+                            $document->addField($solrField, array_keys($sites));
+                        }
                         break;
                     default:
                         // Nothing to do.
@@ -385,25 +592,29 @@ class SolariumIndexer extends AbstractIndexer
                 continue;
             }
 
-            // Check if the value is a single valued field already filled.
+            // Check if the value is a single valued field already filled. Is a
+            // single field value the first one or the last one? Most of the
+            // time, the first one.
             if (!empty($isSingleFieldFilled[$solrField])) {
                 continue;
             }
 
-            $values = $valueExtractor->extractValue($representation, $solrMap);
-            if (!count($values)) {
+            $extractedValues = $valueExtractor->extractValue($resource, $solrMap);
+            if (!count($extractedValues)) {
                 continue;
             }
 
-            $formattedValues = $this->formatValues($values, $solrMap);
+            $formattedValues = $this->formatValues($extractedValues, $solrMap);
             if (!count($formattedValues)) {
                 continue;
             }
 
             if ($this->isSingleValuedFields[$solrField]) {
                 // Store single fields one time only (checked above).
-                $isSingleFieldFilled[$solrField] = true;
-                $document->addField($solrField, reset($formattedValues));
+                if (empty($isSingleFieldFilled[$solrField])) {
+                    $isSingleFieldFilled[$solrField] = true;
+                    $document->addField($solrField, reset($formattedValues));
+                }
             } else {
                 foreach ($formattedValues as $value) {
                     $document->addField($solrField, $value);
@@ -412,7 +623,7 @@ class SolariumIndexer extends AbstractIndexer
 
             if ($this->support === 'drupal') {
                 // Only one value is filled for special values of Drupal.
-                $value = reset($values);
+                $value = reset($extractedValues);
                 // Generally, the value is a ValueRepresentation.
                 $locale = is_object($value) && method_exists($value, 'lang')
                     ? $value->lang()
@@ -425,9 +636,8 @@ class SolariumIndexer extends AbstractIndexer
         $this->appendSupportedFields($resource, $document);
 
         // Remove the duplicates in the multiple indexes: this is generally an
-        // unintentional issue (or related to a drupal field).
-        // It's recommended to use Solr boost mechanisms to boost a property or
-        // a document.
+        // unintentional issue (or related to a drupal field). It's recommended
+        // to use Solr boost mechanisms to boost a property or a document.
         foreach ($document->getFields() as $field => $values) {
             if (empty($this->isSingleValuedFields[$field]) && is_array($values) && count($values) > 1) {
                 $deduplicatedValues = array_unique($values);
@@ -441,28 +651,53 @@ class SolariumIndexer extends AbstractIndexer
             }
         }
 
-        $this->solariumDocuments[$documentId] = $document;
+        // It is useless to clean memory here when representation is used,
+        // because the resource is loaded in job.
+
+        return $document;
     }
 
     protected function formatValues(array $values, SolrMapRepresentation $solrMap)
     {
-        /** @var \SearchSolr\ValueFormatter\ValueFormatterInterface $valueFormatter */
-        $valueFormatter = $this->formatters[$solrMap->setting('formatter', '')] ?: $this->formatters['standard'];
-        $valueFormatter->setSettings($solrMap->settings());
-        $result = [];
+        $valueFormatter = $this->getValueFormatter($solrMap);
+
+        // Optimize: pre-allocate and use array_push for better performance.
+        $resultPreformatted = [];
         foreach ($values as $value) {
-            $formattedResult = $valueFormatter->format($value);
-            // FIXME Indexation of "0" breaks Solr, so currently replaced by "00".
-            $formattedResult = array_map(function ($v) {
-                return $v === '0' ? '00' : $v;
-            }, $formattedResult);
-            $result = array_merge($result, $formattedResult);
+            $preFormattedValues = $valueFormatter->preFormat($value);
+            if ($preFormattedValues) {
+                array_push($resultPreformatted, ...$preFormattedValues);
+            }
         }
-        // Don't use array_unique before, because objects may not be stringable.
-        return array_unique($result);
+
+        if (!$resultPreformatted) {
+            return [];
+        }
+
+        $resultFormatted = [];
+        foreach ($resultPreformatted as $value) {
+            $formattedValues = $valueFormatter->format($value);
+            if ($formattedValues) {
+                array_push($resultFormatted, ...$formattedValues);
+            }
+        }
+
+        if (!$resultFormatted) {
+            return [];
+        }
+
+        $resultPostFormatted = [];
+        foreach ($resultFormatted as $value) {
+            $postFormattedValues = $valueFormatter->postFormat($value);
+            if ($postFormattedValues) {
+                array_push($resultPostFormatted, ...$postFormattedValues);
+            }
+        }
+
+        return $valueFormatter->finalizeFormat($resultPostFormatted);
     }
 
-    protected function appendSupportedFields(Resource $resource, SolariumInputDocument $document): void
+    protected function appendSupportedFields(AbstractResourceRepresentation $resource, SolariumInputDocument $document): void
     {
         foreach ($this->supportFields as $solrField => $value) switch ($solrField) {
             // Drupal.
@@ -479,10 +714,16 @@ class SolariumIndexer extends AbstractIndexer
                 $document->addField($solrField, $value);
                 break;
             case 'ss_search_api_datasource':
-                $document->addField($solrField, $resource->getResourceName());
+                $document->addField(
+                    $solrField,
+                    $this->easyMeta->resourceName(get_class($resource))
+                );
                 break;
             case 'ss_search_api_id':
-                $document->addField($solrField, $resource->getResourceName() . '/' . $resource->getId());
+                $document->addField(
+                    $solrField,
+                    $this->easyMeta->resourceName(get_class($resource)) . '/' . $resource->id()
+                );
                 break;
             default:
                 // Nothing to do.
@@ -498,108 +739,60 @@ class SolariumIndexer extends AbstractIndexer
      */
     protected function isNotNullAndNotEmptyString($value): bool
     {
-        return !is_null($value)
+        return $value !== null
             && (string) $value !== '';
-    }
-
-    /**
-     * Commit the prepared documents.
-     */
-    protected function commit(): void
-    {
-        if (!count($this->solariumDocuments)) {
-            $this->getLogger()->notice('No document to commit in Solr.'); // @translate
-            return;
-        }
-
-        // TODO use BufferedAdd plugin?
-        $client = $this->getClient();
-        try {
-            $update = $client
-                ->createUpdate()
-                ->addDocuments($this->solariumDocuments)
-                ->addCommit();
-            $client->update($update);
-        } catch (\Exception $e) {
-            // Index documents by one to avoid to skip well formatted documents.
-            $isMultiple = count($this->solariumDocuments) > 1;
-            if ($isMultiple) {
-                // To improve speed when error and avoid 100 requests, try
-                // indexing by ten first, then individually, so usually 11 to 20
-                // requests.
-                foreach (array_chunk($this->solariumDocuments, 10, true) as $solariumDocs) {
-                    try {
-                        $update = $client
-                            ->createUpdate()
-                            ->addDocuments($solariumDocs)
-                            ->addCommit();
-                        $client->update($update);
-                    } catch (\Exception $e) {
-                        if (count($solariumDocs) > 1) {
-                            foreach ($solariumDocs as $documentId => $document) {
-                                if (!$document) {
-                                    $dId = explode('-', $documentId);
-                                    $dId = array_pop($dId);
-                                    $this->commitError($document, $dId, $e);
-                                    continue;
-                                }
-                                try {
-                                    $update = $client
-                                        ->createUpdate()
-                                        ->addDocument($document)
-                                        ->addCommit();
-                                    $client->update($update);
-                                } catch (\Exception $e) {
-                                    $dId = explode('-', $documentId);
-                                    $dId = array_pop($dId);
-                                    $this->commitError($document, $dId, $e);
-                                }
-                            }
-                        } else {
-                            $dId = explode('-', key($solariumDocs));
-                            $dId = array_pop($dId);
-                            $this->commitError(reset($solariumDocs), $dId, $e);
-                        }
-                    }
-                }
-            } else {
-                $dId = explode('-', key($this->solariumDocuments));
-                $dId = array_pop($dId);
-                $this->commitError(reset($this->solariumDocuments), $dId, $e);
-            }
-        }
-
-        $this->solariumDocuments = [];
     }
 
     /**
      * Prepare the commit message error for log.
      *
-     * To get a better message: get the data ($request->getRawData()) and post it
-     * in Solr admin board.
+     * To get a better message: get the data ($request->getRawData()) and post
+     * it in Solr admin board.
      * @see \Solarium\Core\Client\Adapter\Http::createContext()
      */
-    protected function commitError(?SolariumInputDocument $document, string $dId, \Exception $exception): self
-    {
-        if (!$document) {
-            $message = new Message('Indexing of resource failed: empty of invalid document: %s', $exception);
-            $this->getLogger()->err($message);
-            return $this;
-        }
+    protected function solrError(
+        Exception $exception,
+        ?AbstractResourceRepresentation $resource = null,
+        ?SolariumInputDocument $document = null
+    ): self {
+        $error = method_exists($exception, 'getBody')
+            ? json_decode((string) $exception->getBody(), true)
+            : null;
 
-        $error = method_exists($exception, 'getBody') ? json_decode((string) $exception->getBody(), true) : null;
         $message = is_array($error) && isset($error['error']['msg'])
             ? $error['error']['msg']
             : $exception->getMessage();
-        if ($message === 'Solr HTTP error: Bad Request (400)') {
-            // TODO Retry the request here, because \Solarium\Core\Client\Adapter\Http::createContext()
-            $message = new Message('Invalid document (wrong field type or missing required field).'); // @translate
-        } elseif ($message === 'Solr HTTP error: HTTP request failed') {
-            $message = new Message('Solr HTTP error: HTTP request failed due to network or certificate issue.'); // @translate
+
+        if (str_starts_with($message,
+            'Solr HTTP error: HTTP request failed')
+        ) {
+            $this->getLogger()->err(
+                'Solr HTTP error: HTTP request failed due to network, timeout, or certificate issue.' // @translate
+            );
+        } elseif ($message === 'Solr HTTP error: Bad Request (400)') {
+            /** @see \Solarium\Core\Client\Adapter\Http::createContext() */
+            if ($resource) {
+                $this->getLogger()->err(
+                    'Indexing of {resource_name} #{id} failed: Invalid document (wrong field type or missing required field).', // @translate
+                    ['resource_name' => $this->easyMeta->resourceName(get_class($resource)), 'id' => $resource->id()]
+                );
+            } else {
+                $this->getLogger()->err(
+                    'Indexing of resource failed: Invalid document (wrong field type or missing required field).' // @translate
+                );
+            }
+        } elseif ($resource) {
+            $this->getLogger()->err(
+                'Indexing of {resource_name} #{id} failed: {message}', // @translate
+                ['resource_name' => $this->easyMeta->resourceName(get_class($resource)), 'id' => $resource->id(), 'message' => $message]
+            );
         } else {
-            $message = new Message('Indexing of resource %1$s failed: %2$s', $dId, $message);
+            $this->getLogger()->err(
+                'Indexing of the batch failed: {message}', // @translate
+                ['message' => $message]
+            );
         }
-        $this->getLogger()->err($message);
+
         return $this;
     }
 
@@ -612,7 +805,7 @@ class SolariumIndexer extends AbstractIndexer
     {
         // Inspired from module Drupal search api solr.
         // See search_api_solr\Utility\Utility::getSiteHash()).
-        if (is_null($this->serverId)) {
+        if ($this->serverId === null) {
             $this->serverId = $this->getSolrCore()->setting('server_id') ?: false;
         }
         return $this->serverId;
@@ -621,7 +814,7 @@ class SolariumIndexer extends AbstractIndexer
     protected function prepareIndexFieldAndName()
     {
         $fields = $this->getSolrCore()->mapsBySource('search_index', 'generic') ?: [];
-        $name = $this->engine->settingAdapter('index_name') ?: false;
+        $name = $this->searchEngine->settingEngineAdapter('index_name') ?: false;
         if ($fields && $name) {
             $this->indexField = reset($fields);
             $this->indexField = $this->indexField->fieldName();
@@ -640,7 +833,7 @@ class SolariumIndexer extends AbstractIndexer
      */
     protected function getIndexField()
     {
-        if (is_null($this->indexField)) {
+        if ($this->indexField === null) {
             $this->prepareIndexFieldAndName();
         }
         return $this->indexField;
@@ -653,7 +846,7 @@ class SolariumIndexer extends AbstractIndexer
      */
     protected function getIndexName()
     {
-        if (is_null($this->indexName)) {
+        if ($this->indexName === null) {
             $this->prepareIndexFieldAndName();
         }
         return $this->indexName;
@@ -666,8 +859,8 @@ class SolariumIndexer extends AbstractIndexer
      * multiple values to a single valued field.
      *
      * Because the multivalued quality is defined by the schema, it is not
-     * related to the resource name, so a single list is created.
-     * It avoids complexity with generic/resources/specific resources names too.
+     * related to the resource name, so a single list is created. It avoids
+     * complexity with generic/resources/specific resources names too.
      *
      * @todo Move the single valued check inside Solr core settings to do it one time.
      */
@@ -682,17 +875,6 @@ class SolariumIndexer extends AbstractIndexer
         }
     }
 
-    protected function prepareFomatters(): void
-    {
-        $this->formatters = ['' => null];
-        foreach ($this->valueFormatterManager->getRegisteredNames() as $formatter) {
-            $valueFormatter = $this->valueFormatterManager->get($formatter);
-            $valueFormatter->setServiceLocator($this->services);
-            $this->formatters[$formatter] = $valueFormatter;
-        }
-        $this->formatters[''] = $this->formatters['standard'];
-    }
-
     /**
      * Get the specific supported fields.
      *
@@ -700,7 +882,7 @@ class SolariumIndexer extends AbstractIndexer
      */
     protected function getSupportFields()
     {
-        if (is_null($this->supportFields)) {
+        if ($this->supportFields === null) {
             $this->support = $this->solrCore->setting('support') ?: null;
             $this->supportFields = array_filter($this->solrCore->schemaSupport($this->support));
             // Manage some static values.
@@ -722,7 +904,8 @@ class SolariumIndexer extends AbstractIndexer
                     $value = $this->serverId;
                     break;
                 case 'timestamp':
-                    // If this is It should be the same timestamp for all documents that are being indexed.
+                    // If this is It should be the same timestamp for all
+                    // documents that are being indexed.
                     $value = gmdate('Y-m-d\TH:i:s\Z');
                     break;
                 case 'boost_document':
@@ -781,15 +964,16 @@ class SolariumIndexer extends AbstractIndexer
     /**
      * Specific fields for Drupal.
      *
+     * @param AbstractResourceRepresentation $resource
      * @param SolariumInputDocument $document
      * @param string $solrField
      * @param mixed $value
      * @param string $locale
      * @return self
      */
-    protected function appendDrupalValues(Resource $resource, SolariumInputDocument $document, $solrField, $value, ?string $valueLocale = null)
+    protected function appendDrupalValues(AbstractResourceRepresentation $resource, SolariumInputDocument $document, $solrField, $value, ?string $valueLocale = null)
     {
-        $resourceName = $resource->getResourceName();
+        $resourceName = $this->easyMeta->resourceName(get_class($resource));
         if (!isset($this->vars['solr_maps'][$resourceName][$solrField])) {
             return $this;
         }
@@ -799,7 +983,8 @@ class SolariumIndexer extends AbstractIndexer
 
         // In Drupal, the same value is copied in each language field for sort…
         // @link https://git.drupalcode.org/project/search_api_solr/-/blob/4.x/src/Plugin/search_api/backend/SearchApiSolrBackend.php#L1130-1172
-        // For example, field is "ss_title", so sort field is "sort_X3b_fr_title".
+        // For example, field is "ss_title", so sort field is
+        // "sort_X3b_fr_title".
         // This is slighly different from Drupal process.
         $prefix = $this->vars['solr_maps'][$resourceName][$solrField]['prefix'];
         $matches = [];
@@ -846,7 +1031,9 @@ class SolariumIndexer extends AbstractIndexer
     }
 
     /**
-     * @param array \Omeka\Entity\Resource[]
+     * The solr core can be configured to index only a part of resources.
+     *
+     * @param \Omeka\Api\Representation\AbstractResourceRepresentation[] $resources
      */
     protected function filterResources(array $resources): array
     {
@@ -857,22 +1044,22 @@ class SolariumIndexer extends AbstractIndexer
 
         $resourceIds = [];
         foreach ($resources as $resource) {
-            $resourceIds[] = $resource->getId();
+            $resourceIds[] = $resource->id();
         }
 
         $query['id'] = array_unique(array_merge($query['id'] ?? [], $resourceIds));
 
-        // TODO Search api is currently unavailable for resources (wait v4.1)
+        // TODO Search api is currently unavailable for resources (wait v4.1).
         // For now, use the first resource.
         $first = reset($resources);
-        $resourceName = $first->getResourceName();
-        return $this->api->search($resourceName, $query, ['responseContent' => 'resource'])->getContent();
+        $resourceName = $first->resourceName();
+        return $this->api->search($resourceName, $query)->getContent();
     }
 
     protected function getSolrCore(): SolrCoreRepresentation
     {
         if (!isset($this->solrCore)) {
-            $solrCoreId = $this->engine->settingAdapter('solr_core_id');
+            $solrCoreId = $this->searchEngine->settingEngineAdapter('solr_core_id');
             if ($solrCoreId) {
                 // Automatically throw an exception when empty.
                 $this->solrCore = $this->getServiceLocator()->get('Omeka\ApiManager')
@@ -893,7 +1080,75 @@ class SolariumIndexer extends AbstractIndexer
     {
         if (!isset($this->solariumClient)) {
             $this->solariumClient = $this->getSolrCore()->solariumClient();
+            // Use BufferedAdd plugin to reduce memory issue.
+            $this->solariumClient->getPlugin('bufferedadd');
+        }
+        // Indexing is heavier than querying, so use a longer timeout. Check
+        // every call: getSolrCore() may have initialized the client with a
+        // shorter timeout.
+        $adapter = $this->solariumClient->getAdapter();
+        if ($adapter->getTimeout() < 120) {
+            $adapter->setTimeout(120);
         }
         return $this->solariumClient;
+    }
+
+    /**
+     * Get cached value extractor for a resource name.
+     */
+    protected function getValueExtractor(
+        string $resourceName
+    ): \SearchSolr\ValueExtractor\ValueExtractorInterface {
+        if (!isset($this->valueExtractorCache[$resourceName])) {
+            $extractor = $this->valueExtractorManager
+                ->get($resourceName);
+            // Propagate the engine's visibility setting so that maps with empty
+            // filter_visibility inherit the engine default.
+            if (method_exists($extractor, 'setEngineVisibility')) {
+                $extractor->setEngineVisibility(
+                    $this->searchEngine->setting('visibility')
+                );
+            }
+            $this->valueExtractorCache[$resourceName] = $extractor;
+        }
+        return $this->valueExtractorCache[$resourceName];
+    }
+
+    /**
+     * Get cached value formatter for a solr map.
+     *
+     * Note: Settings are applied per call since they vary by map.
+     */
+    protected function getValueFormatter(
+        SolrMapRepresentation $solrMap
+    ): \SearchSolr\ValueFormatter\ValueFormatterInterface {
+        $formatter = $solrMap->setting('formatter', '');
+        $formatter = $formatter && $this->valueFormatterManager->has($formatter)
+            ? $formatter
+            : 'text';
+
+        if (!isset($this->valueFormatterCache[$formatter])) {
+            $this->valueFormatterCache[$formatter] = $this->valueFormatterManager
+                ->get($formatter)
+                ->setServiceLocator($this->services);
+        }
+
+        // Settings must be applied per map since they vary.
+        return $this->valueFormatterCache[$formatter]
+            ->setSettings($solrMap->settings());
+    }
+
+    /**
+     * Get cached maps for a resource name.
+     *
+     * @return \SearchSolr\Api\Representation\SolrMapRepresentation[]
+     */
+    protected function getMapsByResourceName(string $resourceName): array
+    {
+        if (!isset($this->mapsByResourceNameCache[$resourceName])) {
+            $this->mapsByResourceNameCache[$resourceName] = $this->solrCore
+                ->mapsByResourceName($resourceName);
+        }
+        return $this->mapsByResourceNameCache[$resourceName];
     }
 }

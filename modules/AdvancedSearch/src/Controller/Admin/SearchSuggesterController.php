@@ -13,7 +13,7 @@ use Omeka\Form\ConfirmForm;
 class SearchSuggesterController extends AbstractActionController
 {
     /**
-     * @var EntityManager
+     * @var \Doctrine\ORM\EntityManager
      */
     protected $entityManager;
 
@@ -54,23 +54,23 @@ class SearchSuggesterController extends AbstractActionController
 
         /** @var \AdvancedSearch\Api\Representation\SearchSuggesterRepresentation $suggester */
         $suggester = $this->api()->read('search_suggesters', ['id' => $id])->getContent();
-        $engine = $suggester->engine();
-        $searchAdapter = $engine->adapter();
-        if (!$searchAdapter) {
+        $searchEngine = $suggester->searchEngine();
+        $engineAdapter = $searchEngine->engineAdapter();
+        if (!$engineAdapter) {
             $this->messenger()->addError(new PsrMessage(
                 'The search adapter for engine "{name}" is not available.', // @translate
-                ['name' => $engine->name()]
+                ['name' => $searchEngine->name()]
             ));
-            return $this->redirect()->toRoute('admin/search', ['action' => 'browse'], true);
+            return $this->redirect()->toRoute('admin/search-manager', ['action' => 'browse'], true);
         }
 
         $data = $suggester->jsonSerialize();
-        $data['o:engine'] = $engine->id();
-        $isInternal = $searchAdapter instanceof \AdvancedSearch\Adapter\InternalAdapter;
+        $data['o:search_engine'] = $searchEngine->id();
+        $isInternal = $engineAdapter instanceof \AdvancedSearch\EngineAdapter\Internal;
 
         $form = $this->getForm(SearchSuggesterForm::class, [
             'add' => false,
-            'engine' => $engine,
+            'search_engine' => $searchEngine,
             'is_internal' => $isInternal,
         ]);
         $form->setData($data);
@@ -86,7 +86,7 @@ class SearchSuggesterController extends AbstractActionController
         $formData = $form->getData();
 
         // The engine cannot be modified.
-        $formData['o:engine'] = $engine->getEntity();
+        $formData['o:search_engine'] = $searchEngine->getEntity();
 
         $suggester = $this->api()
             ->update('search_suggesters', $id, $formData, [], ['isPartial' => true])
@@ -101,19 +101,32 @@ class SearchSuggesterController extends AbstractActionController
             $this->messenger()->addWarning('Don’t forget to run the indexation of the suggester.'); // @translate
         }
 
-        return $this->redirect()->toRoute('admin/search');
+        // Trigger event for other modules to handle post-save actions.
+        // For example, SearchSolr can create the Solr suggester here.
+        $this->getEventManager()->trigger('advancedsearch.suggester.save', $this, [
+            'suggester' => $suggester,
+            'search_engine' => $searchEngine,
+            'engine_adapter' => $engineAdapter,
+            'messenger' => $this->messenger(),
+        ]);
+
+        return $this->redirect()->toRoute('admin/search-manager');
     }
 
     public function indexConfirmAction()
     {
         $suggester = $this->api()->read('search_suggesters', $this->params('id'))->getContent();
 
-        $totalJobs = $this->totalJobs(IndexSuggestions::class, true);
+        $listJobStatusesByIds = $this->listJobStatusesByIds(IndexSuggestions::class, true);
+        // Include Solr suggester jobs if the class exists.
+        if (class_exists('SearchSolr\Job\CreateSolrSuggesters', true)) {
+            $listJobStatusesByIds += $this->listJobStatusesByIds(\SearchSolr\Job\CreateSolrSuggesters::class, true);
+        }
 
         $view = new ViewModel([
             'resourceLabel' => 'search suggester',
             'resource' => $suggester,
-            'totalJobs' => $totalJobs,
+            'listJobStatusesByIds' => $listJobStatusesByIds,
         ]);
         return $view
             ->setTerminal(true)
@@ -127,34 +140,45 @@ class SearchSuggesterController extends AbstractActionController
         $suggester = $this->api()->read('search_suggesters', $suggesterId)->getContent();
 
         $force = (bool) $this->params()->fromPost('force');
-        $processMode = $this->params()->fromPost('process_mode');
 
-        $jobArgs = [];
-        $jobArgs['search_suggester_id'] = $suggester->id();
-        $jobArgs['force'] = $force;
-        $jobArgs['process_mode'] = $processMode;
-        $dispatcher = $this->jobDispatcher();
-        if ($this->params()->fromPost('foreground')) {
-            $job = $dispatcher->dispatch(IndexSuggestions::class, $jobArgs, $suggester->getServiceLocator()->get('Omeka\Job\DispatchStrategy\Synchronous'));
+        $searchEngine = $suggester->searchEngine();
+        $engineAdapter = $searchEngine->engineAdapter();
+        $isInternal = $engineAdapter
+            && $engineAdapter instanceof \AdvancedSearch\EngineAdapter\Internal;
+
+        if ($isInternal) {
+            $jobArgs = [];
+            $jobArgs['search_suggester_id'] = $suggester->id();
+            $jobArgs['force'] = $force;
+            $job = $this->jobDispatcher()->dispatch(IndexSuggestions::class, $jobArgs);
+
+            $urlPlugin = $this->url();
+            $message = new PsrMessage(
+                'Indexing suggestions of suggester "{name}" started in job {link_job}#{job_id}{link_end} ({link_log}logs{link_end}).', // @translate
+                [
+                    'name' => $suggester->name(),
+                    'link_job' => sprintf('<a href="%1$s">', $urlPlugin->fromRoute('admin/id', ['controller' => 'job', 'id' => $job->getId()])),
+                    'job_id' => $job->getId(),
+                    'link_end' => '</a>',
+                    'link_log' => class_exists('Log\Module', false)
+                        ? sprintf('<a href="%1$s">', $urlPlugin->fromRoute('admin/default', ['controller' => 'log'], ['query' => ['job_id' => $job->getId()]]))
+                        : sprintf('<a href="%1$s" target="_blank">', $urlPlugin->fromRoute('admin/id', ['controller' => 'job', 'action' => 'log', 'id' => $job->getId()])),
+                ]
+            );
+            $message->setEscapeHtml(false);
+            $this->messenger()->addSuccess($message);
         } else {
-            $job = $dispatcher->dispatch(IndexSuggestions::class, $jobArgs);
+            // Let external engines handle indexing via event.
+            $this->getEventManager()->trigger('advancedsearch.suggester.index', $this, [
+                'suggester' => $suggester,
+                'search_engine' => $searchEngine,
+                'engine_adapter' => $engineAdapter,
+                'force' => $force,
+                'messenger' => $this->messenger(),
+            ]);
         }
 
-        $urlHelper = $this->viewHelpers()->get('url');
-        $message = new PsrMessage(
-            'Indexing suggestions of suggester "{name}" started in job {link_job}#{job_id}{link_end} ({link_log}logs{link_end}).', // @translate
-            [
-                'name' => $suggester->name(),
-                'link_job' => sprintf('<a href="%1$s">', $urlHelper('admin/id', ['controller' => 'job', 'id' => $job->getId()])),
-                'job_id' => $job->getId(),
-                'link_end' => '</a>',
-                'link_log' => sprintf('<a href="%1$s">', class_exists('Log\Module') ? $urlHelper('admin/default', ['controller' => 'log'], ['query' => ['job_id' => $job->getId()]]) : $urlHelper('admin/id', ['controller' => 'job', 'action' => 'log', 'id' => $job->getId()])),
-            ]
-        );
-        $message->setEscapeHtml(false);
-        $this->messenger()->addSuccess($message);
-
-        return $this->redirect()->toRoute('admin/search', ['action' => 'browse'], true);
+        return $this->redirect()->toRoute('admin/search-manager', ['action' => 'browse'], true);
     }
 
     public function deleteConfirmAction()
@@ -191,7 +215,7 @@ class SearchSuggesterController extends AbstractActionController
                 ));
             }
         }
-        return $this->redirect()->toRoute('admin/search');
+        return $this->redirect()->toRoute('admin/search-manager');
     }
 
     protected function checkPostAndValidForm($form): bool
@@ -215,9 +239,11 @@ class SearchSuggesterController extends AbstractActionController
                 ));
                 return false;
             }
-            $suggesterId = (int) $this->api()
-                ->searchOne('search_suggesters', ['name' => $name], ['returnScalar' => 'id'])
-                ->getContent();
+            try {
+                $suggesterId = (int) $this->api()->read('search_suggesters', ['name' => $name])->getContent()->id();
+            } catch (\Throwable $e) {
+                $suggesterId = null;
+            }
             if ($id !== $suggesterId) {
                 $this->messenger()->addError(new PsrMessage(
                     'The name should be unique.' // @translate

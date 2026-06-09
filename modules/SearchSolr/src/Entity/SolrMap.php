@@ -2,7 +2,7 @@
 
 /*
  * Copyright BibLibre, 2017
- * Copyright Daniel Berthereau, 2020-2023
+ * Copyright Daniel Berthereau, 2020-2026
  *
  * This software is governed by the CeCILL license under French law and abiding
  * by the rules of distribution of free software.  You can use, modify and/ or
@@ -43,6 +43,9 @@ use Omeka\Entity\AbstractEntity;
  *             columns={"solr_core_id","field_name"}
  *         ),
  *         @Index(
+ *             columns={"solr_core_id","alias"}
+ *         ),
+ *         @Index(
  *             columns={"solr_core_id","source"}
  *         )
  *     }
@@ -52,6 +55,7 @@ class SolrMap extends AbstractEntity
 {
     /**
      * @var int
+     *
      * @Id
      * @Column(type="integer")
      * @GeneratedValue
@@ -60,6 +64,7 @@ class SolrMap extends AbstractEntity
 
     /**
      * @var SolrCore
+     *
      * @ManyToOne(
      *     targetEntity="SearchSolr\Entity\SolrCore",
      *     inversedBy="maps"
@@ -73,6 +78,7 @@ class SolrMap extends AbstractEntity
 
     /**
      * @var string
+     *
      * @Column(
      *     type="string",
      *     length=190
@@ -82,6 +88,7 @@ class SolrMap extends AbstractEntity
 
     /**
      * @var string
+     *
      * @Column(
      *     type="string",
      *     length=190
@@ -91,6 +98,7 @@ class SolrMap extends AbstractEntity
 
     /**
      * @var string
+     *
      * @Column(
      *     type="string",
      *     length=190
@@ -99,7 +107,19 @@ class SolrMap extends AbstractEntity
     protected $source;
 
     /**
+     * @var string
+     *
+     * @Column(
+     *     type="string",
+     *     length=190,
+     *     nullable=true
+     * )
+     */
+    protected $alias;
+
+    /**
      * @var array
+     *
      * @Column(
      *     type="json",
      *     nullable=false
@@ -109,6 +129,7 @@ class SolrMap extends AbstractEntity
 
     /**
      * @var array
+     *
      * @Column(
      *     type="json",
      *     nullable=false
@@ -163,6 +184,17 @@ class SolrMap extends AbstractEntity
     public function getSource(): string
     {
         return $this->source;
+    }
+
+    public function setAlias(?string $alias): self
+    {
+        $this->alias = $alias;
+        return $this;
+    }
+
+    public function getAlias(): ?string
+    {
+        return $this->alias;
     }
 
     public function setPool(array $pool): self

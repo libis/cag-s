@@ -2,7 +2,7 @@
 
 /*
  * Copyright BibLibre, 2016-2017
- * Copyright Daniel Berthereau, 2017-2024
+ * Copyright Daniel Berthereau, 2017-2026
  *
  * This software is governed by the CeCILL license under French law and abiding
  * by the rules of distribution of free software.  You can use, modify and/ or
@@ -33,98 +33,144 @@ namespace AdvancedSearch\Controller;
 use AdvancedSearch\Api\Representation\SearchConfigRepresentation;
 use AdvancedSearch\Query;
 use AdvancedSearch\Response;
-use Laminas\Feed\Writer\Feed;
 use Laminas\Mvc\Controller\AbstractActionController;
 use Laminas\View\Model\JsonModel;
 use Laminas\View\Model\ViewModel;
 
 class SearchController extends AbstractActionController
 {
+    /**
+     * @throws \Omeka\Api\Exception\NotFoundException for item set.
+     */
     public function searchAction()
     {
-        $searchConfigId = (int) $this->params('id');
+        /**
+         * The config is required, else there is no form.
+         * @todo Make the config and  the form independant (or noop form).
+         *
+         * @var \AdvancedSearch\Api\Representation\SearchConfigRepresentation $searchConfig
+         * @see \AdvancedSearch\View\Helper\GetSearchConfig
+         */
 
+        $params = $this->params();
         $isSiteRequest = $this->status()->isSiteRequest();
-        if ($isSiteRequest) {
-            $site = $this->currentSite();
-            $siteSettings = $this->siteSettings();
-            $siteSearchConfigs = $siteSettings->get('advancedsearch_configs', []);
-            if (!in_array($searchConfigId, $siteSearchConfigs)) {
-                return $this->notFoundAction();
+        $site = $isSiteRequest ? $this->currentSite() : null;
+        $searchConfigId = (int) $params->fromRoute('id');
+        $searchConfig = $this->viewHelpers()->get('getSearchConfig')($searchConfigId);
+        if ($searchConfig === null) {
+            if ($isSiteRequest) {
+                $this->logger()->err(
+                    'The search engine {search_slug} is not available in site {site_slug}. Check site settings or search config.', // @translate
+                    ['search_slug' => $params->fromRoute('search-slug'), 'site_slug' => $site->slug()]
+                );
+            } else {
+                $this->logger()->err(
+                    'The search engine {search_slug} is not available for admin. Check main settings or search config.', // @translate
+                    ['search_slug' => $params->fromRoute('search-slug')]
+                );
             }
-            // Check if it is an item set redirection.
-            $itemSetId = (int) $this->params('item-set-id');
-            // This is just a check: if set, mvc listeners add item_set['id'][].
-            // @see \AdvancedSearch\Mvc\MvcListeners::redirectItemSetToSearch()
-            if ($itemSetId) {
-                // May throw a not found exception.
-                $this->api()->read('item_sets', $itemSetId);
-            }
-        } else {
-            $site = null;
+            return $this->notFoundAction();
         }
 
-        // The config is required, else there is no form.
-        // TODO Make the config and  the form independant (or noop form).
-        /** @var \AdvancedSearch\Api\Representation\SearchConfigRepresentation $searchConfig */
-        $searchConfig = $this->api()->read('search_configs', $searchConfigId)->getContent();
+        if ($isSiteRequest) {
+            // Check if it is an item set redirection.
+            $itemSetId = (int) $params->fromRoute('item-set-id');
+            // This is just a check: if set, mvc listeners add item_set['id'][].
+            // @see \AdvancedSearch\Mvc\MvcListeners::redirectItemSetToSearch()
+            // May throw a not found exception.
+            // TODO Use site item set ?
+            $itemSet = $itemSetId
+                ? $this->api()->read('item_sets', ['id' => $itemSetId])->getContent()
+                : null;
+        } else {
+            $itemSet = null;
+            $itemSetId = null;
+        }
 
         // TODO Factorize with rss output below.
+        /** @see \AdvancedSearch\FormAdapter\AbstractFormAdapter::renderForm() */
         $view = new ViewModel([
+            'site' => $site,
             // The form is set via searchConfig.
             'searchConfig' => $searchConfig,
-            // "searchPage" is kept to simplify migration.
-            'searchPage' => $searchConfig,
-            'site' => $site,
+            'itemSet' => $itemSet,
             // Set a default empty query and response to simplify view.
+            // They will be filled in formAdapter.
             'query' => new Query,
             'response' => new Response,
         ]);
 
-        $request = $this->params()->fromQuery();
+        $template = $isSiteRequest ? $searchConfig->subSetting('results', 'template') : null;
+        if ($template) {
+            $view->setTemplate($template);
+        }
 
-        $form = $searchConfig->form();
-        if ($form) {
-            // Check csrf issue.
-            $request = $this->validateSearchRequest($searchConfig, $request);
-            if ($request === false) {
-                return $view;
-            }
+        $request = $params->fromQuery();
+
+        // Persist per_page choice across the session.
+        $session = new \Laminas\Session\Container('AdvancedSearch');
+        if (!empty($request['per_page']) && is_numeric($request['per_page'])) {
+            $session->perPage = (int) $request['per_page'];
+        } elseif (!isset($request['per_page']) && !empty($session->perPage)) {
+            $request['per_page'] = $session->perPage;
+        }
+
+        // On an item set page, only one item set can be used and the page
+        // should limit results to it.
+        // With the module Advanced Search, the name of the arg was "item_set".
+        if ($itemSet
+            // Avoid to duplicate arg for item set, that has a default alias.
+            && (empty($request['item_set_id'])
+                || (is_numeric($request['item_set_id']) && (int) $request['item_set_id'] !== $itemSetId)
+            )
+        ) {
+            $request['item_set'] = $itemSetId;
         }
 
         // The form may be empty for a direct query.
-        $isJsonQuery = !$form;
+        $formAdapter = $searchConfig->formAdapter();
+        $hasForm = $formAdapter ? (bool) $formAdapter->getFormClass() : false;
+        $isJsonQuery = !$hasForm;
+
+        // If wanted, only the csrf is needed and checked, if any.
+        if (!$formAdapter->validateRequest($request)) {
+            return $view;
+        }
 
         // Check if the query is empty and use the default query in that case.
         // So the default query is used only on the search config.
-        [$request, $isEmptyRequest] = $this->cleanRequest($request);
+        $request = $formAdapter->cleanRequest($request);
+        $isEmptyRequest = $formAdapter->isEmptyRequest($request);
         if ($isEmptyRequest) {
-            $defaultResults = $searchConfig->subSetting('search', 'default_results') ?: 'default';
+            $defaultResults = $searchConfig->subSetting('request', 'default_results') ?: 'default';
             switch ($defaultResults) {
                 case 'none':
                     $defaultQuery = '';
                     $defaultQueryPost = '';
                     break;
                 case 'query':
-                    $defaultQuery = $searchConfig->subSetting('search', 'default_query') ?: '';
-                    $defaultQueryPost = $searchConfig->subSetting('search', 'default_query_post') ?: '';
+                    $defaultQuery = $searchConfig->subSetting('request', 'default_query') ?: '';
+                    $defaultQueryPost = $searchConfig->subSetting('request', 'default_query_post') ?: '';
                     break;
                 case 'default':
                 default:
                     // "*" means the default query managed by the search engine.
                     $defaultQuery = '*';
-                    $defaultQueryPost = $searchConfig->subSetting('search', 'default_query_post') ?: '';
+                    $defaultQueryPost = $searchConfig->subSetting('request', 'default_query_post') ?: '';
                     break;
             }
             if ($defaultQuery === '' && $defaultQueryPost === '') {
                 if ($isJsonQuery) {
                     return new JsonModel([
-                        'status' => 'error',
-                        'message' => 'No query.', // @translate
+                        'status' => 'fail',
+                        'data' => [
+                            'query' => $this->translate('No query.'), // @translate
+                        ],
                     ]);
                 }
                 return $view;
             }
+
             $parsedQuery = [];
             if ($defaultQuery) {
                 parse_str($defaultQuery, $parsedQuery);
@@ -139,58 +185,54 @@ class SearchController extends AbstractActionController
             $request = $parsedQuery + $request + $parsedQueryPost;
         }
 
-        $result = $this->searchRequestToResponse($request, $searchConfig, $site);
-        if ($result['status'] === 'fail') {
-            // Currently only "no query".
+        // Get the response.
+        $response = $formAdapter->toResponse($request, $site);
+
+        if (!$response->isSuccess()) {
+            $this->getResponse()->setStatusCode(\Laminas\Http\Response::STATUS_CODE_500);
+            $msg = $response->getMessage();
             if ($isJsonQuery) {
                 return new JsonModel([
                     'status' => 'error',
-                    'message' => 'No query.', // @translate
+                    'message' => $this->translate($msg ?: 'An error occurred.'), // @translate
                 ]);
+            }
+            if ($msg) {
+                $this->messenger()->addError($msg);
             }
             return $view;
         }
 
-        if ($result['status'] === 'error') {
-            if ($isJsonQuery) {
-                return new JsonModel($result);
-            }
-            $this->messenger()->addError($result['message']);
-            return $view;
-        }
+        // Warning: The service Paginator is not a shared service: each instance
+        // is a new one. Furthermore, the delegator SitePaginatorFactory is not
+        // declared in the main config and only used in Omeka MvcListeners().
+
+        /** @see \Omeka\Mvc\Controller\Plugin\Paginator */
+        $this->paginator(
+            $response->getTotalResults(),
+            $response->getCurrentPage(),
+            $response->getPerPage()
+        );
 
         if ($isJsonQuery) {
-            /** @var \AdvancedSearch\Response $response */
-            $response = $result['data']['response'];
-            if (!$response) {
-                $this->getResponse()->setStatusCode(\Laminas\Http\Response::STATUS_CODE_500);
-                return new JsonModel([
-                    'status' => 'error',
-                    'message' => 'An error occurred.', // @translate
-                ]);
-            }
-
-            if (!$response->isSuccess()) {
-                $this->getResponse()->setStatusCode(\Laminas\Http\Response::STATUS_CODE_500);
-                return new JsonModel([
-                    'status' => 'error',
-                    'message' => $response->getMessage(),
-                ]);
-            }
-
-            $engineSettings = $searchConfig->engine()->settings();
+            $searchEngineSettings = $searchConfig->searchEngine()->settings();
             $result = [];
-            foreach ($engineSettings['resources'] as $resource) {
-                $result[$resource] = $response->getResults($resource);
+            foreach ($searchEngineSettings['resource_types'] as $resourceType) {
+                $result[$resourceType] = $response->getResults($resourceType);
             }
             return new JsonModel($result);
         }
 
+        $vars = [
+            'searchConfig' => $searchConfig,
+            'itemSet' => $itemSet,
+            'site' => $site,
+            'query' => $response->getQuery(),
+            'response' => $response,
+        ];
+
         return $view
-            ->setVariables($result['data'], true)
-            ->setVariable('searchConfig', $searchConfig)
-            // "searchPage" is kept to simplify migration.
-            ->setVariable('searchPage', $searchConfig);
+            ->setVariables($vars, true);
     }
 
     public function suggestAction()
@@ -198,11 +240,14 @@ class SearchController extends AbstractActionController
         if (!$this->getRequest()->isXmlHttpRequest()) {
             return new JsonModel([
                 'status' => 'error',
-                'message' => 'This action requires an ajax request.', // @translate
+                'message' => $this->translate('This action requires an ajax request.'), // @translate
             ]);
         }
 
-        $q = (string) $this->params()->fromQuery('q');
+        $params = $this->params();
+
+        // Some search engines may use trailing spaces, so keep them.
+        $q = (string) $params->fromQuery('q');
         if (!strlen($q)) {
             return new JsonModel([
                 'status' => 'success',
@@ -213,7 +258,7 @@ class SearchController extends AbstractActionController
             ]);
         }
 
-        $searchConfigId = (int) $this->params('id');
+        $searchConfigId = (int) $params->fromRoute('id');
 
         $isSiteRequest = $this->status()->isSiteRequest();
         if ($isSiteRequest) {
@@ -223,7 +268,7 @@ class SearchController extends AbstractActionController
             if (!in_array($searchConfigId, $siteSearchConfigs)) {
                 return new JsonModel([
                     'status' => 'error',
-                    'message' => 'Not a search page for this site.', // @translate
+                    'message' => $this->translate('Not a search page for this site.'), // @translate
                 ]);
             }
             // TODO Manage item set redirection.
@@ -232,34 +277,31 @@ class SearchController extends AbstractActionController
         }
 
         /** @var \AdvancedSearch\Api\Representation\SearchConfigRepresentation $searchConfig */
-        $searchConfig = $this->api()->read('search_configs', $searchConfigId)->getContent();
-
-        // The suggester may be the url, but in that case it's pure js and the
-        // query doesn't come here (for now).
-        $suggesterId = $searchConfig->subSetting('autosuggest', 'suggester');
-        if (!$suggesterId) {
-            return new JsonModel([
-                'status' => 'error',
-                'message' => 'The search page has no suggester.', // @translate
-            ]);
-        }
-
         try {
-            /** @var \AdvancedSearch\Api\Representation\SearchSuggesterRepresentation $suggester */
-            $suggester = $this->api()->read('search_suggesters', $suggesterId)->getContent();
+            $searchConfig = $this->api()->read('search_configs', $searchConfigId)->getContent();
         } catch (\Omeka\Api\Exception\NotFoundException $e) {
             return new JsonModel([
                 'status' => 'error',
-                'message' => 'The search page has no more suggester.', // @translate
+                'message' => $this->translate('The seach engine is not available.'), // @translate
             ]);
         }
 
-        $response = $suggester->suggest($q, $site);
+        $field = $params->fromQuery('field');
+        $mode = $params->fromQuery('mode');
+
+        // Mode "values": return field values with prefix filtering
+        // for autocompletion on advanced filter inputs.
+        if ($mode === 'values' && $field) {
+            return $this->fieldValues($searchConfig, $field, $q, $isSiteRequest, $site);
+        }
+
+        $response = $searchConfig->suggest($q, $field, $site);
+
         if (!$response) {
             $this->getResponse()->setStatusCode(\Laminas\Http\Response::STATUS_CODE_500);
             return new JsonModel([
                 'status' => 'error',
-                'message' => 'An error occurred.', // @translate
+                'message' => $this->translate('An error occurred.'), // @translate
             ]);
         }
 
@@ -282,355 +324,47 @@ class SearchController extends AbstractActionController
     }
 
     /**
-     * Get rss from advanced search results.
-     *
-     * Adaptation of module Feed.
-     * @see \Feed\Controller\FeedController::rss()
+     * Return distinct values for a field via the search engine querier.
      */
-    public function rssAction()
-    {
-        require_once dirname(__DIR__, 2) . '/vendor/autoload.php';
-
-        $searchConfigId = (int) $this->params('id');
-
-        $isSiteRequest = $this->status()->isSiteRequest();
-        if ($isSiteRequest) {
-            $site = $this->currentSite();
-            $siteSettings = $this->siteSettings();
-            $siteSearchConfigs = $siteSettings->get('advancedsearch_configs', []);
-            if (!in_array($searchConfigId, $siteSearchConfigs)) {
-                return $this->notFoundAction();
-            }
-            // Check if it is an item set redirection.
-            $itemSetId = (int) $this->params('item-set-id');
-            // This is just a check: if set, mvc listeners add item_set['id'][].
-            // @see \AdvancedSearch\Mvc\MvcListeners::redirectItemSetToSearch()
-            if ($itemSetId) {
-                // May throw a not found exception.
-                $this->api()->read('item_sets', $itemSetId);
-            }
-        } else {
-            throw new \Omeka\Mvc\Exception\RuntimeException('Rss are available only via public interface.'); // @translate
-        }
-
-        // The config is required, else there is no form.
-        // TODO Make the config and  the form independant (or noop form) and useless for the rss.
-        /** @var \AdvancedSearch\Api\Representation\SearchConfigRepresentation $searchConfig */
-        $searchConfig = $this->api()->read('search_configs', $searchConfigId)->getContent();
-
-        // Copy from module Feed.
-
-        $type = $this->params()->fromRoute('feed', 'rss');
-
-        /** @var \Omeka\Api\Representation\SiteRepresentation $site */
-        $site = $this->currentSite();
-        $siteSettings = $this->siteSettings();
-        $urlHelper = $this->viewHelpers()->get('url');
-
-        $feed = new Feed;
-        $feed
-            ->setType($type)
-            ->setTitle($site->title())
-            ->setLink($site->siteUrl($site->slug(), true))
-            // Use rdf because Omeka is Semantic, but "atom" is required when
-            // the type is "atom".
-            ->setFeedLink($urlHelper('site/feed', ['site-slug' => $site->slug()], ['force_canonical' => true]), $type === 'atom' ? 'atom' : 'rdf')
-            ->setGenerator('Omeka S module Advanced Search', $searchConfig->getServiceLocator()->get('Omeka\ModuleManager')->getModule('AdvancedSearch')->getIni('version'), 'https://gitlab.com/Daniel-KM/Omeka-S-module-AdvancedSearch')
-            ->setDateModified(time())
-        ;
-
-        $description = $site->summary();
-        if ($description) {
-            $feed
-                ->setDescription($description);
-        }
-        // The type "rss" requires a description.
-        elseif ($type === 'rss') {
-            $feed
-                ->setDescription($site->title());
-        }
-
-        $locale = $siteSettings->get('locale');
-        if ($locale) {
-            $feed
-                ->setLanguage($locale);
-        }
-
-        /** @var \Omeka\Api\Representation\AssetRepresentation $asset */
-        $asset = $siteSettings->get('feed_logo');
-        if (is_numeric($asset)) {
-            $asset = $this->api()->searchOne('assets', ['id' => $asset])->getContent();
-        }
-        if (!$asset) {
-            $asset = $site->thumbnail();
-        }
-        if ($asset) {
-            $image = [
-                'uri' => $asset->assetUrl(),
-                'link' => $site->siteUrl(null, true),
-                'title' => $this->translate('Logo'),
-                // Optional for "rss".
-                // 'description' => '',
-                // 'height' => '',
-                // 'width' => '',
-            ];
-            $feed->setImage($image);
-        }
-
-        $this->appendEntriesDynamic($feed, $searchConfig);
-
-        $content = $feed->export($type);
-
-        $response = $this->getResponse();
-        $response->setContent($content);
-
-        /** @var \Laminas\Http\Headers $headers */
-        $headers = $response->getHeaders();
-        $headers
-            ->addHeaderLine('Content-length: ' . strlen($content))
-            ->addHeaderLine('Pragma: public');
-        // TODO Manage content type requests (atom/rss).
-        // Note: normally, application/rss+xml is the standard one, but text/xml
-        // may be more compatible.
-        if ($siteSettings->get('feed_media_type', 'standard') === 'xml') {
-            $headers
-                ->addHeaderLine('Content-type: ' . 'text/xml; charset=UTF-8');
-        } else {
-            $headers
-                ->addHeaderLine('Content-type: ' . 'application/' . $type . '+xml; charset=UTF-8');
-        }
-
-        $contentDisposition = $siteSettings->get('feed_disposition', 'attachment');
-        switch ($contentDisposition) {
-            case 'undefined':
-                break;
-            case 'inline':
-                $headers
-                    ->addHeaderLine('Content-Disposition', 'inline');
-                break;
-            case 'attachment':
-            default:
-                $filename = 'feed-' . (new \DateTime('now'))->format('Y-m-d') . '.' . $type . '.xml';
-                $headers
-                    ->addHeaderLine('Content-Disposition', $contentDisposition . '; filename="' . $filename . '"');
-                break;
-        }
-
-        return $response;
-    }
-
-    /**
-     * Get the request from the query and check it according to the search page.
-     *
-     * @todo Factorize with \AdvancedSearch\Site\BlockLayout\SearchingForm::getSearchRequest()
-     *
-     * @return array|bool
-     */
-    protected function validateSearchRequest(
+    protected function fieldValues(
         SearchConfigRepresentation $searchConfig,
-        array $request
-    ) {
-        // Only validate the csrf.
-        // Note: The search engine is used to display item sets too via the mvc
-        // redirection. In that case, there is no csrf element, so no check to
-        // do.
-        if (array_key_exists('csrf', $request)) {
-            $form = $searchConfig->form();
-            $form->setData($request);
-            if (!$form->isValid()) {
-                $messages = $form->getMessages();
-                if (isset($messages['csrf'])) {
-                    $this->messenger()->addError('Invalid or missing CSRF token'); // @translate
-                    return false;
-                }
-            }
+        string $field,
+        string $q,
+        bool $isSiteRequest,
+        ?\Omeka\Api\Representation\SiteRepresentation $site
+    ): JsonModel {
+        $querier = $searchConfig->searchEngine()->querier();
+
+        $query = new Query();
+        $query->setIsPublic($isSiteRequest);
+        if ($site) {
+            $query->setSiteId($site->id());
         }
-        return $request;
+        $formSettings = $searchConfig->settings()['form'] ?? [];
+        $aliases = $formSettings['advanced']['fields'] ?? [];
+        $query->setAliases($aliases);
+        $querier->setQuery($query);
+
+        $prefix = strlen($q) ? $q : null;
+        try {
+            $values = $querier->queryValues($field, $prefix, 25);
+        } catch (\Throwable $e) {
+            return new JsonModel([
+                'status' => 'error',
+                'message' => $e->getMessage(),
+            ]);
+        }
+
+        $values = array_values($values);
+
+        return new JsonModel([
+            'status' => 'success',
+            'data' => [
+                'query' => $q,
+                'suggestions' => array_map(fn ($v) =>
+                    ['value' => $v, 'data' => $v], $values),
+            ],
+        ]);
     }
 
-    /**
-     * Remove all empty values (zero length strings) and check empty request.
-     *
-     * @todo Factorize with \AdvancedSearch\Mvc\Controller\Plugin\SearchRequestToResponse::cleanRequest()
-     * @see \AdvancedSearch\Mvc\Controller\Plugin\SearchRequestToResponse::cleanRequest()
-     *
-     * @return array First key is the cleaned request, the second a bool to
-     * indicate if it is empty.
-     */
-    protected function cleanRequest(array $request): array
-    {
-        // They should be already removed.
-        unset($request['csrf'], $request['submit']);
-
-        $this->arrayFilterRecursive($request);
-
-        $checkRequest = array_diff_key(
-            $request,
-            [
-                // @see \Omeka\Api\Adapter\AbstractEntityAdapter::limitQuery().
-                'page' => null,
-                'per_page' => null,
-                'limit' => null,
-                'offset' => null,
-                // @see \Omeka\Api\Adapter\AbstractEntityAdapter::search().
-                'sort_by' => null,
-                'sort_order' => null,
-                // Used by Search.
-                'resource_type' => null,
-                'sort' => null,
-            ]
-        );
-
-        return [
-            $request,
-            !count($checkRequest),
-        ];
-    }
-
-    /**
-     * Remove zero-length values or an array, recursively.
-     *
-     * @todo Factorize with \AdvancedSearch\Mvc\Controller\Plugin\SearchRequestToResponse::arrayFilterRecursive()
-     */
-    protected function arrayFilterRecursive(array &$array): array
-    {
-        foreach ($array as $key => $value) {
-            if (is_array($value)) {
-                $array[$key] = $this->arrayFilterRecursive($value);
-                if (!count($array[$key])) {
-                    unset($array[$key]);
-                }
-            } elseif (!strlen(trim((string) $array[$key]))) {
-                unset($array[$key]);
-            }
-        }
-        return $array;
-    }
-
-    /**
-     * Fill each entry according to the search query.
-     *
-     * Adaptation of module Feed.
-     * @see \Feed\Controller\FeedController::appendEntriesDynamic()
-     */
-    protected function appendEntriesDynamic(Feed $feed, SearchConfigRepresentation $searchConfig): void
-    {
-        $controllersToApi = [
-            'item' => 'items',
-            'resource' => 'resources',
-            'item-set' => 'item_sets',
-            'media' => 'media',
-            'annotation' => 'annotations',
-        ];
-
-        // Resource name to controller name.
-        $controllerNames = [
-            'site_pages' => 'page',
-            'items' => 'item',
-            'item_sets' => 'item-set',
-            'media' => 'media',
-            'annotations' => 'annotation',
-        ];
-
-        $allowedTags = '<p><a><i><b><em><strong><br>';
-
-        $maxLength = (int) $this->siteSettings()->get('feed_entry_length', 0);
-
-        /** @var \Omeka\Api\Representation\SiteRepresentation $currentSite */
-        $currentSite = $this->currentSite();
-        $currentSiteSlug = $currentSite->slug();
-
-        $controller = $this->params()->fromRoute('resource-type', 'item');
-        $mainResourceName = $controllersToApi[$controller] ?? 'items';
-
-        // TODO Factorize to get results directly.
-
-        $site = $currentSite;
-
-        $request = $this->params()->fromQuery();
-
-        // Check if the query is empty and use the default query in that case.
-        // So the default query is used only on the search config.
-        [$request, $isEmptyRequest] = $this->cleanRequest($request);
-        if ($isEmptyRequest) {
-            $defaultResults = $searchConfig->subSetting('search', 'default_results') ?: 'default';
-            switch ($defaultResults) {
-                case 'none':
-                    $defaultQuery = '';
-                    $defaultQueryPost = '';
-                    break;
-                case 'query':
-                    $defaultQuery = $searchConfig->subSetting('search', 'default_query') ?: '';
-                    $defaultQueryPost = $searchConfig->subSetting('search', 'default_query_post') ?: '';
-                    break;
-                case 'default':
-                default:
-                    // "*" means the default query managed by the search engine.
-                    $defaultQuery = '*';
-                    $defaultQueryPost = $searchConfig->subSetting('search', 'default_query_post') ?: '';
-                    break;
-            }
-            if ($defaultQuery === '' && $defaultQueryPost === '') {
-                return;
-            }
-            $parsedQuery = [];
-            if ($defaultQuery) {
-                parse_str($defaultQuery, $parsedQuery);
-            }
-            $parsedQueryPost = [];
-            if ($defaultQueryPost) {
-                parse_str($defaultQueryPost, $parsedQueryPost);
-            }
-            // Keep the other arguments of the request (mainly pagination, sort,
-            // and facets), but append default args if not set in request.
-            // It allows user to sort the default query.
-            $request = $parsedQuery + $request + $parsedQueryPost;
-        }
-
-        $result = $this->searchRequestToResponse($request, $searchConfig, $site);
-        if ($result['status'] === 'fail'
-            || $result['status'] === 'error'
-        ) {
-            return;
-        }
-
-        /** @var \AdvancedSearch\Response $response */
-        $response = $result['data']['response'];
-        if (!$response) {
-            return;
-        }
-
-        $resources = $response->getResources($mainResourceName);
-        foreach ($resources as $resource) {
-            // Manage the case where the main resource is "resource".
-            $resourceName = $resource->resourceName();
-
-            $entry = $feed->createEntry();
-            $id = $controllerNames[$resourceName] . '-' . $resource->id();
-
-            $entry
-                ->setId($id)
-                ->setLink($resource->siteUrl($currentSiteSlug, true))
-                ->setDateCreated($resource->created())
-                ->setDateModified($resource->modified())
-                ->setTitle((string) $resource->displayTitle($id));
-
-            $content = strip_tags($resource->displayDescription(), $allowedTags);
-            if ($content) {
-                if ($maxLength) {
-                    $clean = trim(str_replace('  ', ' ', strip_tags($content)));
-                    $content = mb_substr($clean, 0, $maxLength) . '…';
-                } else {
-                    $content = trim(strip_tags($content, $allowedTags));
-                }
-                $entry->setContent($content);
-            }
-            $shortDescription = $resource->value('bibo:shortDescription');
-            if ($shortDescription) {
-                $entry->setDescription(strip_tags($shortDescription, $allowedTags));
-            }
-
-            $feed->addEntry($entry);
-        }
-    }
 }

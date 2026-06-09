@@ -21,39 +21,31 @@ class Helper
 {
     /**
      * Placeholder pattern for use in the assemble method.
-     *
-     * @var string
      */
-    protected $placeHolderPattern = '/%(L|P|T|)(\d+)%/i';
+    protected string $placeHolderPattern = '/%(L|P|T|)(\d+)%/i';
 
     /**
      * Array of parts to use for assembling a query string.
-     *
-     * @var array
      */
-    protected $assembleParts;
+    protected array $assembleParts;
 
     /**
      * Counter to keep dereferenced params unique (within a single query instance).
-     *
-     * @var int
      */
-    protected $derefencedParamsLastKey = 0;
+    protected int $derefencedParamsLastKey = 0;
 
     /**
      * Solarium Query instance, optional.
      * Used for dereferenced params.
-     *
-     * @var QueryInterface
      */
-    protected $query;
+    protected ?QueryInterface $query;
 
     /**
      * Constructor.
      *
-     * @param QueryInterface $query
+     * @param QueryInterface|null $query
      */
-    public function __construct(QueryInterface $query = null)
+    public function __construct(?QueryInterface $query = null)
     {
         $this->query = $query;
     }
@@ -75,9 +67,11 @@ class Helper
      */
     public function escapeTerm(string $input): string
     {
-        $pattern = '/( |\+|-|&&|\|\||!|\(|\)|\{|}|\[|]|\^|"|~|\*|\?|:|\/|\\\)/';
+        if (preg_match('/(^|\s)(AND|OR|TO)($|\s)/', strtoupper($input), $matches)) {
+            return $this->escapePhrase($input);
+        }
 
-        return preg_replace($pattern, '\\\$1', $input);
+        return preg_replace('/( |\+|-|&&|\|\||!|\(|\)|\{|}|\[|]|\^|"|~|\*|\?|:|\/|\\\)/', '\\\$1', $input);
     }
 
     /**
@@ -108,18 +102,30 @@ class Helper
      * a single quote, a double quote, or a right curly bracket. It backslash
      * escapes single quotes and backslashes within that quoted string.
      *
+     * If an optional pre-escaped separator character is passed, a backslash
+     * preceding this character will not be escaped with another backslash.
+     * {@internal Based on splitSmart() in org.apache.solr.common.util.StrUtils}
+     *
      * A value that doesn't require quoting is returned as is.
      *
      * @see https://solr.apache.org/guide/local-parameters-in-queries.html#basic-syntax-of-local-parameters
      *
-     * @param string $value
+     * @param string      $value
+     * @param string|null $preEscapedSeparator Separator character that is already escaped with a backslash
      *
      * @return string
      */
-    public function escapeLocalParamValue(string $value): string
+    public function escapeLocalParamValue(string $value, ?string $preEscapedSeparator = null): string
     {
         if (preg_match('/[ \'"}]/', $value)) {
-            $value = "'".preg_replace("/('|\\\\)/", '\\\$1', $value)."'";
+            $pattern = "/('|\\\\)/";
+
+            if (null !== $preEscapedSeparator) {
+                $char = preg_quote(substr($preEscapedSeparator, 0, 1), '/');
+                $pattern = "/('|\\\\(?!$char))/";
+            }
+
+            $value = "'".preg_replace($pattern, '\\\$1', $value)."'";
         }
 
         return $value;
@@ -139,16 +145,16 @@ class Helper
      *
      * @return string|false false is returned in case of invalid input
      */
-    public function formatDate($input)
+    public function formatDate($input): string|false
     {
         switch (true) {
-            // input of DateTime or DateTimeImmutable object
             case $input instanceof \DateTimeInterface:
+                // input of DateTime or DateTimeImmutable object
                 $input = clone $input;
                 break;
-            // input of timestamp or date/time string
             case \is_string($input):
             case is_numeric($input):
+                // input of timestamp or date/time string
                 // if date/time string: convert to timestamp first
                 if (\is_string($input)) {
                     $input = strtotime($input);
@@ -161,11 +167,8 @@ class Helper
                     $input = false;
                 }
                 break;
-            // any other input formats can be added in additional cases here...
-            // case $input instanceof Zend_Date:
-
-            // unsupported input format
             default:
+                // unsupported input format
                 $input = false;
                 break;
         }
@@ -205,7 +208,7 @@ class Helper
      *
      * @return string
      */
-    public function rangeQuery(string $field, $from, $to, $inclusive = true): string
+    public function rangeQuery(string $field, int|float|string|null $from, int|float|string|null $to, bool|array $inclusive = true): string
     {
         if (null === $from) {
             $from = '*';
@@ -343,6 +346,11 @@ class Helper
         foreach ($params as $key => $value) {
             if (!$dereferenced || $forceKeys || \is_int($key)) {
                 if (\is_array($value)) {
+                    if ('preFilter' === $key) {
+                        // preFilter is a special case, it needs to be split into multiple params
+                        $output .= ' '.$key.'='.implode(' '.$key.'=', $value);
+                        continue;
+                    }
                     $value = implode(',', $value);
                 } elseif (\is_bool($value)) {
                     $value = $value ? 'true' : 'false';
@@ -463,7 +471,7 @@ class Helper
      *
      * @deprecated Will be removed in Solarium 6. Use FilterQuery::setCache() and FilterQuery::setCost() instead.
      */
-    public function cacheControl(bool $useCache, float $cost = null): string
+    public function cacheControl(bool $useCache, ?float $cost = null): string
     {
         $cache = 'false';
 
@@ -560,5 +568,139 @@ class Helper
         }
 
         return $value;
+    }
+
+    /**
+     * Render a knn filter.
+     *
+     * The knn k-nearest neighbors query parser matches k-nearest documents to
+     * the target vector.
+     *
+     * @param string            $field
+     * @param float[]           $vector
+     * @param int|null          $topK
+     * @param array|string|null $preFilter
+     * @param array|string|null $includeTags
+     * @param array|string|null $excludeTags
+     *
+     * @return string
+     */
+    public function knn(string $field, array $vector, ?int $topK = null, array|string|null $preFilter = null, array|string|null $includeTags = null, array|string|null $excludeTags = null): string
+    {
+        $params = $this->getCommonVectorParams($field, $preFilter, $includeTags, $excludeTags);
+        if (null !== $topK) {
+            $params['topK'] = $topK;
+        }
+
+        return $this->qparser(
+            'knn',
+            $params,
+        ).$this->getFloatList($vector);
+    }
+
+    /**
+     * Render a knn_text_to_vector filter.
+     *
+     * The knn_text_to_vector query parser encode a textual query to a vector
+     * using a dedicated Large Language Model(fine tuned for the task of
+     * encoding text to vector for sentence similarity) and matches k-nearest
+     * neighbours documents to such query vector.
+     *
+     * @param string            $model
+     * @param string            $field
+     * @param string            $query
+     * @param int|null          $topK
+     * @param array|string|null $preFilter
+     * @param array|string|null $includeTags
+     * @param array|string|null $excludeTags
+     *
+     * @return string
+     */
+    public function knnTextToVector(string $model, string $field, string $query, ?int $topK = null, array|string|null $preFilter = null, array|string|null $includeTags = null, array|string|null $excludeTags = null): string
+    {
+        $params = $this->getCommonVectorParams($field, $preFilter, $includeTags, $excludeTags);
+        $params['model'] = $model;
+        if (null !== $topK) {
+            $params['topK'] = $topK;
+        }
+
+        return $this->qparser(
+            'knn_text_to_vector',
+            $params,
+        ).$query;
+    }
+
+    /**
+     * Render a vectorSimilarity filter.
+     *
+     * The vectorSimilarity vector similarity query parser matches documents
+     * whose similarity with the target vector is a above a minimum threshold.
+     *
+     * @param string            $field
+     * @param float[]           $vector
+     * @param float             $minReturn
+     * @param string            $minTraverse
+     * @param array|string|null $preFilter
+     * @param array|string|null $includeTags
+     * @param array|string|null $excludeTags
+     *
+     * @return string
+     */
+    public function vectorSimilarity(string $field, array $vector, float $minReturn, string $minTraverse = '-Infinity', array|string|null $preFilter = null, array|string|null $includeTags = null, array|string|null $excludeTags = null): string
+    {
+        $params = $this->getCommonVectorParams($field, $preFilter, $includeTags, $excludeTags);
+        $params['minReturn'] = $minReturn;
+        $params['minTraverse'] = $minTraverse;
+
+        return $this->qparser(
+            'vectorSimilarity',
+            $params,
+        ).$this->getFloatList($vector);
+    }
+
+    /**
+     * Get common knn and vector filter parameters.
+     *
+     * @param string            $field
+     * @param array|string|null $preFilter
+     * @param array|string|null $includeTags
+     * @param array|string|null $excludeTags
+     *
+     * @return array
+     */
+    protected function getCommonVectorParams(string $field, array|string|null $preFilter = null, array|string|null $includeTags = null, array|string|null $excludeTags = null): array
+    {
+        $params = [
+            'f' => $field,
+        ];
+        if (null !== $preFilter) {
+            $params['preFilter'] = $preFilter;
+        }
+        if (null !== $includeTags) {
+            $params['includeTags'] = $includeTags;
+        }
+        if (null !== $excludeTags) {
+            $params['excludeTags'] = $excludeTags;
+        }
+
+        return $params;
+    }
+
+    /**
+     * Get a float list as a string.
+     *
+     * @param float[] $values
+     *
+     * @return string
+     */
+    protected function getFloatList(array $values): string
+    {
+        return '['.implode(', ', array_map(function ($value) {
+            if ($value == (int) $value) {
+                return number_format($value, 1, '.', '');
+            }
+
+            return (string) $value;
+        }, $values)).']';
     }
 }

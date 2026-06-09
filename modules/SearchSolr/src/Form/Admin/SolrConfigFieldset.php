@@ -2,7 +2,7 @@
 
 /*
  * Copyright BibLibre, 2016
- * Copyright Daniel Berthereau 2018-2023
+ * Copyright Daniel Berthereau, 2018-2026
  *
  * This software is governed by the CeCILL license under French law and abiding
  * by the rules of distribution of free software.  You can use, modify and/ or
@@ -84,7 +84,7 @@ class SolrConfigFieldset extends Fieldset
         $searchEngines = $services->get('Omeka\ApiManager')->search('search_engines', ['adapter' => 'solarium'])->getContent();
         $coreIndexes = [];
         foreach ($searchEngines as $searchEngine) {
-            $coreId = $searchEngine->settingAdapter('solr_core_id', '');
+            $coreId = $searchEngine->settingEngineAdapter('solr_core_id', '');
             $coreIndexes[$coreId][] = $searchEngine->id();
         }
 
@@ -98,7 +98,10 @@ class SolrConfigFieldset extends Fieldset
                 && !$solrCore->mapsBySource('search_index', 'resources')
                 && !in_array($searchEngineId, $coreIndexes[$solrCore->id()])
             ) {
-                $option['label'] = sprintf($translator->translate('%s (unavailable: option multi-index not set)'), $option['label']); // @translate
+                $option['label'] = (string) (new \Common\Stdlib\PsrMessage(
+                    '{label} (unavailable: option multi-index not set)', // @translate
+                    ['label' => $option['label']]
+                ))->setTranslator($translator);
                 $option['disabled'] = true;
             }
             $options[] = $option;

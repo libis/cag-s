@@ -14,9 +14,4 @@
 // Kept for compatibility with old themes.
 
 $this->vars()->offsetSet('resultPart', 'header');
-?>
-<div class="search-results-header">
-    <div class="search-results-sort">
-        <?php echo $this->partial('search/results-header-footer');?>
-</div>
-</div>    
+echo $this->partial('search/results-header-footer');

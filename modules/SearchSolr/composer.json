@@ -1,23 +1,55 @@
 {
-    "config": {
-        "platform": {
-            "php": "7.4"
+    "name": "daniel-km/omeka-s-module-search-solr",
+    "type": "omeka-s-module",
+    "description": "Module for Omeka S: Search Omeka resources instantly and deeply on any server with Apache Solr / Lucene, via the library Solarium.",
+    "keywords": [
+        "Omeka S",
+        "Omeka S module",
+        "Solr",
+        "Lucene",
+        "search",
+        "facet",
+        "filter",
+        "indexation",
+        "auto-suggestion"
+    ],
+    "license": "CECILL-2.1",
+    "homepage": "https://gitlab.com/Daniel-KM/Omeka-S-module-SearchSolr",
+    "authors": [
+        {
+            "name": "Daniel Berthereau",
+            "email": "Daniel.packagist@Berthereau.net"
         }
+    ],
+    "support": {
+        "issues": "https://gitlab.com/Daniel-KM/Omeka-S-module-SearchSolr/-/issues",
+        "forum": "https://forum.omeka.org/"
     },
-    "require-dev": {
-        "biblibre/omeka-s-test-helper": "dev-master"
+    "_require (not set until Omeka S merges PR #2412)": {
+        "omeka/omeka-s": "^4.1",
+        "daniel-km/omeka-s-module-common": "*"
+    },
+    "require": {
+        "solarium/solarium": "^6.4",
+        "symfony/event-dispatcher": "^6.4"
+    },
+    "autoload": {
+        "psr-4": {
+            "SearchSolr\\": "src/"
+        }
     },
     "autoload-dev": {
         "psr-4": {
-            "SearchSolrTest\\": "test/SearchSolrTest/"
+            "SearchSolrTest\\": "tests/SearchSolrTest/"
         }
     },
-    "require": {
-        "php" : "^7.3",
-        "solarium/solarium": "^6.2",
-        "symfony/event-dispatcher": "^4.4"
+    "config": {
+        "platform": {
+            "php": "8.1"
+        }
     },
-    "replace": {
-        "symfony/polyfill-php80": "*"
+    "extra": {
+        "installer-name": "SearchSolr",
+        "configurable": true
     }
 }

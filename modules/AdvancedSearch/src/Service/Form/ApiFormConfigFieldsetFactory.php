@@ -3,14 +3,14 @@
 namespace AdvancedSearch\Service\Form;
 
 use AdvancedSearch\Form\Admin\ApiFormConfigFieldset;
-use Interop\Container\ContainerInterface;
+use Psr\Container\ContainerInterface;
 use Laminas\ServiceManager\Factory\FactoryInterface;
 
 class ApiFormConfigFieldsetFactory implements FactoryInterface
 {
-    public function __invoke(ContainerInterface $services, $requestedName, array $options = null)
+    public function __invoke(ContainerInterface $services, $requestedName, ?array $options = null)
     {
         return (new ApiFormConfigFieldset(null, $options ?? []))
-            ->setEasyMeta($services->get('EasyMeta'));
+            ->setEasyMeta($services->get('Common\EasyMeta'));
     }
 }

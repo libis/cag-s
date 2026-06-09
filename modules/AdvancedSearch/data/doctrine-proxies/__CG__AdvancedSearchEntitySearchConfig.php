@@ -67,10 +67,10 @@ class SearchConfig extends \AdvancedSearch\Entity\SearchConfig implements \Doctr
     public function __sleep()
     {
         if ($this->__isInitialized__) {
-            return ['__isInitialized__', 'id', 'name', 'path', 'engine', 'formAdapter', 'settings', 'created', 'modified'];
+            return ['__isInitialized__', 'id', 'name', 'slug', 'engine', 'formAdapter', 'settings', 'created', 'modified'];
         }
 
-        return ['__isInitialized__', 'id', 'name', 'path', 'engine', 'formAdapter', 'settings', 'created', 'modified'];
+        return ['__isInitialized__', 'id', 'name', 'slug', 'engine', 'formAdapter', 'settings', 'created', 'modified'];
     }
 
     /**
@@ -133,7 +133,7 @@ class SearchConfig extends \AdvancedSearch\Entity\SearchConfig implements \Doctr
      * {@inheritDoc}
      * @internal generated method: use only when explicitly handling proxy specific loading logic
      */
-    public function __setInitializer(\Closure $initializer = null): void
+    public function __setInitializer(?\Closure $initializer = null): void
     {
         $this->__initializer__ = $initializer;
     }
@@ -151,7 +151,7 @@ class SearchConfig extends \AdvancedSearch\Entity\SearchConfig implements \Doctr
      * {@inheritDoc}
      * @internal generated method: use only when explicitly handling proxy specific loading logic
      */
-    public function __setCloner(\Closure $cloner = null): void
+    public function __setCloner(?\Closure $cloner = null): void
     {
         $this->__cloner__ = $cloner;
     }
@@ -217,23 +217,23 @@ class SearchConfig extends \AdvancedSearch\Entity\SearchConfig implements \Doctr
     /**
      * {@inheritDoc}
      */
-    public function setPath(string $path): \AdvancedSearch\Entity\SearchConfig
+    public function setSlug(string $slug): \AdvancedSearch\Entity\SearchConfig
     {
 
-        $this->__initializer__ && $this->__initializer__->__invoke($this, 'setPath', [$path]);
+        $this->__initializer__ && $this->__initializer__->__invoke($this, 'setSlug', [$slug]);
 
-        return parent::setPath($path);
+        return parent::setSlug($slug);
     }
 
     /**
      * {@inheritDoc}
      */
-    public function getPath(): string
+    public function getSlug(): string
     {
 
-        $this->__initializer__ && $this->__initializer__->__invoke($this, 'getPath', []);
+        $this->__initializer__ && $this->__initializer__->__invoke($this, 'getSlug', []);
 
-        return parent::getPath();
+        return parent::getSlug();
     }
 
     /**

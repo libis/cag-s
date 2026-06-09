@@ -2,7 +2,7 @@
 
 /*
  * Copyright BibLibre, 2017
- * Copyright Daniel Berthereau, 2020
+ * Copyright Daniel Berthereau, 2020-2026
  *
  * This software is governed by the CeCILL license under French law and abiding
  * by the rules of distribution of free software.  You can use, modify and/ or
@@ -30,19 +30,17 @@
 
 namespace SearchSolr\Service\Controller;
 
-use Interop\Container\ContainerInterface;
 use Laminas\ServiceManager\Factory\FactoryInterface;
+use Psr\Container\ContainerInterface;
 use SearchSolr\Controller\Admin\MapController;
 
 class MapControllerFactory implements FactoryInterface
 {
-    public function __invoke(ContainerInterface $services, $requestedName, array $options = null)
+    public function __invoke(ContainerInterface $services, $requestedName, ?array $options = null)
     {
-        $valueExtractorManager = $services->get('SearchSolr\ValueExtractorManager');
-        $connection = $services->get('Omeka\Connection');
-        $controller = new MapController;
-        $controller->setValueExtractorManager($valueExtractorManager);
-        $controller->setConnection($connection);
-        return $controller;
+        return new MapController(
+            $services->get('Omeka\Connection'),
+            $services->get('SearchSolr\ValueExtractorManager')
+        );
     }
 }

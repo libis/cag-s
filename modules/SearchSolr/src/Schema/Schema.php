@@ -2,7 +2,7 @@
 
 namespace SearchSolr\Schema;
 
-use Omeka\Stdlib\Message;
+use Common\Stdlib\PsrMessage;
 use Solarium\Exception\HttpException as SolariumException;
 
 /**
@@ -50,6 +50,8 @@ class Schema
      *
      * There is no method in php-solr to get the schema, so do request via http/https.
      *
+     * @todo Use Solarium to get schema.
+     *
      * @throws \Solarium\Exception\HttpException
      * @return array
      */
@@ -78,14 +80,14 @@ class Schema
                 $credentials = isset($parsed['username']) ? substr($parsed['username'], 0, 1) . '***:***@' : '';
                 $url = $parsed['scheme'] . '://' . $credentials . $parsed['host'] . ':' . $parsed['port'] . $parsed['path'];
                 if ($credentials) {
-                    $message = new Message(
-                        'Solr core is not available. Check config or certificate to get Solr core schema "%s".', // @translate
-                        $url
+                    $message = new PsrMessage(
+                        'Solr core is not available. Check config or certificate to get Solr core schema {url}.', // @translate
+                        ['url' => $url]
                     );
                 } else {
-                    $message = new Message(
-                        'Solr core is not available. Check config to get Solr core schema "%s".', // @translate
-                        $url
+                    $message = new PsrMessage(
+                        'Solr core is not available. Check config to get Solr core schema {url}.', // @translate
+                        ['url' => $url]
                     );
                 }
                 throw new SolariumException((string) $message);
@@ -97,9 +99,9 @@ class Schema
                 $parsed = parse_url($this->schemaUrl);
                 $credentials = isset($parsed['username']) ? substr($parsed['username'], 0, 1) . '***:***@' : '';
                 $url = $parsed['scheme'] . '://' . $credentials . $parsed['host'] . ':' . $parsed['port'] . $parsed['path'];
-                $message = new Message(
-                    'Response is not valid. Check output of %s, that should be valid json data.', // @translate
-                    $url
+                $message = new PsrMessage(
+                    'Response is not valid. Check output of {url}, that should be valid json data.', // @translate
+                    ['url' => $url]
                 );
                 throw new SolariumException((string) $message);
             }
@@ -109,9 +111,9 @@ class Schema
                 $parsed = parse_url($this->schemaUrl);
                 $credentials = isset($parsed['username']) ? substr($parsed['username'], 0, 1) . '***:***@' : '';
                 $url = $parsed['scheme'] . '://' . $credentials . $parsed['host'] . ':' . $parsed['port'] . $parsed['path'];
-                $message = new Message(
-                    'Response is not valid. Check output of %s, that should be a json with a key "schema".', // @translate
-                    $url
+                $message = new PsrMessage(
+                    'Response is not valid. Check output of {url}, that should be a json with a key "schema".', // @translate
+                    ['url' => $url]
                 );
                 throw new SolariumException((string) $message);
             }
@@ -135,7 +137,7 @@ class Schema
             $field = $this->getFieldsByName()[$name]
                 ?? $this->getDynamicFieldFor($name);
             if ($field) {
-                $type = $this->getType($field['type']);
+                $type = $this->getType($field['type']) ?? [];
                 $field = new Field($name, $field, $type);
             }
             $this->fields[$name] = $field;
@@ -149,7 +151,7 @@ class Schema
             $this->fieldsByName = [];
             try {
                 $schema = $this->getSchema();
-            } catch (\Exception $e) {
+            } catch (\Throwable $e) {
                 return [];
             }
             foreach ($schema['fields'] as $field) {
@@ -196,7 +198,7 @@ class Schema
             $this->dynamicFieldsMap = [];
             try {
                 $schema = $this->getSchema();
-            } catch (\Exception $e) {
+            } catch (\Throwable $e) {
                 return [];
             }
             foreach ($schema['dynamicFields'] as $field) {
@@ -224,7 +226,7 @@ class Schema
             $dynamicFieldsMapBy = [];
             try {
                 $schema = $this->getSchema();
-            } catch (\Exception $e) {
+            } catch (\Throwable $e) {
                 return [];
             }
             foreach ($schema['dynamicFields'] as $field) {
@@ -239,13 +241,9 @@ class Schema
             default:
                 return $dynamicFieldsMapBy;
             case 'prefix':
-                return array_filter($dynamicFieldsMapBy, function ($v) {
-                    return !$v['is_suffix'];
-                });
+                return array_filter($dynamicFieldsMapBy, fn ($v) => !$v['is_suffix']);
             case 'suffix':
-                return array_filter($dynamicFieldsMapBy, function ($v) {
-                    return $v['is_suffix'];
-                });
+                return array_filter($dynamicFieldsMapBy, fn ($v) => $v['is_suffix']);
         }
     }
 
@@ -260,7 +258,7 @@ class Schema
             $this->typesByName = [];
             try {
                 $schema = $this->getSchema();
-            } catch (\Exception $e) {
+            } catch (\Throwable $e) {
                 return [];
             }
             foreach ($schema['fieldTypes'] as $type) {

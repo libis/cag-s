@@ -176,7 +176,7 @@ class ContactUs extends AbstractBlockLayout
                     $args['site_url'] = $block->page()->site()->siteUrl();
 
                     $mail = [];
-                    $mail['from'] = $args['from'];
+                    $mail['from'] = "no-reply@cagnet.be";
                     $mail['fromName'] = $args['name'] ?: null;
                     $owner = $block->page()->site()->owner();
                     $mail['to'] = $owner ? $owner->email() : $view->setting('administrator_email');

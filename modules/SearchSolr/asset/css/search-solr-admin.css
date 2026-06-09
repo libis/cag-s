@@ -1,4 +1,37 @@
-@media screen {
+@media all {
+    .hidden,
+    [hidden] {
+        display: none;
+    }
+
+    header nav .solr-cores::before,
+    .solr-cores .subhead::before,
+    .solr-cores .no-resources:before {
+        content: "\f185";
+    }
+
+    .sidebar .meta-group-list {
+       justify-content: initial;
+    }
+    .sidebar .meta-group-list ul {
+        width: 100%;
+    }
+    .sidebar .meta-group-list .value-count {
+       font-size: small;
+       float: right;
+    }
+
+    #solr-map-form fieldset.source-resource legend {
+        display: none;
+    }
+
+    .required fieldset[name^="o:source["] .field-meta::after {
+        content: "";
+    }
+    .required fieldset[name^="o:source["] .field-meta label[for^="o:source["] {
+        line-height: initial;
+    }
+
     #field-info {
         line-height: initial;
         font-size: 80%;
@@ -28,15 +61,216 @@
         display: none;
     }
 
-    .solr-core .actions .disabled {
+    .solr-cores .actions .disabled {
         color: currentColor;
         cursor: not-allowed;
         opacity: 0.5;
         text-decoration: none;
     }
 
+    .browse .tablesaw-cell-content {
+       flex-wrap: wrap;
+    }
+
+    .solr-cores .map-aliases {
+        margin-left: auto;
+    }
+    .solr-cores .map-aliases .map-alias,
+    .solr-cores.show.solr-core-map-browse .field-generic,
     .solr-map.browse .field-generic {
         font-style: italic;
         font-size: 0.8em;
+        margin-left: auto;
+    }
+    .solr-cores.show.solr-core-map-browse .by-solr-index td:first-child,
+    .solr-cores.show.solr-core-map-browse .by-solr-index th:first-child,
+    .solr-map.browse td:first-child,
+    .solr-map.browse th:first-child {
+        width: 30%;
+        vertical-align: top;
+    }
+    .solr-cores.show.solr-core-map-browse .solr-maps-table.tablesaw {
+        border: none;
+    }
+    .solr-cores.show.solr-core-map-browse .solr-maps-table.tablesaw thead tr th,
+    .solr-cores.show.solr-core-map-browse .solr-maps-table.tablesaw tbody tr td,
+    .solr-cores.show.solr-core-map-browse .solr-maps-table.tablesaw tr th,
+    .solr-cores.show.solr-core-map-browse .solr-maps-table.tablesaw tr td {
+        border-bottom: none;
+    }
+    .solr-cores.show.solr-core-map-browse .solr-maps-table-body.tablesaw thead {
+        display: none;
+    }
+
+    .solr-core-map-browse .tablesaw .tablesaw td,
+    .solr-core-map-browse .tablesaw .tablesaw td dl {
+        padding-top: 0;
+        padding-bottom: 0;
+        margin-top: 0;
+        margin-bottom: 1em;
+        vertical-align: top;
+    }
+
+    .input-info {
+        margin-top: 12px;
+        font-style: italic;
+    }
+
+    #page-action-menu {
+        display: inline-block;
+        position: relative;
+
+        .with-sub-menu {
+            display: inline-block;
+        }
+
+        ul {
+            display: none;
+            list-style: none;
+            border: 1px solid #dfdfdf;
+            background-color: #fff;
+            border-radius: 3px;
+            text-align: left;
+            padding: 0;
+            position: relative;
+            box-shadow: 0 0 5px #dfdfdf;
+            position: absolute;
+            width: auto;
+            white-space: nowrap;
+            margin: 12px 0;
+        }
+
+        ul::before {
+            content: "";
+            position: absolute;
+            bottom: calc(100% - 1px);
+            right: 12px;
+            width: 0;
+            height: 0;
+            border-bottom: 12px solid #fff;
+            border-left: 6px solid transparent;
+            border-right: 6px solid transparent;
+        }
+
+        ul::after {
+            content: "";
+            position: absolute;
+            bottom: calc(100% - 1px);
+            right: 11px;
+            width: 0;
+            height: 0;
+            border-bottom: 14px solid #dfdfdf;
+            border-left: 7px solid transparent;
+            border-right: 7px solid transparent;
+            z-index: -1;
+        }
+
+        ul a,
+        ul span,
+        ul .inactive {
+            padding: 6px 12px 5px;
+            display: block;
+            position: relative;
+        }
+
+        ul .inactive {
+            color: #dfdfdf;
+        }
+
+        ul li {
+            position: relative;
+
+            &.separator span {
+                font-style: italic;
+            }
+        }
+
+        ul li:hover::before {
+            content: "";
+            position: absolute;
+            left: 0;
+            top: 0;
+            bottom: 0;
+            width: 3px;
+            background-color: #dfdfdf;
+        }
+
+        ul li:not(:last-child) a,
+        ul li:not(:last-child) span,
+        ul li:not(:last-child) [type="submit"] {
+            border-bottom: 1px solid #dfdfdf;
+        }
+
+        [type="submit"] {
+            background: none;
+            box-shadow: none;
+            width: 100%;
+            margin-bottom: 0;
+            text-align: left;
+        }
+
+        .expand::after {
+            content: "\f0d7";
+        }
+
+        .expand::after,
+        .collapse::after {
+            margin-left: 6px;
+        }
+
+        .collapse + .collapsible {
+            overflow: visible;
+            display: block;
+        }
+    }
+
+    details {
+        margin-bottom: 12px;
+    }
+    details summary,
+    .quick-help summary {
+        display: list-item;
+        cursor: pointer;
+    }
+
+    #search-config form .inputs {
+        width: 100%;
+    }
+
+    /* Sortable column indicators. */
+    th[data-sortable] {
+        cursor: pointer;
+        user-select: none;
+    }
+    th[data-sortable]::after {
+        content: ' \2195';
+        opacity: .3;
+    }
+    th[data-sortable].sort-asc::after {
+        content: ' \2191';
+        opacity: 1;
+    }
+    th[data-sortable].sort-desc::after {
+        content: ' \2193';
+        opacity: 1;
+    }
+}
+
+@media screen and (max-width: 640px) {
+    .solr-core-map-browse .solr-maps-table-head.tablesaw {
+        display: none
+    }
+    .solr-core-map-browse .solr-maps .tablesaw-cell-content {
+        width: 100%;
+        max-width: 100%;
+    }
+    .solr-core-map-browse .solr-maps td:first-of-type .tablesaw-cell-content {
+        display: flex;
+    }
+    .solr-cores.show.solr-core-map-browse .by-solr-index td:first-child,
+    .solr-cores.show.solr-core-map-browse .by-solr-index th:first-child,
+    .solr-map.browse td:first-child,
+    .solr-map.browse th:first-child {
+        width: 100%;
     }
 }

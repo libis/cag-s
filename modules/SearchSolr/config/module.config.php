@@ -24,6 +24,7 @@ return [
     ],
     'form_elements' => [
         'invokables' => [
+            Form\ConfigForm::class => Form\ConfigForm::class,
             Form\Admin\SolrConfigFieldset::class => Form\Admin\SolrConfigFieldset::class,
             Form\Admin\SolrCoreMappingImportForm::class => Form\Admin\SolrCoreMappingImportForm::class,
             Form\Admin\SourceFieldset::class => Form\Admin\SourceFieldset::class,
@@ -31,26 +32,22 @@ return [
         'factories' => [
             Form\Admin\SolrCoreForm::class => Service\Form\SolrCoreFormFactory::class,
             Form\Admin\SolrMapForm::class => Service\Form\SolrMapFormFactory::class,
-            Form\Element\DataTypeSelect::class => Service\Form\Element\DataTypeSelectFactory::class,
-        ],
-        'aliases' => [
-            // Use aliases to keep core keys.
-            'Omeka\Form\Element\DataTypeSelect' => Form\Element\DataTypeSelect::class,
         ],
     ],
     'controllers' => [
-        'invokables' => [
-            Controller\Admin\CoreController::class => Controller\Admin\CoreController::class,
-        ],
         'factories' => [
+            Controller\Admin\CoreController::class => Service\Controller\CoreControllerFactory::class,
             Controller\Admin\MapController::class => Service\Controller\MapControllerFactory::class,
+            Controller\ApiController::class => Service\Controller\ApiControllerFactory::class,
+            Controller\ApiLocalController::class => Service\Controller\ApiLocalControllerFactory::class,
         ],
     ],
     'service_manager' => [
         'factories' => [
             'SearchSolr\ValueExtractorManager' => Service\ValueExtractorManagerFactory::class,
             'SearchSolr\ValueFormatterManager' => Service\ValueFormatterManagerFactory::class,
-            'SearchSolr\Schema' => Service\SchemaFactory::class,
+            'SearchSolr\Schema\Schema' => Service\SchemaFactory::class,
+            'SearchSolr\Solarium\Client' => Service\SolariumClientFactory::class,
         ],
     ],
     'navigation' => [
@@ -80,10 +77,6 @@ return [
                                 'visible' => false,
                             ],
                             [
-                                'route' => 'admin/search/solr/core-id-map',
-                                'visible' => false,
-                            ],
-                            [
                                 'route' => 'admin/search/solr/core-id-map-resource',
                                 'visible' => false,
                             ],
@@ -102,7 +95,6 @@ return [
             'admin' => [
                 'child_routes' => [
                     'search' => [
-                        // Kept to simplify upgrade.
                         'type' => \Laminas\Router\Http\Literal::class,
                         'options' => [
                             'route' => '/search-manager',
@@ -115,7 +107,7 @@ return [
                         'may_terminate' => true,
                         'child_routes' => [
                             'solr' => [
-                                'type' => \Laminas\Router\Http\Segment::class,
+                                'type' => \Laminas\Router\Http\Literal::class,
                                 'options' => [
                                     'route' => '/solr',
                                     'defaults' => [
@@ -130,6 +122,9 @@ return [
                                         'type' => \Laminas\Router\Http\Segment::class,
                                         'options' => [
                                             'route' => '/core[/:action]',
+                                            'constraints' => [
+                                                'action' => '[a-zA-Z][a-zA-Z0-9_-]*',
+                                            ],
                                             'defaults' => [
                                                 'action' => 'browse',
                                             ],
@@ -141,31 +136,20 @@ return [
                                             'route' => '/core/:id[/:action]',
                                             'constraints' => [
                                                 'id' => '\d+',
+                                                'action' => '[a-zA-Z][a-zA-Z0-9_-]*',
                                             ],
                                             'defaults' => [
                                                 'action' => 'show',
                                             ],
                                         ],
                                     ],
-                                    'core-id-map' => [
-                                        'type' => \Laminas\Router\Http\Segment::class,
-                                        'options' => [
-                                            'route' => '/core/:coreId/map',
-                                            'constraints' => [
-                                                'coreId' => '\d+',
-                                            ],
-                                            'defaults' => [
-                                                'controller' => Controller\Admin\MapController::class,
-                                                'action' => 'browse',
-                                            ],
-                                        ],
-                                    ],
                                     'core-id-map-resource' => [
                                         'type' => \Laminas\Router\Http\Segment::class,
                                         'options' => [
-                                            'route' => '/core/:coreId/map/:resourceName[/:action]',
+                                            'route' => '/core/:core-id/map/:resource-name[/:action]',
                                             'constraints' => [
-                                                'coreId' => '\d+',
+                                                'core-id' => '\d+',
+                                                'action' => '[a-zA-Z][a-zA-Z0-9_-]*',
                                             ],
                                             'defaults' => [
                                                 'controller' => Controller\Admin\MapController::class,
@@ -176,10 +160,12 @@ return [
                                     'core-id-map-resource-id' => [
                                         'type' => \Laminas\Router\Http\Segment::class,
                                         'options' => [
-                                            'route' => '/core/:coreId/map/:resourceName/:id[/:action]',
+                                            'route' => '/core/:core-id/map/:resource-name/:id[/:action]',
                                             'constraints' => [
-                                                'coreId' => '\d+',
+                                                'core-id' => '\d+',
                                                 'id' => '\d+',
+                                                'action' => '[a-zA-Z][a-zA-Z0-9_-]*',
+                                                'resource-name' => '[a-zA-Z][a-zA-Z0-9_-]*',
                                             ],
                                             'defaults' => [
                                                 'controller' => Controller\Admin\MapController::class,
@@ -193,12 +179,44 @@ return [
                     ],
                 ],
             ],
+            'api' => [
+                'child_routes' => [
+                    'search_solr' => [
+                        'type' => \Laminas\Router\Http\Segment::class,
+                        'options' => [
+                            'route' => '/:resource[/:id]',
+                            'constraints' => [
+                                'resource' => 'solr_cores|solr_maps',
+                            ],
+                            'defaults' => [
+                                'controller' => Controller\ApiController::class,
+                            ],
+                        ],
+                    ],
+                ],
+            ],
+            'api-local' => [
+                'child_routes' => [
+                    'search_solr' => [
+                        'type' => \Laminas\Router\Http\Segment::class,
+                        'options' => [
+                            'route' => '/:resource[/:id]',
+                            'constraints' => [
+                                'resource' => 'solr_cores|solr_maps',
+                            ],
+                            'defaults' => [
+                                'controller' => Controller\ApiLocalController::class,
+                            ],
+                        ],
+                    ],
+                ],
+            ],
         ],
     ],
     'translator' => [
         'translation_file_patterns' => [
             [
-                'type' => 'gettext',
+                'type' => \Laminas\I18n\Translator\Loader\Gettext::class,
                 'base_dir' => dirname(__DIR__) . '/language',
                 'pattern' => '%s.mo',
                 'text_domain' => null,
@@ -212,18 +230,23 @@ return [
         'Choose a field…', // @translate
         'Dynamic field', // @translate
     ],
-    'search_adapters' => [
+    'advanced_search_engine_adapters' => [
         'factories' => [
-            'solarium' => Service\Adapter\SolariumAdapterFactory::class,
+            'solarium' => Service\EngineAdapter\SolariumFactory::class,
         ],
     ],
     'searchsolr' => [
         'config' => [
+            // Valid values:
+            // - auto (use curl when available, else http)
+            // - curl (requires extension php curl)
+            // - http (no dependencies)
+            'searchsolr_solarium_adapter' => 'auto',
+            // Timeout for curl (Integer seconds). 5 is the default in Solarium.
+            /** @see \Solarium\Core\Client\Adapter\TimeoutAwareInterface::DEFAULT_TIMEOUT */
+            'searchsolr_solarium_timeout' => 5,
+            // Allow to share a server between multiple tools (drupal).
             'searchsolr_server_id' => null,
-        ],
-        // A mapping table of codes.
-        // To be copied and completed in main Omeka config/local.config.php for the value formatter "Table".
-        'table' => [
         ],
     ],
     'searchsolr_value_extractors' => [
@@ -237,19 +260,17 @@ return [
     ],
     'searchsolr_value_formatters' => [
         'invokables' => [
-            'standard' => ValueFormatter\Standard::class,
-            'standard_with_uri' => ValueFormatter\StandardWithUri::class,
-            'standard_without_uri' => ValueFormatter\StandardWithoutUri::class,
-            'alphanumeric' => ValueFormatter\Alphanumeric::class,
-            'plain_text' => ValueFormatter\PlainText::class,
-            'raw_text' => ValueFormatter\RawText::class,
-            'html_escaped_text' => ValueFormatter\HtmlEscapedText::class,
-            'uri' => ValueFormatter\Uri::class,
+            'text' => ValueFormatter\Text::class,
+            'boolean' => ValueFormatter\Boolean::class,
+            'integer' => ValueFormatter\Integer::class,
             'date' => ValueFormatter\Date::class,
             'date_range' => ValueFormatter\DateRange::class,
-            'year' => ValueFormatter\Year::class,
+            'edtf' => ValueFormatter\Edtf::class,
+            'edtf_date' => ValueFormatter\EdtfDate::class,
+            'edtf_year' => ValueFormatter\EdtfYear::class,
+            'place' => ValueFormatter\Place::class,
             'point' => ValueFormatter\Point::class,
-            'table' => ValueFormatter\Table::class,
+            'thesaurus' => ValueFormatter\Thesaurus::class,
         ],
     ],
 ];

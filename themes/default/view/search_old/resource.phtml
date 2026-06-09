@@ -56,8 +56,6 @@ endif;
 <div class="grid__item">
    <div class="card card--clickable card--link card--variant2">
       <?php 
-        
-        //var_dump($_GET["filter"]);
         if($type == 'Ledenblad' && isset($_GET["filter"])):
           $q = "";
           foreach($_GET["filter"] as $key => $value):

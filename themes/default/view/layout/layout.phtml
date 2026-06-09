@@ -1,14 +1,10 @@
 <?php
-
 use Laminas\Session\Container;
-
-
 // Check if the current URL has a search query
 if (isset($_GET['q'])) {
     $fullUrl = htmlspecialchars(strip_tags($_SERVER['REQUEST_URI']));
     $_SESSION['searchReferer'] = $fullUrl;
 }
-
 
 $escape = $this->plugin('escapeHtml');
 $this->htmlElement('html')->setAttribute('lang', 'nl');
@@ -16,8 +12,8 @@ $this->headMeta()->setCharset('utf-8');
 $this->headMeta()->appendName('viewport', 'width=device-width, initial-scale=1');
 $this->headTitle()->setSeparator(' · ');
 
-$this->headLink()->prependStylesheet($this->assetUrl('css/main.css?v=0.1'));
-$this->headLink()->prependStylesheet($this->assetUrl('css/style.min.css?v=0.1'));
+$this->headLink()->appendStylesheet($this->assetUrl('css/main.css?v=0.1'));
+$this->headLink()->appendStylesheet($this->assetUrl('css/style.min.css?v=0.1'));
 $this->headLink()->prependStylesheet($this->assetUrl('css/slick.css'));
 $this->headLink()->prependStylesheet($this->assetUrl('css/iconfonts.css', 'Omeka'));
 

@@ -2,7 +2,7 @@
 
 /*
  * Copyright BibLibre, 2016-2017
- * Copyright Daniel Berthereau, 2018-2024
+ * Copyright Daniel Berthereau, 2018-2026
  *
  * This software is governed by the CeCILL license under French law and abiding
  * by the rules of distribution of free software.  You can use, modify and/ or
@@ -30,15 +30,19 @@
 
 namespace AdvancedSearch\Form\Admin;
 
-use AdvancedSearch\Form\Element as AdvancedSearchElement;
+use AdvancedSearch\EngineAdapter\Internal;
 use Common\Form\Element as CommonElement;
 use Laminas\Form\Element;
 use Laminas\Form\Fieldset;
 use Laminas\Form\Form;
+use Laminas\Mvc\I18n\Translator;
 use Omeka\Form\Element as OmekaElement;
 
 class SearchConfigConfigureForm extends Form
 {
+    /**
+     * @var \Laminas\Form\FormElementManager
+     */
     protected $formElementManager;
 
     /**
@@ -46,37 +50,158 @@ class SearchConfigConfigureForm extends Form
      */
     protected $suggesters = [];
 
+    /**
+     * @var \Laminas\Mvc\I18n\Translator
+     */
+    protected $translator;
+
+    /**
+     * @var array
+     */
+    protected $thumbnailTypes = [];
+
     public function init(): void
     {
         /** @var \AdvancedSearch\Api\Representation\SearchConfigRepresentation $searchConfig */
         $searchConfig = $this->getOption('search_config');
-        $engine = $searchConfig->engine();
-        if (empty($engine)) {
+        $searchEngine = $searchConfig->searchEngine();
+        if (empty($searchEngine)) {
             return;
         }
 
+        // TODO Add a method or an event to modify or append specific field to each fieldset.
+        $engineAdapter = $searchEngine->engineAdapter();
+        $isInternalEngine = $engineAdapter && $engineAdapter instanceof Internal;
+
         // This is the settings for the search config, not the search form one.
 
-        // TODO Simplify the form with js, storing the whole form one time.
+        // TODO Simplify the form with js, storing the whole form one time via ini or json or just add a button import/export.
         // TODO See UserProfile and https://docs.laminas.dev/laminas-form/v3/form-creation/creation-via-factory/
 
-        // These fields may be overridden by the available fields.
-        $availableFields = $this->getAvailableFields();
-
         $this
-            ->setAttribute('id', 'form-search-config-configure');
+            ->setAttribute('id', 'search-config-configure-form');
 
-        // Settings for the search engine. Can be overwritten by a specific form.
+        // Tab 1: general settings (name, slug, engine, form adapter).
+        $this->add([
+            'type' => \AdvancedSearch\Form\Admin\SearchConfigSettingsFieldset::class,
+            'name' => 'settings',
+            'options' => [
+                'label' => 'Settings', // @translate
+            ],
+        ]);
+
+        // Tab 2: sites usage (default + availability).
+        $this->add([
+            'type' => \AdvancedSearch\Form\Admin\SearchConfigSitesFieldset::class,
+            'name' => 'sites',
+            'options' => [
+                'label' => 'Sites', // @translate
+            ],
+        ]);
+
+        // Settings for the search engine. Can be overwritten by a specific
+        // form.
 
         $this
             ->add([
-                'name' => 'search',
+                'name' => 'index',
                 'type' => Fieldset::class,
                 'options' => [
-                    'label' => 'Search settings', // @translate
+                    'label' => 'Indexes', // @translate
                 ],
             ])
-            ->get('search')
+            ->get('index')
+
+            ->add([
+                'name' => 'aliases',
+                'type' => CommonElement\DataTextarea::class,
+                'options' => [
+                    'label' => 'Aliases and aggregated fields', // @translate
+                    'info' => 'List of fields that refers to one or multiple indexes (properties with internal search engine, native indexes with Solr), formatted "name = label", then the list of properties and an empty line. The name must not be a property term or a reserved keyword. With query args below, they can be seen as simple shortcuts of filters easy to implement in forms.', // @translate
+                    'documentation' => 'https://gitlab.com/Daniel-KM/Omeka-S-module-AdvancedSearch/-/blob/master/data/configs/search_engine.internal.php',
+                    'as_key_value' => true,
+                    'key_value_separator' => '=',
+                    'data_options' => [
+                        'name' => null,
+                        'label' => null,
+                        'fields' => ',',
+                    ],
+                    'data_text_mode' => 'last_is_list',
+                ],
+                'attributes' => [
+                    'id' => 'index_aliases',
+                    'required' => false,
+                    'rows' => 12,
+                    'placeholder' => <<<'STRING'
+                            author = Author
+                            dcterms:creator
+                            dcterms:contributor
+
+                            title = Title
+                            dcterms:title
+                            dcterms:alternative
+
+                            date = Date
+                            dcterms:date
+                            dcterms:created
+                            dcterms:issued
+                            STRING,
+                ],
+            ])
+            ->add([
+                'type' => CommonElement\IniTextarea::class,
+                'name' => 'query_args',
+                'options' => [
+                    'label' => 'Query arguments for fields', // @translate
+                    'info' => 'Define the query arguments to use with simple fields. Defaults are "type" = "eq" and "join" = "and". Type may be any of the query type of filters. Join may be "and", "or", "not".', // @translate
+                    'documentation' => 'https://gitlab.com/Daniel-KM/Omeka-S-module-AdvancedSearch',
+                    'ini_typed_mode' => true,
+                ],
+                'attributes' => [
+                    'id' => 'index_query_args',
+                    'required' => false,
+                    'rows' => 12,
+                    'placeholder' => <<<'STRING'
+                            [title]
+                            type = in
+
+                            [author]
+                            type = res
+                            STRING,
+                ],
+            ])
+            ->add([
+                'name' => 'field_boosts',
+                'type' => OmekaElement\ArrayTextarea::class,
+                'options' => [
+                    'label' => 'Boost multipliers by index (Solr only)', // @translate
+                    'as_key_value' => true,
+                ],
+                'attributes' => [
+                    'id' => 'field_boosts',
+                    'required' => false,
+                    'rows' => 12,
+                    'placeholder' => <<<'STRING'
+                            dcterms_creator_ss = 100
+                            dcterms_creator_txt = 50
+                            dcterms_subject_ss = 10
+                            dcterms_subject_txt = 5
+                            dcterms_description_txt = 0.01
+                            bibo_content_txt = 0.001
+                            STRING,
+                ],
+            ])
+        ;
+
+        $this
+            ->add([
+                'name' => 'request',
+                'type' => Fieldset::class,
+                'options' => [
+                    'label' => 'Request', // @translate
+                ],
+            ])
+            ->get('request')
             ->add([
                 'name' => 'default_results',
                 'type' => Element\Radio::class,
@@ -129,34 +254,51 @@ class SearchConfigConfigureForm extends Form
                 ],
             ])
             ->add([
-                'name' => 'fulltext_search',
-                'type' => CommonElement\OptionalRadio::class,
+                'name' => 'validate_form',
+                'type' => Element\Checkbox::class,
                 'options' => [
-                    'label' => 'Add a button to search record or full text (for content not stored in a property)', // @translate
-                    'value_options' => [
-                        '' => 'None', // @translate
-                        'fulltext_checkbox' => 'Check box "Search full text"', // @translate
-                        'record_checkbox' => 'Check box "Record only"', // @translate
-                        'fulltext_radio' => 'Radio "Full text" and "Record only"', // @translate
-                        'record_radio' => 'Radio "Record only" and "Full text"', // @translate
-                    ],
+                    'label' => 'Validate user query (useless in most of the cases)', // @translate
                 ],
                 'attributes' => [
-                    'id' => 'fulltext_search',
-                    'value' => '',
+                    'id' => 'validate_form',
+                ],
+            ])
+            ->add([
+                'name' => 'query_default_field',
+                'type' => Element\Text::class,
+                'options' => [
+                    'label' => 'Query default field', // @translate
+                    'info' => 'Optional. Specifies a default search field in case it is not made explicit in the query.', // @translated
+                ],
+                'attributes' => [
+                    'id' => 'query_default_field',
                 ],
             ])
         ;
 
+        // TODO Make option "q" a standard filter.
         $this
+            // The main search field is "q", not "fulltext_search" or "search".
             ->add([
-                'name' => 'autosuggest',
+                'name' => 'q',
                 'type' => Fieldset::class,
                 'options' => [
-                    'label' => 'Auto-suggestions', // @translate
+                    'label' => 'Search field', // @translate
                 ],
             ])
-            ->get('autosuggest')
+            ->get('q')
+            ->add([
+                'name' => 'label',
+                'type' => Element\Text::class,
+                'options' => [
+                    'label' => 'Label', // @translate
+                ],
+                'attributes' => [
+                    'id' => 'q_label',
+                    'required' => false,
+                    'value' => 'Search', // @translate
+                ],
+            ])
             ->add([
                 'name' => 'suggester',
                 'type' => CommonElement\OptionalSelect::class,
@@ -166,87 +308,146 @@ class SearchConfigConfigureForm extends Form
                     'empty_option' => '',
                 ],
                 'attributes' => [
-                    'id' => 'autosuggest_suggester',
+                    'id' => 'q_suggester',
                     'multiple' => false,
                     'class' => 'chosen-select',
                     'data-placeholder' => ' ',
                 ],
             ])
             ->add([
-                'name' => 'url',
+                'name' => 'suggest_url',
                 'type' => CommonElement\OptionalUrl::class,
                 'options' => [
-                    'label' => 'Direct endpoint', // @translate
+                    'label' => 'Direct endpoint for suggester', // @translate
                     // @see https://solr.apache.org/guide/suggester.html#suggest-request-handler-parameters
                     'info' => 'This url allows to use an external endpoint to manage keywords and is generally quicker. Needed params should be appended.', // @translate
                 ],
                 'attributes' => [
-                    'id' => 'autosuggest_url',
+                    'id' => 'q_suggest_url',
                 ],
             ])
             ->add([
-                'name' => 'url_param_name',
+                'name' => 'suggest_url_param_name',
                 'type' => Element\Text::class,
                 'options' => [
                     'label' => 'Optional query param name for direct endpoint', // @translate
                     'info' => 'For a direct Solr endpoint, it should be "suggest.q", else "q" is used by default.', // @translate
                 ],
                 'attributes' => [
-                    'id' => 'autosuggest_url_param_name',
+                    'id' => 'q_suggest_url_param_name',
+                ],
+            ])
+            ->add([
+                'name' => 'suggest_fill_input',
+                'type' => Element\Checkbox::class,
+                'options' => [
+                    'label' => 'Stay on form when selecting a suggestion (no auto-submit)', // @translate
+                ],
+                'attributes' => [
+                    'id' => 'q_suggest_fill_input',
+                ],
+            ])
+            ->add([
+                'name' => 'remove_diacritics',
+                'type' => Element\Checkbox::class,
+                'options' => [
+                    'label' => 'Process request without diacritic', // @translate
+                ],
+                'attributes' => [
+                    'id' => 'q_remove_diacritics',
                 ],
             ])
         ;
 
+        // TODO Add the check in adapter interface, or allow specific fieldset by adapter.
+
+        if ($isInternalEngine) {
+            $this
+                ->get('q')
+                ->add([
+                    'name' => 'default_search_partial_word',
+                    'type' => Element\Checkbox::class,
+                    'options' => [
+                        'label' => 'Partial word search for main field (instead of standard full text search)', // @translate
+                        'info' => 'Currently, this mode does not allow to exclude properties for the main search field.', // @translate
+                    ],
+                    'attributes' => [
+                        'id' => 'q_default_search_partial_word',
+                    ],
+                ])
+            ;
+        }
+
+        $this
+            ->get('q')
+            ->add([
+                'type' => CommonElement\IniTextarea::class,
+                'name' => 'options',
+                'options' => [
+                    'label' => 'Options', // @translate
+                    'info' => 'List of specific Omeka and Laminas options.', // @translate
+                    'ini_typed_mode' => true,
+                ],
+                'attributes' => [
+                    'id' => 'q_options',
+                    'required' => false,
+                    'placeholder' => '',
+                ],
+            ])
+            ->add([
+                'type' => CommonElement\IniTextarea::class,
+                'name' => 'attributes',
+                'options' => [
+                    'label' => 'Html attributes', // @translate
+                    'info' => 'Attributes to add to the input field, for example `class = "my-specific-class"`, data, etc.', // @translate
+                    'ini_typed_mode' => true,
+                ],
+                'attributes' => [
+                    'id' => 'q_attributes',
+                    'required' => false,
+                    'placeholder' => '',
+                ],
+            ]);
+
         // Settings for the form querier (advanced form and filters).
+
+        /** @var \AdvancedSearch\Form\Admin\SearchConfigFilterFieldset $filterFieldset */
+        $filterFieldset = $this->formElementManager->get(SearchConfigFilterFieldset::class, [
+            'search_config' => $searchConfig,
+        ]);
 
         $this
             ->add([
                 'name' => 'form',
                 'type' => Fieldset::class,
                 'options' => [
-                    'label' => 'Form', // @translate
+                    'label' => 'Filters', // @translate
                 ],
             ])
             ->get('form')
 
             ->add([
-                'name' => 'filters',
-                'type' => AdvancedSearchElement\DataTextarea::class,
+                'name' => 'button_submit',
+                'type' => Element\Checkbox::class,
                 'options' => [
-                    'label' => 'Filters', // @translate
-                    'info' => 'List of filters that will be displayed in the search form. Format is "field = Label = Type = Options". The field should exist in all resources fields.', // @translate
-                    'as_key_value' => false,
-                    'key_value_separator' => '=',
-                    'data_keys' => [
-                        'field',
-                        'label',
-                        'type',
-                        'options',
-                    ],
-                    'data_array_keys' => [
-                        'options' => '|',
-                    ],
+                    'label' => 'Add a button "submit"', // @translate
                 ],
                 'attributes' => [
-                    'id' => 'filters',
-                    // field (term) = label = type = options
-                    'placeholder' => 'item_set_id = Collection = Omeka/Select
-resource_class_id = Class = Omeka/SelectFlat
-dcterms:title = Title = Text
-dcterms:date = Date = DateRange
-dcterms:subject = Subject = MultiCheckbox = alpha | beta | gamma
-advanced = Filters = Advanced',
-                    'rows' => 12,
+                    'id' => 'button_submit',
+                    'value' => true,
                 ],
             ])
             ->add([
-                'name' => 'attribute_form',
-                'type' => Element\Checkbox::class,
+                'name' => 'label_submit',
+                'type' => Element\Text::class,
                 'options' => [
-                    'label' => 'Add attribute "form" to input elements', // @translate
+                    'label' => 'Label for submit', // @translate
                 ],
                 'attributes' => [
-                    'id' => 'attribute_form',
+                    'id' => 'label_submit',
+                    'required' => false,
+                    'value' => 'Search', // @translate
+                    'placeholder' => 'Search', // @translate
                 ],
             ])
             ->add([
@@ -260,62 +461,178 @@ advanced = Filters = Advanced',
                 ],
             ])
             ->add([
-                'name' => 'button_submit',
+                'name' => 'label_reset',
+                'type' => Element\Text::class,
+                'options' => [
+                    'label' => 'Label for reset', // @translate
+                ],
+                'attributes' => [
+                    'id' => 'label_reset',
+                    'required' => false,
+                    'value' => 'Reset fields', // @translate
+                    'placeholder' => 'Reset fields', // @translate
+                ],
+            ])
+            ->add([
+                'name' => 'attribute_form',
                 'type' => Element\Checkbox::class,
                 'options' => [
-                    'label' => 'Add a button "submit"', // @translate
+                    'label' => 'Add attribute "form" to input elements', // @translate
                 ],
                 'attributes' => [
-                    'id' => 'button_submit',
+                    'id' => 'attribute_form',
                 ],
             ])
+            // TODO Make option "rft" a standard filter.
             ->add([
-                'name' => 'available_filters',
-                'type' => OmekaElement\ArrayTextarea::class,
+                'name' => 'rft',
+                'type' => CommonElement\OptionalRadio::class,
                 'options' => [
-                    'label' => 'Available filters', // @translate
-                    'info' => 'List of all available filters, among which some can be copied above.', // @translate
-                    'as_key_value' => true,
-                    'key_value_separator' => '=',
-                ],
-                'attributes' => [
-                    'id' => 'available_filters',
-                    'value' => $availableFields,
-                    'placeholder' => 'dcterms:title = Title',
-                    'rows' => 12,
-                ],
-            ])
-            ->add([
-                'name' => 'advanced',
-                'type' => AdvancedSearchElement\DataTextarea::class,
-                'options' => [
-                    'label' => 'Advanced filters', // @translate
-                    'info' => 'List of filters that will be displayed in the search form. Format is "term = Label". The field should exist in all resources fields. Only properties are managed for internal search engine.', // @translate
-                    'as_key_value' => true,
-                    'key_value_separator' => '=',
-                    'data_keys' => [
-                        'value',
-                        'label',
+                    'label' => 'Add a button to search record or full text (for content not stored in a property)', // @translate
+                    'value_options' => [
+                        '' => 'None', // @translate
+                        'fulltext_checkbox' => 'Check box "Search full text"', // @translate
+                        'record_checkbox' => 'Check box "Record only"', // @translate
+                        'fulltext_radio' => 'Radio "Full text" and "Record only"', // @translate
+                        'record_radio' => 'Radio "Record only" and "Full text"', // @translate
                     ],
                 ],
                 'attributes' => [
-                    'id' => 'filters',
-                    // field (term) = label (order means weight).
-                    'placeholder' => 'dcterms:title = Title',
-                    'rows' => 12,
+                    'id' => 'rft',
+                    'value' => '',
                 ],
             ])
             ->add([
-                'name' => 'max_number',
+                'name' => 'quick_filter',
+                'type' => CommonElement\OptionalSelect::class,
+                'options' => [
+                    'label' => 'Quick filter next to main search field', // @translate
+                    'value_options' => $engineAdapter
+                        ? $engineAdapter->getAvailableFieldsForSelect()
+                        : [],
+                    'empty_option' => '',
+                ],
+                'attributes' => [
+                    'id' => 'form_quick_filter',
+                    'class' => 'chosen-select',
+                    'data-placeholder' => 'Set field or index…', // @translate
+                ],
+            ])
+            ->add([
+                'name' => 'quick_filter_label',
+                'type' => Element\Text::class,
+                'options' => [
+                    'label' => 'Quick filter label', // @translate
+                ],
+                'attributes' => [
+                    'id' => 'form_quick_filter_label',
+                ],
+            ])
+            ->add([
+                'name' => 'quick_filter_values',
+                'type' => OmekaElement\ArrayTextarea::class,
+                'options' => [
+                    'label' => 'Quick filter predefined values', // @translate
+                    'info' => 'If empty, all values are fetched from the index.', // @translate
+                    'as_key_value' => true,
+                ],
+                'attributes' => [
+                    'id' => 'form_quick_filter_values',
+                    'rows' => 5,
+                    'placeholder' => <<<TXT
+                        = All
+                        Object = Objects
+                        Person = Persons
+                        Place = Places
+                        TXT,
+                ],
+            ])
+            ->add([
+                'name' => 'quick_filter_advanced',
+                'type' => Element\Checkbox::class,
+                'options' => [
+                    'label' => 'Display quick filter on advanced form', // @translate
+                ],
+                'attributes' => [
+                    'id' => 'form_quick_filter_advanced',
+                ],
+            ])
+            ->add([
+                'name' => 'filters',
+                'type' => Element\Collection::class,
+                'options' => [
+                    'label' => 'Filters', // @ŧranslate
+                    'info' => 'List of filters that will be displayed in the search form, formatted as ini. The section is a unique name. Main keys are: field, label and type.', // @translate
+                    'count' => 0,
+                    'allow_add' => true,
+                    'allow_remove' => true,
+                    'should_create_template' => true,
+                    'template_placeholder' => '__index__',
+                    'create_new_objects' => true,
+                    'target_element' => $filterFieldset,
+                ],
+                'attributes' => [
+                    'id' => 'form_filters',
+                    'required' => false,
+                    'class' => 'form-fieldset-collection',
+                    'data-label-index' => $this->translator->translate('Filter {index}'), // @ŧranslate
+                ],
+            ])
+            ->add([
+                'name' => 'plus',
+                'type' => Element\Button::class,
+                'options' => [
+                    'label' => ' ',
+                    'label_options' => [
+                        'disable_html_escape' => true,
+                    ],
+                    'label_attributes' => [
+                        'class' => 'config-fieldset-action-label',
+                    ],
+                ],
+                'attributes' => [
+                    // Don't use o-icon-add.
+                    'class' => 'config-fieldset-action config-fieldset-plus fa fa-plus add-value button',
+                    'aria-label' => 'Add a filter', // @translate
+                ],
+            ])
+
+            // Advanced is a sub-fieldset of form.
+            ->add([
+                'name' => 'advanced',
+                'type' => Fieldset::class,
+                'options' => [
+                    'label' => 'Configuration of the element "Advanced filters"', // @translate
+                ],
+            ])
+            ->get('advanced')
+            ->add([
+                'name' => 'default_number',
                 'type' => Element\Number::class,
                 'options' => [
                     'label' => 'Number of advanced filters to display', // @translate
                     'info' => 'The filters may be managed via js for a better display.', // @translate
                 ],
                 'attributes' => [
+                    'id' => 'default_number',
+                    'required' => false,
+                    'value' => '1',
+                    'min' => '0',
+                    // A mysql query supports 61 arguments maximum.
+                    'max' => '49',
+                    'step' => '1',
+                ],
+            ])
+            ->add([
+                'name' => 'max_number',
+                'type' => Element\Number::class,
+                'options' => [
+                    'label' => 'Maximum number of advanced filters to display', // @translate
+                ],
+                'attributes' => [
                     'id' => 'max_number',
                     'required' => false,
-                    'value' => '5',
+                    'value' => '10',
                     'min' => '0',
                     // A mysql query supports 61 arguments maximum.
                     'max' => '49',
@@ -357,44 +674,149 @@ advanced = Filters = Advanced',
                 'type' => OmekaElement\ArrayTextarea::class,
                 'options' => [
                     'label' => 'List of operators', // @translate
-                    'info' => 'The default list is: eq, neq, in, nin, sw, nsw, ew, new, ex, nex, res, nres. Negative operators are removed when the joiner "not" is used. The default operators are used when empty. Other advanced operators can be used.', // @translate
+                    'info' => 'The default list is the full list available in advanced standard search form. Negative operators are removed when the joiner "not" is used.', // @translate
                     'as_key_value' => true,
                     'key_value_separator' => '=',
                 ],
                 'attributes' => [
                     'id' => 'field_operators',
+                    'rows' => 12,
                     // This placeholder does not contain all query types.
-                    'placeholder' => 'eq = is exactly
-neq = is not exactly
-in = contains
-nin = does not contain
-sw = starts with
-nsw = does not start with
-ew = ends with
-new = does not end with
-ex = has any value
-nex = has no values
-res = is resource with ID
-nres = is not resource with ID
-lex = is a linked resource
-nlex = is not a linked resource
-lres = is linked with resource with ID
-nlres = is not linked with resource with ID
-',
+                    'placeholder' => <<<'STRING'
+                        eq = is exactly
+                        in = contains
+                        sw = starts with
+                        ew = ends with
+                        STRING, // @translate
+                ],
+            ])
+            ->add([
+                'name' => 'field_value_autosuggest',
+                'type' => Element\Checkbox::class,
+                'options' => [
+                    'label' => 'Enable autocompletion on filter values', // @translate
+                    'info' => 'Requires module Reference (database values) or SearchSolr (indexed values).', // @translate
+                ],
+                'attributes' => [
+                    'id' => 'field_value_autosuggest',
+                ],
+            ])
+            ->add([
+                'name' => 'fields',
+                'type' => CommonElement\DataTextarea::class,
+                'options' => [
+                    'label' => 'Fields', // @translate
+                    'info' => 'List of filters that will be displayed in the search form. Format is "term or field = Label".', // @translate
+                    'as_key_value' => true,
+                    'key_value_separator' => '=',
+                    'data_options' => [
+                        'value' => null,
+                        'label' => null,
+                    ],
+                ],
+                'attributes' => [
+                    'id' => 'fields',
+                    // field (term) = label (order means weight).
+                    'placeholder' => 'dcterms:title = Title',
                     'rows' => 12,
                 ],
             ])
         ;
 
+        // Settings for the results.
+
+        /** @var \AdvancedSearch\Form\Admin\SearchConfigSortFieldset $sortFieldset */
+        $sortFieldset = $this->formElementManager->get(SearchConfigSortFieldset::class, [
+            'search_config' => $searchConfig,
+        ]);
+
         $this
             ->add([
-                'name' => 'display',
+                'name' => 'results',
                 'type' => Fieldset::class,
                 'options' => [
-                    'label' => 'Results display (when supported by theme)', // @translate
+                    'label' => 'Results', // @translate
                 ],
             ])
-            ->get('display')
+            ->get('results')
+            ->add([
+                'name' => 'label_default',
+                'type' => Element\Text::class,
+                'options' => [
+                    'label' => 'Label without query', // @translate
+                ],
+                'attributes' => [
+                    'id' => 'results_label_default',
+                    'value' => 'Search', // @translate
+                    'required' => false,
+                ],
+            ])
+            ->add([
+                'name' => 'label_results',
+                'type' => Element\Text::class,
+                'options' => [
+                    'label' => 'Label for results', // @translate
+                ],
+                'attributes' => [
+                    'id' => 'results_label_results',
+                    'value' => 'Search results', // @translate
+                    'required' => false,
+                ],
+            ])
+            ->add([
+                'name' => 'label_no_results',
+                'type' => Element\Text::class,
+                'options' => [
+                    'label' => 'Label for no results', // @translate
+                ],
+                'attributes' => [
+                    'id' => 'results_label_no_results',
+                    'value' => 'No results', // @translate
+                    'required' => false,
+                ],
+            ])
+            ->add([
+                'name' => 'by_resource_type',
+                'type' => Element\Checkbox::class,
+                'options' => [
+                    'label' => 'Separate resources by type (item set, items, etc.)', // @translate
+                ],
+                'attributes' => [
+                    'id' => 'by_resource_type',
+                ],
+            ])
+            ->add([
+                'name' => 'template',
+                'type' => Element\Text::class,
+                'options' => [
+                    'label' => 'Template', // @translate
+                    'info' => 'The template to use in your theme. Default is search/search.', // @translate
+                ],
+                'attributes' => [
+                    'id' => 'template',
+                ],
+            ])
+            ->add([
+                'name' => 'autoscroll',
+                'type' => Element\Checkbox::class,
+                'options' => [
+                    'label' => 'Auto-scroll to results', // @translate
+                    'info' => 'When enabled, the page will scroll to the results section after form submission. Useful when the search form is not at the top of the page.', // @translate
+                ],
+                'attributes' => [
+                    'id' => 'autoscroll',
+                ],
+            ])
+            ->add([
+                'name' => 'breadcrumbs',
+                'type' => Element\Checkbox::class,
+                'options' => [
+                    'label' => 'Breadcrumbs', // @translate
+                ],
+                'attributes' => [
+                    'id' => 'breadcrumbs',
+                ],
+            ])
             ->add([
                 'name' => 'search_filters',
                 'type' => CommonElement\OptionalRadio::class,
@@ -410,6 +832,55 @@ nlres = is not linked with resource with ID
                 'attributes' => [
                     'id' => 'search_filters',
                     'value' => 'header',
+                ],
+            ])
+            ->add([
+                'name' => 'search_filters_mode',
+                'type' => CommonElement\OptionalRadio::class,
+                'options' => [
+                    'label' => 'Query filters display', // @translate
+                    'label_attributes' => [
+                        'style' => 'display: inline; margin-right: 1em;',
+                    ],
+                    'value_options' => [
+                        'readonly' => 'Simple text', // @translate
+                        'link_remove' => 'Append a cross to remove the filter', // @translate
+                        'links' => 'Whole label removes the filter', // @translate
+                    ],
+                ],
+                'attributes' => [
+                    'id' => 'search_filters_mode',
+                    'value' => 'link_remove',
+                ],
+            ])
+            ->add([
+                'name' => 'active_facets_mode',
+                'type' => CommonElement\OptionalRadio::class,
+                'options' => [
+                    'label' => 'Active facets display', // @translate
+                    'label_attributes' => [
+                        'style' => 'display: inline; margin-right: 1em;',
+                    ],
+                    'value_options' => [
+                        'readonly' => 'Simple text', // @translate
+                        'link_remove' => 'Append a cross to remove the facet', // @translate
+                        'links' => 'Whole label removes the facet', // @translate
+                    ],
+                ],
+                'attributes' => [
+                    'id' => 'active_facets_mode',
+                    'value' => 'link_remove',
+                ],
+            ])
+            ->add([
+                'name' => 'search_filters_field_label',
+                'type' => Element\Checkbox::class,
+                'options' => [
+                    'label' => 'Display the field label in active filters', // @translate
+                ],
+                'attributes' => [
+                    'id' => 'search_filters_field_label',
+                    'value' => '1',
                 ],
             ])
             ->add([
@@ -430,6 +901,17 @@ nlres = is not linked with resource with ID
                 ],
             ])
             ->add([
+                'name' => 'active_facets_field_label',
+                'type' => Element\Checkbox::class,
+                'options' => [
+                    'label' => 'Display the field label in active facets', // @translate
+                ],
+                'attributes' => [
+                    'id' => 'active_facets_field_label',
+                    'value' => '1',
+                ],
+            ])
+            ->add([
                 'name' => 'total_results',
                 'type' => CommonElement\OptionalRadio::class,
                 'options' => [
@@ -444,6 +926,40 @@ nlres = is not linked with resource with ID
                 'attributes' => [
                     'id' => 'total_results',
                     'value' => 'header',
+                ],
+            ])
+            ->add([
+                'name' => 'search_form_simple',
+                'type' => CommonElement\OptionalRadio::class,
+                'options' => [
+                    'label' => 'Search form simple', // @translate
+                    'value_options' => [
+                        'none' => 'No', // @translate
+                        'header' => 'Results header', // @translate
+                        'footer' => 'Results footer', // @translate
+                        'both' => 'Both', // @translate
+                    ],
+                ],
+                'attributes' => [
+                    'id' => 'search_form_simple',
+                    'value' => 'none',
+                ],
+            ])
+            ->add([
+                'name' => 'search_form_quick',
+                'type' => CommonElement\OptionalRadio::class,
+                'options' => [
+                    'label' => 'Search form quick', // @translate
+                    'value_options' => [
+                        'none' => 'No', // @translate
+                        'header' => 'Results header', // @translate
+                        'footer' => 'Results footer', // @translate
+                        'both' => 'Both', // @translate
+                    ],
+                ],
+                'attributes' => [
+                    'id' => 'search_form_quick',
+                    'value' => 'none',
                 ],
             ])
             ->add([
@@ -464,7 +980,7 @@ nlres = is not linked with resource with ID
                 ],
             ])
             ->add([
-                'name' => 'per_pages',
+                'name' => 'per_page',
                 'type' => CommonElement\OptionalRadio::class,
                 'options' => [
                     'label' => 'Pagination per page', // @translate
@@ -476,7 +992,7 @@ nlres = is not linked with resource with ID
                     ],
                 ],
                 'attributes' => [
-                    'id' => 'per_pages',
+                    'id' => 'per_page',
                     'value' => 'header',
                 ],
             ])
@@ -532,93 +1048,187 @@ nlres = is not linked with resource with ID
                     'value' => 'auto',
                 ],
             ])
-        ;
-
-        // Settings for the results (pagination).
-
-        // TODO Add the style of pagination (prev/next or list of pages).
-
-        $this
             ->add([
-                'name' => 'pagination',
-                'type' => Fieldset::class,
+                'name' => 'map_display',
+                'type' => Element\Checkbox::class,
                 'options' => [
-                    'label' => 'Pagination', // @translate
-                ],
-            ])
-            ->get('pagination')
-            ->add([
-                'name' => 'per_pages',
-                'type' => OmekaElement\ArrayTextarea::class,
-                'options' => [
-                    'label' => 'Results per page', // @translate
-                    'info' => 'If any, the search page will display a select to paginate results.', // @translate
-                    'as_key_value' => true,
-                    'key_value_separator' => '=',
+                    'label' => 'Display map (module Mapping)', // @translate
+                    'info' => 'Add a map view to display search results on a map. Requires the Mapping module to be installed and active.', // @translate
                 ],
                 'attributes' => [
-                    'id' => 'per_pages',
-                    'placeholder' => '10 = Results by 10
-25 = Results by 25
-50 = Results by 50
-100 = Results by 100
-',
-                    'rows' => 6,
+                    'id' => 'map_display',
                 ],
             ])
-        ;
-
-        // Settings for the results (sorting).
-
-        $this
             ->add([
-                'name' => 'sort',
-                'type' => Fieldset::class,
+                'name' => 'thumbnail_mode',
+                'type' => CommonElement\OptionalRadio::class,
                 'options' => [
-                    'label' => 'Sorting', // @translate
-                ],
-            ])
-            ->get('sort')
-            // field (term + asc/desc) = label (+ asc/desc) (order means weight).
-            ->add([
-                'name' => 'fields',
-                'type' => AdvancedSearchElement\DataTextarea::class,
-                'options' => [
-                    'label' => 'Sort fields', // @translate
-                    'info' => 'List of sort fields that will be displayed in the search page. Format is "term dir = Label".', // @translate
-                    'as_key_value' => true,
-                    'key_value_separator' => '=',
-                    'data_keys' => [
-                        'name',
-                        'label',
+                    'label' => 'Resource thumbnail', // @translate
+                    'value_options' => [
+                        'default' => 'Default resource thumbnail', // @translate
+                        'none' => 'Never', // @translate
+                        'all' => 'Always', // @translate
                     ],
                 ],
                 'attributes' => [
-                    'id' => 'sorting_fields',
-                    'placeholder' => 'dcterms:subject asc = Subject (asc)',
-                    'rows' => 12,
+                    'id' => 'thumbnail_mode',
+                    'value' => 'default',
                 ],
             ])
             ->add([
-                'name' => 'available_sort_fields',
+                'name' => 'thumbnail_type',
+                'type' => CommonElement\OptionalRadio::class,
+                'options' => [
+                    'label' => 'Thumbnail type', // @translate
+                    'value_options' => array_combine($this->thumbnailTypes, $this->thumbnailTypes),
+                ],
+                'attributes' => [
+                    'id' => 'thumbnail_type',
+                    'value' => 'medium',
+                ],
+            ])
+            ->add([
+                'name' => 'allow_html',
+                'type' => Element\Checkbox::class,
+                'options' => [
+                    'label' => 'Allow html in result values', // @translate
+                ],
+                'attributes' => [
+                    'id' => 'allow_html',
+                ],
+            ])
+            ->add([
+                'name' => 'properties',
                 'type' => OmekaElement\ArrayTextarea::class,
                 'options' => [
-                    'label' => 'Available sort fields', // @translate
-                    'info' => 'List of all available sort fields, among which some can be copied above.', // @translate
+                    'label' => 'Properties to display for each result', // @translate
+                    'info' => 'List of property terms to display below each result, one by line.', // @translate
+                ],
+                'attributes' => [
+                    'id' => 'properties',
+                    'rows' => 5,
+                    'placeholder' => <<<'TXT'
+                        dcterms:creator
+                        dcterms:date
+                        dcterms:subject
+                        TXT,
+                ],
+            ])
+            ->add([
+                'name' => 'facets',
+                'type' => CommonElement\OptionalRadio::class,
+                'options' => [
+                    'label' => 'Block of facets', // @translate
+                    'value_options' => [
+                        'none' => 'No', // @translate
+                        'before' => 'Before results', // @translate
+                        'after' => 'After results', // @translate
+                    ],
+                ],
+                'attributes' => [
+                    'id' => 'facets',
+                    'value' => 'before',
+                ],
+            ])
+
+            ->add([
+                'name' => 'pagination_per_page',
+                'type' => CommonElement\OptionalNumber::class,
+                'options' => [
+                    'label' => 'Pagination per page (use site settings by default)', // @translate
+                ],
+                'attributes' => [
+                    'id' => 'pagination_per_page',
+                    'required' => false,
+                    'value' => '0',
+                    'min' => '0',
+                    // 'max' => '1000',
+                    'step' => '1',
+                ],
+            ])
+
+            // TODO Add the style of pagination (prev/next or list of pages).
+
+            ->add([
+                'name' => 'per_page_list',
+                'type' => OmekaElement\ArrayTextarea::class,
+                'options' => [
+                    'label' => 'Labels for results per page', // @translate
                     'as_key_value' => true,
                     'key_value_separator' => '=',
                 ],
                 'attributes' => [
-                    'id' => 'sorting_available_sort_fields',
-                    'value' => $this->getAvailableSortFields(),
-                    'placeholder' => 'dcterms:subject asc = Subject (asc)',
-                    'rows' => 12,
+                    'id' => 'per_page_list',
+                    'placeholder' => <<<'STRING'
+                        10 = Results by 10
+                        25 = Results by 25
+                        50 = Results by 50
+                        100 = Results by 100
+                        STRING,
+                    'rows' => 6,
+                ],
+            ])
+
+            // field (term + asc/desc) = label (+ asc/desc) (order means weight).
+            ->add([
+                'name' => 'label_sort',
+                'type' => Element\Text::class,
+                'options' => [
+                    'label' => 'Sort label', // @translate
+                ],
+                'attributes' => [
+                    'id' => 'label_sort',
+                ],
+            ])
+
+            ->add([
+                'type' => Element\Collection::class,
+                'name' => 'sort_list',
+                'options' => [
+                    'label' => 'Sort selector', // @ŧranslate
+                    'info' => 'List of sort field that will be displayed in the results.', // @translate
+                    'count' => 0,
+                    'allow_add' => true,
+                    'allow_remove' => true,
+                    'should_create_template' => true,
+                    'template_placeholder' => '__index__',
+                    'create_new_objects' => true,
+                    'target_element' => $sortFieldset,
+                ],
+                'attributes' => [
+                    'id' => 'sort_list',
+                    'required' => false,
+                    'class' => 'form-fieldset-collection',
+                    'data-label-index' => $this->translator->translate('Sort {index}'), // @ŧranslate
+                ],
+            ])
+            ->add([
+                'name' => 'plus',
+                'type' => Element\Button::class,
+                'options' => [
+                    'label' => ' ',
+                    'label_options' => [
+                        'disable_html_escape' => true,
+                    ],
+                    'label_attributes' => [
+                        'class' => 'config-fieldset-action-label',
+                    ],
+                ],
+                'attributes' => [
+                    // Don't use o-icon-add.
+                    'class' => 'config-fieldset-action config-fieldset-plus fa fa-plus add-value button',
+                    'aria-label' => 'Add a sort option', // @translate
                 ],
             ])
         ;
 
         // Settings for the results (facets).
         // TODO Add the count or not.
+
+        /** @var \AdvancedSearch\Form\Admin\SearchConfigFacetFieldset $facetFieldset */
+        $facetFieldset = $this->formElementManager->get(SearchConfigFacetFieldset::class, [
+            'search_config' => $searchConfig,
+        ]);
 
         $this
             ->add([
@@ -629,7 +1239,6 @@ nlres = is not linked with resource with ID
                 ],
             ])
             ->get('facet')
-            // field (term) = label (order means weight).
             ->add([
                 'name' => 'label',
                 'type' => Element\Text::class,
@@ -637,109 +1246,21 @@ nlres = is not linked with resource with ID
                     'label' => 'Label above the list of facets', // @translate
                 ],
                 'attributes' => [
-                    'id' => 'label',
+                    'id' => 'facet_label_facets',
                     'value' => 'Facets',
-                ],
-            ])
-            ->add([
-                'name' => 'facets',
-                'type' => AdvancedSearchElement\DataTextarea::class,
-                'options' => [
-                    'label' => 'List of facets', // @translate
-                    'info' => 'List of facets that will be displayed in the search page. Format is "field = Label = Input type = Options". Input types may be "Select" or "SelectRange". With internal sql engine, "SelectRange" orders values alphabetically. With Solr, "SelectRange" works only with date and numbers. "Tree" can be used for item sets when module ItemSetsTree is enabled and data indexed recursively. Options are a comma separateted list of arguments. For now, the main type ("literal", "uri" or "resource") can be specified to output only this main type.', // @translate
-                    'as_key_value' => true,
-                    'key_value_separator' => '=',
-                    'data_keys' => [
-                        'name',
-                        'label',
-                        'type',
-                        'options',
-                    ],
-                    'data_array_keys' => [
-                        'options' => '|',
-                    ],
-                ],
-                'attributes' => [
-                    'id' => 'facet_facets',
-                    'placeholder' => 'dcterms:subject = Subjects',
-                    'rows' => 12,
-                ],
-            ])
-            ->add([
-                'name' => 'available_facets',
-                'type' => OmekaElement\ArrayTextarea::class,
-                'options' => [
-                    'label' => 'Available facets', // @translate
-                    'info' => 'List of all available facets, among which some can be copied above.', // @translate
-                    'as_key_value' => true,
-                    'key_value_separator' => '=',
-                ],
-                'attributes' => [
-                    'id' => 'facet_available_facets',
-                    'value' => $this->getAvailableFacetFields(),
-                    'placeholder' => 'dcterms:subject = Subjects',
-                    'rows' => 12,
-                ],
-            ])
-            ->add([
-                'name' => 'limit',
-                'type' => Element\Number::class,
-                'options' => [
-                    'label' => 'Maximum number of facet by field', // @translate
-                    'info' => 'The maximum number of values fetched for each facet', // @translate
-                ],
-                'attributes' => [
-                    'id' => 'facet_limit',
-                    'value' => 10,
-                    'min' => 1,
                     'required' => false,
                 ],
             ])
             ->add([
-                'name' => 'order',
-                'type' => CommonElement\OptionalRadio::class,
+                'name' => 'label_no_facets',
+                'type' => Element\Text::class,
                 'options' => [
-                    'label' => 'Order of facet items', // @translate
-                    'value_options' => [
-                        '' => 'Native', // @translate
-                        'alphabetic asc' => 'Alphabetical', // @translate
-                        'total desc' => 'Count (biggest first)', // @translate
-                        'total asc' => 'Count (smallest first)', // @translate
-                    ],
+                    'label' => 'Label "No facets"', // @translate
                 ],
                 'attributes' => [
-                    'id' => 'facet_order',
+                    'id' => 'facet_label_no_facets',
+                    'value' => 'No facets', // @translate
                     'required' => false,
-                    'value' => '',
-                ],
-            ])
-            ->add([
-                'name' => 'languages',
-                'type' => AdvancedSearchElement\ArrayText::class,
-                'options' => [
-                    'label' => 'Get facets from specific languages', // @translate
-                    'info' => 'Generally, facets are translated in the view, but in some cases, facet values may be translated directly in a multivalued property. Use "|" to separate multiple languages. Use a trailing "|" for values without language. When fields with languages (like subjects) and fields without language (like date) are facets, the empty language must be set to get results.', // @translate
-                    'value_separator' => '|',
-                ],
-                'attributes' => [
-                    'id' => 'facet_languages',
-                    'placeholder' => 'fra|way|apy|',
-                ],
-            ])
-            ->add([
-                'name' => 'display_list',
-                'type' => CommonElement\OptionalRadio::class,
-                'options' => [
-                    'label' => 'Display list of facets', // @translate
-                    'value_options' => [
-                        'all' => 'All facets, even with 0 results', // @translate
-                        'available' => 'Available facets only', // @translate
-                    ],
-                ],
-                'attributes' => [
-                    'id' => 'display_list',
-                    'required' => false,
-                    'value' => 'available',
                 ],
             ])
             ->add([
@@ -749,7 +1270,8 @@ nlres = is not linked with resource with ID
                     'label' => 'Facet mode', // @translate
                     'value_options' => [
                         'button' => 'Send request with a button', // @translate
-                        'link' => 'Send request directly', // @translate
+                        'js' => 'Send request directly (use checkbox and js)', // @translate
+                        'link' => 'Send request directly (use a link looking like a checkbox)', // @translate
                     ],
                 ],
                 'attributes' => [
@@ -759,10 +1281,62 @@ nlres = is not linked with resource with ID
                 ],
             ])
             ->add([
+                'name' => 'list',
+                'type' => CommonElement\OptionalRadio::class,
+                'options' => [
+                    'label' => 'List of facets', // @translate
+                    'info' => 'With the internal search engine, the option "all facets" may be slow when there are facets and filters for item sets or sites.', // @translate
+                    'value_options' => [
+                        'available' => 'Available facets only', // @translate
+                        'all' => 'All facets, even with 0 results (see info)', // @translate
+                    ],
+                ],
+                'attributes' => [
+                    'id' => 'facet_list',
+                    'required' => false,
+                    'value' => 'available',
+                ],
+            ])
+            ->add([
+                'name' => 'display_active',
+                'type' => Element\Checkbox::class,
+                'options' => [
+                    'label' => 'Display the list of active facets', // @translate
+                ],
+                'attributes' => [
+                    'id' => 'facet_display_active',
+                    'required' => false,
+                    'value' => true,
+                ],
+            ])
+            ->add([
+                'name' => 'display_active_field_label',
+                'type' => Element\Checkbox::class,
+                'options' => [
+                    'label' => 'Display the field label in active facets (sidebar)', // @translate
+                ],
+                'attributes' => [
+                    'id' => 'facet_display_active_field_label',
+                    'required' => false,
+                    'value' => false,
+                ],
+            ])
+            ->add([
+                'name' => 'label_active_facets',
+                'type' => Element\Text::class,
+                'options' => [
+                    'label' => 'Label "Active facets"', // @translate
+                ],
+                'attributes' => [
+                    'id' => 'facet_label_active_facets',
+                    'value' => 'Active facets', // @translate
+                ],
+            ])
+            ->add([
                 'name' => 'display_submit',
                 'type' => CommonElement\OptionalRadio::class,
                 'options' => [
-                    'label' => 'Position of the button "Apply filters"', // @translate
+                    'label' => 'Position of the button "Apply facets"', // @translate
                     'value_options' => [
                         'none' => 'None', // @translate
                         'above' => 'Above facets', // @translate
@@ -774,6 +1348,19 @@ nlres = is not linked with resource with ID
                     'id' => 'facet_display_submit',
                     'required' => false,
                     'value' => 'above',
+                ],
+            ])
+            ->add([
+                'name' => 'label_submit',
+                'type' => Element\Text::class,
+                'options' => [
+                    'label' => 'Label for submit', // @translate
+                ],
+                'attributes' => [
+                    'id' => 'facet_label_submit',
+                    'required' => false,
+                    'value' => 'Apply facets', // @translate
+                    'placeholder' => 'Apply facets', // @translate
                 ],
             ])
             ->add([
@@ -795,52 +1382,80 @@ nlres = is not linked with resource with ID
                 ],
             ])
             ->add([
-                'name' => 'label_submit',
-                'type' => Element\Text::class,
-                'options' => [
-                    'label' => 'Label for submit', // @translate
-                ],
-                'attributes' => [
-                    'id' => 'label_submit',
-                    'required' => false,
-                    'value' => 'Apply facets', // @translate
-                    'placeholder' => 'Apply facets', // @translate
-                ],
-            ])
-            ->add([
                 'name' => 'label_reset',
                 'type' => Element\Text::class,
                 'options' => [
                     'label' => 'Label for reset', // @translate
                 ],
                 'attributes' => [
-                    'id' => 'label_reset',
+                    'id' => 'facet_label_reset',
                     'required' => false,
                     'value' => 'Reset facets', // @translate
                     'placeholder' => 'Reset facets', // @translate
                 ],
             ])
             ->add([
-                'name' => 'display_active',
+                'name' => 'display_refine',
                 'type' => Element\Checkbox::class,
                 'options' => [
-                    'label' => 'Display the list of active facets', // @translate
+                    'label' => 'Display the input field to refine search', // @translate
                 ],
                 'attributes' => [
-                    'id' => 'facet_display_active',
+                    'id' => 'facet_display_refine',
                     'required' => false,
                     'value' => true,
                 ],
             ])
             ->add([
-                'name' => 'display_count',
-                'type' => Element\Checkbox::class,
+                'name' => 'label_refine',
+                'type' => Element\Text::class,
                 'options' => [
-                    'label' => 'Display the count of each facet item', // @translate
+                    'label' => 'Label for refine', // @translate
                 ],
                 'attributes' => [
-                    'id' => 'facet_display_count',
-                    'value' => true,
+                    'id' => 'facet_label_refine',
+                    'required' => false,
+                    'value' => 'Refine search', // @translate
+                    'placeholder' => 'Refine search', // @translate
+                ],
+            ])
+            ->add([
+                'name' => 'facets',
+                'type' => Element\Collection::class,
+                'options' => [
+                    'label' => 'Facets', // @ŧranslate
+                    'info' => 'List of facets that will be displayed in the search page, formatted as ini. The section is a unique name. Keys are: field, label, type, order, limit, state, more, languages, data_types, main_types, values, display_count, and specific options, like thesaurus, min and max.', // @translate
+                    'count' => 0,
+                    'allow_add' => true,
+                    'allow_remove' => true,
+                    'should_create_template' => true,
+                    'template_placeholder' => '__index__',
+                    'create_new_objects' => true,
+                    'target_element' => $facetFieldset,
+                ],
+                'attributes' => [
+                    'id' => 'facet_facets',
+                    'required' => false,
+                    'class' => 'form-fieldset-collection',
+                    'data-label-index' => $this->translator->translate('Facet {index}'), // @ŧranslate
+                ],
+            ])
+            ->add([
+                'name' => 'plus',
+                'type' => Element\Button::class,
+                'options' => [
+                    'label' => ' ',
+                    'label_options' => [
+                        'disable_html_escape' => true,
+                    ],
+                    'label_attributes' => [
+                        'class' => 'config-fieldset-action-label',
+                    ],
+                ],
+                'attributes' => [
+                    // Don't use o-icon-add.
+                    'class' => 'config-fieldset-action config-fieldset-plus fa fa-plus add-value button',
+                    'aria-label' => 'Add a facet', // @translate
                 ],
             ])
         ;
@@ -856,21 +1471,26 @@ nlres = is not linked with resource with ID
         $inputFilter = $this->getInputFilter();
 
         // A check is done because the specific form may remove them.
-        if ($inputFilter->has('autosuggest')) {
-            $inputFilter
-                ->get('autosuggest')
-                ->add([
-                    'name' => 'limit',
-                    'required' => false,
-                ])
-            ;
-        }
 
         if ($inputFilter->has('form')) {
             $inputFilter
                 ->get('form')
                 ->add([
+                    'name' => 'default_number',
+                    'required' => false,
+                ])
+                ->add([
                     'name' => 'max_number',
+                    'required' => false,
+                ])
+            ;
+        }
+
+        if ($inputFilter->has('results')) {
+            $inputFilter
+                ->get('results')
+                ->add([
+                    'name' => 'label_sort',
                     'required' => false,
                 ])
             ;
@@ -880,17 +1500,177 @@ nlres = is not linked with resource with ID
             $inputFilter
                 ->get('facet')
                 ->add([
-                    'name' => 'limit',
+                    'name' => 'label',
                     'required' => false,
                 ])
                 ->add([
-                    'name' => 'languages',
+                    'name' => 'label_no_facets',
                     'required' => false,
                 ])
             ;
         }
 
         return $this;
+    }
+
+    public function isValid(): bool
+    {
+        $valid = parent::isValid();
+
+        // Validate piecewise scale on RangeDouble in filters and facets. Mode
+        // "linear" needs no validation. SelectRange is a pair of selects, not a
+        // slider; Range simple uses the native HTML5 input type=range without a
+        // numeric companion, so piecewise rendering is not
+        // supported there for now (TODO).
+        $data = $this->getData();
+        $scaleTypes = ['RangeDouble'];
+
+        $checks = [
+            ['form', 'filters', $scaleTypes, ['Range', 'RangeDouble']],
+            ['facet', 'facets', $scaleTypes, ['RangeDouble']],
+        ];
+
+        foreach ($checks as [$top, $sub, $allowedTypes, $intervalTypes]) {
+            if (empty($data[$top][$sub]) || !is_array($data[$top][$sub])) {
+                continue;
+            }
+            foreach ($data[$top][$sub] as $name => $item) {
+                if (!is_array($item)) {
+                    continue;
+                }
+                $type = $item['type'] ?? '';
+                $fieldEnd = trim((string) ($item['field_end'] ?? ''));
+                if ($fieldEnd !== '') {
+                    if (!in_array($type, $intervalTypes, true)) {
+                        $valid = false;
+                        $this->setMessages([
+                            $top => [$sub => [$name => ['field_end' => [
+                                sprintf(
+                                    'Interval end field is only available for types %s.', // @translate
+                                    implode(', ', $intervalTypes)
+                                ),
+                            ]]]],
+                        ]);
+                    } elseif (trim((string) ($item['field'] ?? '')) === '') {
+                        $valid = false;
+                        $this->setMessages([
+                            $top => [$sub => [$name => ['field_end' => [
+                                'Interval end field requires a start field ("Field").', // @translate
+                            ]]]],
+                        ]);
+                    }
+                }
+                if (($item['scale_mode'] ?? 'linear') !== 'piecewise') {
+                    continue;
+                }
+                if (!in_array($type, $allowedTypes, true)) {
+                    $valid = false;
+                    $this->setMessages([
+                        $top => [$sub => [$name => ['scale_mode' => [
+                            sprintf(
+                                'Piecewise scale is only available for types %s.', // @translate
+                                implode(', ', $allowedTypes)
+                            ),
+                        ]]]],
+                    ]);
+                    continue;
+                }
+                $error = $this->validateScaleBreakpoints($item['scale_breakpoints'] ?? []);
+                if ($error !== null) {
+                    $valid = false;
+                    $this->setMessages([
+                        $top => [$sub => [$name => ['scale_breakpoints' => [
+                            sprintf('%s: %s', $name, $error), // @translate
+                        ]]]],
+                    ]);
+                }
+            }
+        }
+
+        return $valid;
+    }
+
+    protected function validateScaleBreakpoints(array $breakpoints): ?string
+    {
+        if (count($breakpoints) < 2) {
+            return 'At least 2 breakpoints are required.'; // @translate
+        }
+        // Keys "min" and "max" are placeholders resolved at render time from
+        // the field min/max (attributes or data). Internal values must be
+        // numeric.
+        $hasMin = false;
+        $hasMax = false;
+        $numericValues = [];
+        $numericPositions = [];
+        $minPosition = null;
+        $maxPosition = null;
+        foreach ($breakpoints as $v => $p) {
+            if (!is_numeric($p)) {
+                return 'Positions must be numeric.'; // @translate
+            }
+            $pos = (float) $p;
+            if ($pos < 0.0 || $pos > 100.0) {
+                return 'Positions must be between 0 and 100.'; // @translate
+            }
+            if ($v === 'min') {
+                if ($hasMin) {
+                    return 'Only one "min" placeholder is allowed.'; // @translate
+                }
+                $hasMin = true;
+                $minPosition = $pos;
+            } elseif ($v === 'max') {
+                if ($hasMax) {
+                    return 'Only one "max" placeholder is allowed.'; // @translate
+                }
+                $hasMax = true;
+                $maxPosition = $pos;
+            } elseif (is_numeric($v)) {
+                $numericValues[] = (float) $v;
+                $numericPositions[] = $pos;
+            } else {
+                return 'Keys must be numeric or one of "min" / "max".'; // @translate
+            }
+        }
+        if ($hasMin && $minPosition !== 0.0) {
+            return '"min" placeholder must have position 0.'; // @translate
+        }
+        if ($hasMax && $maxPosition !== 100.0) {
+            return '"max" placeholder must have position 100.'; // @translate
+        }
+        // First position must be 0 (either via "min" or first numeric). Last
+        // must be 100 (either via "max" or last numeric).
+        if (!$hasMin) {
+            // Smallest numeric position must be 0.
+            if ($numericPositions === [] || min($numericPositions) !== 0.0) {
+                return 'First position must be 0 (or use "min" placeholder).'; // @translate
+            }
+        }
+        if (!$hasMax) {
+            if ($numericPositions === [] || max($numericPositions) !== 100.0) {
+                return 'Last position must be 100 (or use "max" placeholder).'; // @translate
+            }
+        }
+        if ($numericValues) {
+            array_multisort($numericValues, $numericPositions);
+            $last = count($numericValues) - 1;
+            for ($i = 1; $i <= $last; $i++) {
+                if ($numericValues[$i] <= $numericValues[$i - 1]) {
+                    return 'Values must be strictly increasing.'; // @translate
+                }
+                if ($numericPositions[$i] <= $numericPositions[$i - 1]) {
+                    return 'Positions must be strictly increasing.'; // @translate
+                }
+            }
+            // Min/max placeholder positions must not overlap with numeric ones
+            // when both are used.
+            if ($hasMin && in_array(0.0, $numericPositions, true)) {
+                return 'A numeric breakpoint cannot share position 0 with "min".'; // @translate
+            }
+            if ($hasMax && in_array(100.0, $numericPositions, true)) {
+                return 'A numeric breakpoint cannot share position 100 with "max".'; // @translate
+            }
+        }
+        return null;
     }
 
     protected function addFormFieldset(): self
@@ -923,58 +1703,10 @@ nlres = is not linked with resource with ID
         return $this;
     }
 
-    protected function getAvailableFields(): array
+    public function setFormElementManager($formElementManager): self
     {
-        /** @var \AdvancedSearch\Api\Representation\SearchConfigRepresentation $searchConfig */
-        $searchConfig = $this->getOption('search_config');
-        $searchEngine = $searchConfig->engine();
-        $searchAdapter = $searchEngine->adapter();
-        if (empty($searchAdapter)) {
-            return [];
-        }
-
-        $options = [];
-        $fields = $searchAdapter->setSearchEngine($searchEngine)->getAvailableFields();
-        foreach ($fields as $name => $field) {
-            $options[$name] = $field['label'] ?? $name;
-        }
-        return $options;
-    }
-
-    protected function getAvailableSortFields(): array
-    {
-        /** @var \AdvancedSearch\Api\Representation\SearchConfigRepresentation $searchConfig */
-        $searchConfig = $this->getOption('search_config');
-        $searchEngine = $searchConfig->engine();
-        $searchAdapter = $searchEngine->adapter();
-        if (empty($searchAdapter)) {
-            return [];
-        }
-
-        $options = [];
-        $fields = $searchAdapter->setSearchEngine($searchEngine)->getAvailableSortFields();
-        foreach ($fields as $name => $field) {
-            $options[$name] = $field['label'] ?? $name;
-        }
-        return $options;
-    }
-
-    protected function getAvailableFacetFields(): array
-    {
-        /** @var \AdvancedSearch\Api\Representation\SearchConfigRepresentation $searchConfig */
-        $searchConfig = $this->getOption('search_config');
-        $searchEngine = $searchConfig->engine();
-        $searchAdapter = $searchEngine->adapter();
-        if (empty($searchAdapter)) {
-            return [];
-        }
-
-        $options = [];
-        $fields = $searchAdapter->setSearchEngine($searchEngine)->getAvailableFacetFields();
-        foreach ($fields as $name => $field) {
-            $options[$name] = $field['label'] ?? $name;
-        }
-        return $options;
+        $this->formElementManager = $formElementManager;
+        return $this;
     }
 
     public function setSuggesters(array $suggesters): self
@@ -983,9 +1715,15 @@ nlres = is not linked with resource with ID
         return $this;
     }
 
-    public function setFormElementManager($formElementManager): self
+    public function setThumbnailTypes(array $thumbnailTypes): self
     {
-        $this->formElementManager = $formElementManager;
+        $this->thumbnailTypes = $thumbnailTypes;
+        return $this;
+    }
+
+    public function setTranslator(Translator $translator): self
+    {
+        $this->translator = $translator;
         return $this;
     }
 }

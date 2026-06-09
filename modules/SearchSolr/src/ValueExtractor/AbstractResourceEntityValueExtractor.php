@@ -2,7 +2,7 @@
 
 /*
  * Copyright BibLibre, 2016-2017
- * Copyright Daniel Berthereau, 2018-2023
+ * Copyright Daniel Berthereau, 2018-2026
  * Copyright Paul Sarrassat, 2018
  *
  * This software is governed by the CeCILL license under French law and abiding
@@ -40,6 +40,8 @@ use Omeka\Api\Representation\AbstractResourceRepresentation;
 use Omeka\Api\Representation\ItemRepresentation;
 use Omeka\Api\Representation\ItemSetRepresentation;
 use Omeka\Api\Representation\MediaRepresentation;
+use Omeka\Api\Representation\ValueAnnotationRepresentation;
+use Omeka\Api\Representation\ValueRepresentation;
 use SearchSolr\Api\Representation\SolrMapRepresentation;
 
 abstract class AbstractResourceEntityValueExtractor implements ValueExtractorInterface
@@ -59,6 +61,15 @@ abstract class AbstractResourceEntityValueExtractor implements ValueExtractorInt
      */
     protected $baseFilepath;
 
+    protected $label;
+
+    /**
+     * Default visibility filter inherited from the search engine.
+     * Null means no filter (index all values). "public" or "private"
+     * restricts values when a map has no explicit filter_visibility.
+     */
+    protected ?string $engineVisibility = null;
+
     public function __construct(ApiManager $api, LoggerInterface $logger, $baseFilepath)
     {
         $this->api = $api;
@@ -66,7 +77,22 @@ abstract class AbstractResourceEntityValueExtractor implements ValueExtractorInt
         $this->baseFilepath = $baseFilepath;
     }
 
-    abstract public function getLabel(): string;
+    /**
+     * Set the default visibility inherited from the search engine.
+     *
+     * Maps with an empty filter_visibility will use this value.
+     * Maps with "all", "public" or "private" override it.
+     */
+    public function setEngineVisibility(?string $visibility): self
+    {
+        $this->engineVisibility = $visibility;
+        return $this;
+    }
+
+    public function getLabel(): string
+    {
+        return $this->label;
+    }
 
     public function getMapFields(): array
     {
@@ -91,9 +117,17 @@ abstract class AbstractResourceEntityValueExtractor implements ValueExtractorInt
                     'item_set' => 'Item: Item set', // @translate
                     'item_sets_tree' => 'Item: Item sets tree', // @translate
                     'media' => 'Item: Media', // @translate
-                    'content' => 'Media: Content (html or extracted text)', // @translate
+                    'has_media' => 'Item: Has media', // @translate
+                    'content' => 'Media: Content (from html or extractable text from file, included alto)', // @translate
                     'is_open' => 'Item set: Is open', // @translate
+                    'value' => 'Value itself (in particular for module Thesaurus)', // @translate
+                    'annotation' => 'Value annotation appended to property', // @translate
+                    'value_annotations' => 'All value annotations flattened (for fulltext or specific annotation property)', // @translate
                     'access_level' => 'Access level (module Access)', // @translate
+                    // 'o:selection/o:id' => 'Selections (module Selection)', // @translate
+                    // 'o:selection[is_public=1]/o:id' => 'Public selections (module Selection)', // @translate
+                    'selection_id' => 'Selections (module Selection)', // @translate
+                    'selection_public_id' => 'Public selections (module Selection)', // @translate
                     // Urls.
                     'url_api' => 'Api url', // @translate
                     'url_admin' => 'Admin url', // @translate
@@ -183,6 +217,7 @@ abstract class AbstractResourceEntityValueExtractor implements ValueExtractorInt
         }
 
         if ($field === 'is_public') {
+            // Some resources like assets have no isPublic method.
             return method_exists($resource, 'isPublic')
                 ? [$resource->isPublic()]
                 : [true];
@@ -245,6 +280,12 @@ abstract class AbstractResourceEntityValueExtractor implements ValueExtractorInt
                 : [];
         }
 
+        if ($field === 'has_media') {
+            return $resource instanceof ItemRepresentation
+                ? [count($resource->media()) > 0]
+                : [false];
+        }
+
         if ($field === 'content') {
             return $resource instanceof MediaRepresentation
                 ? $this->extractMediaContent($resource)
@@ -269,15 +310,37 @@ abstract class AbstractResourceEntityValueExtractor implements ValueExtractorInt
                 : [];
         }
 
+        // See below when extracting value resource.
+        if ($field === 'value') {
+            // Here, the resource is never a value.
+            return $resource instanceof ValueRepresentation
+                ? [$resource]
+                : [];
+        }
+
         if ($field === 'access_level') {
             return $resource instanceof AbstractResourceEntityRepresentation
                 ? $this->accessLevel($resource, $solrMap)
                 : [];
         }
 
+        if ($field === 'selection_id') {
+            return class_exists('Selection\Module', false) && $resource instanceof AbstractResourceEntityRepresentation
+                ? $this->selection($resource, $solrMap, false)
+                : [];
+        }
+
+        if ($field === 'selection_public_id') {
+            return class_exists('Selection\Module', false) && $resource instanceof AbstractResourceEntityRepresentation
+                ? $this->selection($resource, $solrMap, true)
+                : [];
+        }
+
         if ($field === 'url_site') {
-            if (is_null($defaultSiteSlug)) {
-                $defaultSiteSlug = $this->defaultSiteSlug($resource) ?: false;
+            if ($defaultSiteSlug === null) {
+                /** @var \Common\View\Helper\DefaultSite $defaultSite */
+                $defaultSite = $resource->getServiceLocator()->get('ViewHelperManager')->get('defaultSite');
+                $defaultSiteSlug = $defaultSite('slug') ?: false;
             }
             if ($defaultSiteSlug === false || !method_exists($resource, 'siteUrl')) {
                 return [];
@@ -336,19 +399,20 @@ abstract class AbstractResourceEntityValueExtractor implements ValueExtractorInt
         // TODO Use all available locales to get the title and the description.
         if ($field === 'o:title' && method_exists($resource, 'displayTitle')) {
             $result = $resource->displayTitle();
-            return is_null($result) || $result === '' || $result === []
+            return $result === null || $result === '' || $result === []
                 ? []
                 : [$result];
         }
 
         if ($field === 'o:description' && method_exists($resource, 'displayDescription')) {
             $result = $resource->displayDescription();
-            return is_null($result) || $result === '' || $result === []
+            return $result === null || $result === '' || $result === []
                 ? []
                 : [$result];
         }
 
         $specialMetadata = [
+            'resource_name' => 'resourceName',
             'url_admin' => 'adminUrl',
             'url_api' => 'apiUrl',
             // Special metadata.
@@ -374,10 +438,10 @@ abstract class AbstractResourceEntityValueExtractor implements ValueExtractorInt
             }
             try {
                 $result = $resource->{$specialMetadata[$field]}();
-            } catch (\Exception $e) {
+            } catch (\Throwable $e) {
                 $result = null;
             }
-            return is_null($result) || $result === '' || $result === []
+            return $result === null || $result === '' || $result === []
                 ? []
                 : [$result];
         }
@@ -387,6 +451,18 @@ abstract class AbstractResourceEntityValueExtractor implements ValueExtractorInt
                 return [];
             }
             return $this->extractPropertyValues($resource, $solrMap);
+        }
+
+        // Collect all value annotations from all properties of the resource,
+        // flattened at the item level. With sub-path (e.g. "value_annotations/dcterms:date"),
+        // only that property within the annotations is extracted.
+        if ($field === 'value_annotations') {
+            if (!($resource instanceof AbstractResourceEntityRepresentation)) {
+                return [];
+            }
+            return $this->extractAllValueAnnotations(
+                $resource, $solrMap
+            );
         }
 
         if (strpos($field, ':')) {
@@ -513,7 +589,7 @@ abstract class AbstractResourceEntityValueExtractor implements ValueExtractorInt
     protected function extractItemItemSetsValue(
         ItemRepresentation $item,
         ?SolrMapRepresentation $solrMap
-        ): array {
+    ): array {
         $extractedValues = [];
         foreach ($item->itemSets() as $itemSet) {
             $values = $this->extractValue($itemSet, $solrMap->subMap());
@@ -528,7 +604,7 @@ abstract class AbstractResourceEntityValueExtractor implements ValueExtractorInt
     ): array {
         static $itemSetsTreeAncestorsOrSelf;
 
-        if (is_null($itemSetsTreeAncestorsOrSelf)) {
+        if ($itemSetsTreeAncestorsOrSelf === null) {
             $itemSetsTreeAncestorsOrSelf = [];
             $services = $item->getServiceLocator();
             if ($services->has('ItemSetsTree')) {
@@ -606,19 +682,35 @@ abstract class AbstractResourceEntityValueExtractor implements ValueExtractorInt
         SolrMapRepresentation $solrMap,
         array $values
     ): array {
+        if (!count($values)) {
+            return [];
+        }
+
         $extractedValues = [];
 
         // Filter values and uris are full regex automatically checked.
         $filterValuesPattern = $solrMap->pool('filter_values') ?: null;
         $filterUrisPattern = $solrMap->pool('filter_uris') ?: null;
 
-        $filterVisibility = $solrMap->pool('filter_visibility') ?: null;
+        // Resolve visibility: map setting overrides engine default.
+        // "all" = explicit override to index everything.
+        // "" (empty) = follow engine setting.
+        // "public"/"private" = explicit override.
+        $mapVisibility = $solrMap->pool('filter_visibility') ?: null;
+        $filterVisibility = $mapVisibility === 'all'
+            ? null
+            : ($mapVisibility ?: $this->engineVisibility);
         $publicOnly = $filterVisibility === 'public';
         $privateOnly = $filterVisibility === 'private';
 
         // It is not possible to exclude a type via value methods.
         $excludedDataTypes = $solrMap->pool('data_types_exclude');
         $hasExcludedDataTypes = !empty($excludedDataTypes);
+
+        // Check if we need to extract annotations (path like property/annotation).
+        $solrSubMap = $solrMap->subMap();
+        $subFirstSource = $solrSubMap->firstSource();
+        $extractAnnotation = $subFirstSource === 'annotation';
 
         // Only value resources are managed here: other types are managed with
         // the formatter.
@@ -643,13 +735,42 @@ abstract class AbstractResourceEntityValueExtractor implements ValueExtractorInt
                     continue;
                 }
             }
+
+            // Handle annotation extraction (path: property/annotation[/property]).
+            if ($extractAnnotation) {
+                try {
+                    $annotation = $value->valueAnnotation();
+                } catch (\Throwable $e) {
+                    $annotation = null;
+                }
+                if ($annotation) {
+                    $annotationSubMap = $solrSubMap->subMap();
+                    $annotationFirstSource = $annotationSubMap->firstSource();
+                    if (!$annotationFirstSource) {
+                        // No sub-property specified: extract all annotation values.
+                        $annotationExtractedValues = $this->extractAnnotationValues($annotation, $solrSubMap);
+                        $extractedValues = array_merge($extractedValues, $annotationExtractedValues);
+                    } else {
+                        // Extract specific property from annotation.
+                        $annotationExtractedValues = $this->extractValue($annotation, $annotationSubMap);
+                        $extractedValues = array_merge($extractedValues, $annotationExtractedValues);
+                    }
+                }
+                continue;
+            }
+
             // A value resource may be set for multiple types, included a custom
             // vocab with a resource.
             $vr = $value->valueResource();
             if ($vr) {
                 if (!$this->excludeResourceViaQueryFilter($vr, $solrMap, 'filter_value_resources')) {
-                    $resourceExtractedValues = $this->extractValue($vr, $solrMap->subMap());
-                    $extractedValues = array_merge($extractedValues, $resourceExtractedValues);
+                    $firstSource = $solrSubMap->firstSource();
+                    if (!$firstSource || $firstSource === 'value') {
+                        $extractedValues[] = $value;
+                    } else {
+                        $resourceExtractedValues = $this->extractValue($vr, $solrSubMap);
+                        $extractedValues = array_merge($extractedValues, $resourceExtractedValues);
+                    }
                 }
             } else {
                 $extractedValues[] = $value;
@@ -659,10 +780,103 @@ abstract class AbstractResourceEntityValueExtractor implements ValueExtractorInt
         return $extractedValues;
     }
 
+    /**
+     * Extract all values from a value annotation.
+     *
+     * @param ValueAnnotationRepresentation $annotation
+     * @param SolrMapRepresentation $solrMap
+     * @return mixed[]|ValueRepresentation[]
+     */
+    protected function extractAnnotationValues(
+        ValueAnnotationRepresentation $annotation,
+        SolrMapRepresentation $solrMap
+    ): array {
+        $extractedValues = [];
+        foreach (array_keys($annotation->values()) as $term) {
+            $values = $annotation->value($term, ['all' => true]);
+            foreach ($values as $value) {
+                $extractedValues[] = $value;
+            }
+        }
+        return $extractedValues;
+    }
+
+    /**
+     * Extract and flatten all value annotations from all resource properties.
+     *
+     * If the map has a sub-path (e.g. "value_annotations/dcterms:date"), only
+     * annotation values matching that property term are returned.
+     * Without sub-path, all annotation values from all properties are returned.
+     *
+     * This is useful to index annotation data (dates, roles, places) into the
+     * Solr document for search, facets and sort.
+     */
+    protected function extractAllValueAnnotations(
+        AbstractResourceEntityRepresentation $resource,
+        SolrMapRepresentation $solrMap
+    ): array {
+        $subMap = $solrMap->subMap();
+        $annotationTerm = $subMap->firstSource();
+
+        // Apply the same visibility filter as property values.
+        $mapVisibility = $solrMap->pool('filter_visibility') ?: null;
+        $filterVisibility = $mapVisibility === 'all'
+            ? null
+            : ($mapVisibility ?: $this->engineVisibility);
+        $publicOnly = $filterVisibility === 'public';
+        $privateOnly = $filterVisibility === 'private';
+
+        $extractedValues = [];
+        foreach ($resource->values() as $term => $propertyData) {
+            foreach ($propertyData['values'] as $value) {
+                if ($filterVisibility
+                    && (($privateOnly && $value->isPublic())
+                        || ($publicOnly && !$value->isPublic()))
+                ) {
+                    continue;
+                }
+                try {
+                    $annotation = $value->valueAnnotation();
+                } catch (\Throwable $e) {
+                    continue;
+                }
+                if (!$annotation) {
+                    continue;
+                }
+                if ($annotationTerm) {
+                    // Extract only the specified property from each annotation.
+                    $annValues = $annotation->value(
+                        $annotationTerm, ['all' => true]
+                    );
+                    foreach ($annValues as $annValue) {
+                        $extractedValues[] = $annValue;
+                    }
+                } else {
+                    // Extract all properties from each annotation.
+                    foreach (array_keys($annotation->values()) as $annTerm) {
+                        $annValues = $annotation->value(
+                            $annTerm, ['all' => true]
+                        );
+                        foreach ($annValues as $annValue) {
+                            $extractedValues[] = $annValue;
+                        }
+                    }
+                }
+            }
+        }
+        return $extractedValues;
+    }
+
     protected function extractMediaContent(MediaRepresentation $media): array
     {
         if ($media->ingester() === 'html') {
-            return [$media->mediaData()['html']];
+            $output = $media->mediaData()['html'];
+            return $output ? [$output] : [];
+        }
+        $mediaType = $media->mediaType();
+        if ($mediaType === 'application/alto+xml') {
+            $output = $this->extractContentAlto($media);
+            return strlen($output) ? [$output] : [];
         }
         if (strtok((string) $media->mediaType(), '/') === 'text') {
             $filePath = $this->baseFilepath . '/original/' . $media->filename();
@@ -686,25 +900,6 @@ abstract class AbstractResourceEntityValueExtractor implements ValueExtractorInt
         return $accessLevel
             ? [$accessLevel($resource)]
             : [];
-    }
-
-    protected function defaultSiteSlug(AbstractRepresentation $resource): ?string
-    {
-        $services = $resource->getServiceLocator();
-        $api = $services->get('Omeka\ApiManager');
-        $settings = $services->get('Omeka\Settings');
-        $defaultSiteId = (int) $settings->get('default_site');
-        if ($defaultSiteId) {
-            try {
-                $result = $api->read('sites', $defaultSiteId, [], ['responseContent' => 'resource'])->getContent();
-                return $result->getSlug();
-            } catch (\Omeka\Api\Exception\NotFoundException $e) {
-            }
-        }
-        $result = $api->search('sites', ['limit' => 1], ['returnScalar' => 'slug'])->getContent();
-        return count($result)
-            ? reset($result)
-            : null;
     }
 
     /**
@@ -738,18 +933,18 @@ abstract class AbstractResourceEntityValueExtractor implements ValueExtractorInt
 
         // TODO Use query builder.
         $sql = <<<SQL
-SELECT
-    item_sets_tree_edge.item_set_id,
-    item_sets_tree_edge.item_set_id AS "id",
-    item_sets_tree_edge.parent_item_set_id AS "parent",
-    item_sets_tree_edge.rank AS "rank",
-    resource.title as "title"
-FROM item_sets_tree_edge
-JOIN resource ON resource.id = item_sets_tree_edge.item_set_id
-WHERE item_sets_tree_edge.item_set_id IN (:ids)
-GROUP BY resource.id
-ORDER BY $sortingMethodSql ASC;
-SQL;
+            SELECT
+                item_sets_tree_edge.item_set_id,
+                item_sets_tree_edge.item_set_id AS "id",
+                item_sets_tree_edge.parent_item_set_id AS "parent",
+                item_sets_tree_edge.rank AS "rank",
+                resource.title as "title"
+            FROM item_sets_tree_edge
+            JOIN resource ON resource.id = item_sets_tree_edge.item_set_id
+            WHERE item_sets_tree_edge.item_set_id IN (:ids)
+            GROUP BY resource.id
+            ORDER BY $sortingMethodSql ASC;
+            SQL;
         $flatTree = $connection->executeQuery($sql, ['ids' => array_keys($itemSetTitles)], ['ids' => $connection::PARAM_INT_ARRAY])->fetchAllAssociativeIndexed();
 
         // Use integers or string to simplify comparaisons.
@@ -786,13 +981,9 @@ SQL;
 
         // Order by sorting method.
         if ($sortingMethod === 'rank') {
-            $sortingFunction = function ($a, $b) use ($structure) {
-                return $structure[$a]['rank'] - $structure[$b]['rank'];
-            };
+            $sortingFunction = fn ($a, $b) => $structure[$a]['rank'] - $structure[$b]['rank'];
         } else {
-            $sortingFunction = function ($a, $b) use ($structure) {
-                return strcmp($structure[$a]['title'], $structure[$b]['title']);
-            };
+            $sortingFunction = fn ($a, $b) => strcmp($structure[$a]['title'], $structure[$b]['title']);
         }
 
         foreach ($structure as &$node) {
@@ -885,5 +1076,101 @@ SQL;
         }
 
         return $structure;
+    }
+
+    /**
+     * Get the list of selection ids in which the resource is.
+     */
+    protected function selection(
+        AbstractResourceEntityRepresentation $resource,
+        ?SolrMapRepresentation $solrMap,
+        bool $isPublic = false
+    ): array {
+        $services = $resource->getServiceLocator();
+
+        /** @var \Doctrine\DBAL\Connection $connection */
+        $connection = $services->get('Omeka\Connection');
+
+        $qb = $connection->createQueryBuilder();
+        $qb
+            ->select('selection_resource.selection_id')
+            ->distinct()
+            ->from('selection_resource', 'selection_resource')
+            ->innerJoin('selection_resource', 'selection', 'selection', 'selection.id = selection_resource.selection_id')
+            ->where('selection_resource.resource_id = :id')
+            ->orderBy('selection.id', 'ASC');
+
+        $bind = [
+            'id' => $resource->id(),
+        ];
+
+        if ($isPublic) {
+            $qb
+                ->andWhere($qb->expr()->eq('selection.is_public', ':is_public'));
+            $bind['is_public'] = 1;
+        }
+
+        $qb
+            ->setParameters($bind);
+
+        try {
+            $ids = $qb
+                ->execute()->fetchFirstColumn();
+        } catch (\Throwable $e) {
+            return [];
+        }
+
+        return array_values(array_unique(array_map('intval', $ids ?: [])));
+    }
+
+    /**
+     * Copy:
+     * @see \AdvancedSearch\Stdlib\FulltextSearchDelegator::extractText()
+     * @see \SearchSolr\ValueExtractor\AbstractResourceEntityValueExtractor::extractContentAlto()
+     * @see \IiifServer\View\Helper\IiifAnnotationPageLine2::__invoke()
+     */
+    protected function extractContentAlto(MediaRepresentation $media): string
+    {
+        if ($media->mediaType() !== 'application/alto+xml') {
+            return '';
+        }
+
+        // TODO Manage external storage.
+        // Extract text from alto.
+        $filePath = $this->baseFilepath . '/original/' . $media->filename();
+        if (!file_exists($filePath) || !is_readable($filePath)) {
+            return '';
+        }
+
+        try {
+            $xmlContent = file_get_contents($filePath);
+            $xml = @simplexml_load_string($xmlContent, null, LIBXML_NONET);
+        } catch (\Throwable $e) {
+            // No log.
+            return '';
+        }
+
+        if (!$xml) {
+            return '';
+        }
+
+        $namespaces = $xml->getDocNamespaces();
+        $altoNamespace = $namespaces['alto'] ?? $namespaces[''] ?? 'http://www.loc.gov/standards/alto/ns-v4#';
+        $xml->registerXPathNamespace('alto', $altoNamespace);
+
+        $text = '';
+
+        // TODO Use a single xpath or xsl to get the whole in one query.
+        foreach ($xml->xpath('/alto:alto/alto:Layout//alto:TextLine') as $xmlTextLine) {
+            /** @var \SimpleXMLElement $xmlString */
+            foreach ($xmlTextLine->children() as $xmlString) {
+                if ($xmlString->getName() === 'String') {
+                    $attributes = $xmlString->attributes();
+                    $text .= (string) @$attributes->CONTENT . ' ';
+                }
+            }
+        }
+
+        return trim($text);
     }
 }

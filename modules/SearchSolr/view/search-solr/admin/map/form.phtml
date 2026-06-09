@@ -6,37 +6,67 @@
  * @var array $sourceLabels
  */
 
-$translate = $this->plugin('translate');
+$plugins = $this->getHelperPluginManager();
+$partial = $plugins->get('partial');
+$assetUrl = $plugins->get('assetUrl');
+$translate = $plugins->get('translate');
 
-$this->headLink()->appendStylesheet($this->assetUrl('css/search-solr-admin.css', 'SearchSolr'));
-$this->headScript()->appendScript(
-    'var schema = ' . json_encode($schema, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) . ';
-var sourceLabels = ' . json_encode($sourceLabels, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) . ';'
-);
-$this->headScript()->appendFile($this->assetUrl('js/search-solr-admin.js', 'SearchSolr'), 'text/javascript', ['defer' => 'defer']);
+$this->headLink()
+    ->appendStylesheet($assetUrl('css/search-solr-admin.css', 'SearchSolr'));
+$this->headScript()
+    ->appendScript(
+    'const schema = ' . json_encode($schema, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) . ';
+const sourceLabels = ' . json_encode($sourceLabels, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) . ';'
+)
+    ->appendFile($assetUrl('js/search-solr-admin-map.js', 'SearchSolr'), 'text/javascript', ['defer' => 'defer']);
 
 $form->prepare();
+
+/** @see \Common\Form\Element\DataTypeSelect */
+// Temp fix for DataTypeSelect inside a fieldset.
+$dataTypeManager = $this->api()->read('vocabularies', 1)->getContent()->getServiceLocator()->get('Omeka\DataTypeManager');
+$form->remove('data_types');
+$form->get('o:pool')->get('data_types')->setDataTypeManager($dataTypeManager);
+$form->get('o:pool')->get('data_types_exclude')->setDataTypeManager($dataTypeManager);
 ?>
 
 <?= $this->form()->openTag($form) ?>
+
 <div id="page-actions">
     <?= $this->cancelButton() ?>
-    <button type="submit"><?= $translate('Save') ?></button>
+    <button type="submit" class="button"><?= $translate('Save') ?></button>
 </div>
-<h4><?= $translate('Metadata to extract') ?></h4>
-<?php
-echo $this->formRow($form->get('o:source'));
-echo $this->formCollection($form->get('o:pool'));
-?>
-<h4><?= $translate('Metadata to index') ?></h4>
-<?php
-echo $this->formRow($form->get('o:field_name'));
-echo $this->formCollection($form->get('o:settings'));
 
-echo $this->formRow($form->get('csrf'));
+<h4><?= $translate('Resource type') ?></h4>
+<p><?= $translate('Fill index with metadata from a type of resource') ?></p>
+<?= $this->formRow($form->get('o:resource_name')) ?>
 
-$this->trigger('view.add.form.after');
-?>
+<h4><?= $translate('Source') ?></h4>
+<p><?= $translate('Metadata to extract from Omeka') ?></p>
+<?= $this->formRow($form->get('o:source')) ?>
+<?= $this->formCollection($form->get('o:pool')) ?>
+
+<h4><?= $translate('Destination') ?></h4>
+<?= $partial('search-solr/admin/core/help-index-names') ?>
+<?= $this->formRow($form->get('o:field_name')) ?>
+
+<h4><?= $translate('Alias') ?></h4>
+<?= $this->formRow($form->get('o:alias')) ?>
+
+<h4><?= $translate('Format') ?></h4>
+<p><?= $translate('Adapt the metadata') ?></p>
+<?= $this->formCollection($form->get('o:settings')) ?>
+
+<?= $this->formRow($form->get('csrf')) ?>
+
+<?php $this->trigger('view.add.form.after'); ?>
 <?= $this->form()->closeTag() ?>
+
+<?php // Outside of the form to skip them. ?>
+<div class="source-by-resource hidden" style="display: none">
+    <?php foreach (array_keys($form->getValueExtractorOptions()) as $name): ?>
+    <?= $this->formRow($form->get('o:source/' . $name)) ?>
+    <?php endforeach; ?>
+</div>
 
 <?php $this->trigger('view.add.after'); ?>

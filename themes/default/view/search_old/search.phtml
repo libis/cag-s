@@ -1,0 +1,469 @@
+<?php
+/*
+ * Copyright BibLibre, 2016
+ * Copyright Daniel Berthereau, 2017-2018
+ *
+ * This software is governed by the CeCILL license under French law and abiding
+ * by the rules of distribution of free software.  You can use, modify and/ or
+ * redistribute the software under the terms of the CeCILL license as circulated
+ * by CEA, CNRS and INRIA at the following URL "http://www.cecill.info".
+ *
+ * As a counterpart to the access to the source code and rights to copy, modify
+ * and redistribute granted by the license, users are provided only with a
+ * limited warranty and the software's author, the holder of the economic
+ * rights, and the successive licensors have only limited liability.
+ *
+ * In this respect, the user's attention is drawn to the risks associated with
+ * loading, using, modifying and/or developing or reproducing the software by
+ * the user in light of its specific status of free software, that may mean that
+ * it is complicated to manipulate, and that also therefore means that it is
+ * reserved for developers and experienced professionals having in-depth
+ * computer knowledge. Users are therefore encouraged to load and test the
+ * software's suitability as regards their requirements in conditions enabling
+ * the security of their systems and/or data to be ensured and, more generally,
+ * to use and operate it in the same conditions as regards security.
+ *
+ * The fact that you are presently reading this means that you have had
+ * knowledge of the CeCILL license and that you accept its terms.
+ */
+
+/**
+ * @var \Zend\View\Renderer\PhpRenderer $this
+ * @var \Search\Query $query
+ * @var \Search\Response $response
+ * @var array $sortOptions
+ * @var array $facets
+ * @var bool $isPartial
+ */
+
+$plugins = $this->getHelperPluginManager();
+$api = $plugins->get('api');
+$partial = $plugins->get('partial');
+$assetUrl = $plugins->get('assetUrl');
+$translate = $plugins->get('translate');
+$translatePlural = $plugins->get('translatePlural');
+
+$vars = $this->vars();
+
+// Used in case of a redirect of item-set/show to search, when used like item/browse.
+$itemSetId = $this->params()->fromRoute('item-set-id');
+// TODO Use site item set ?
+/** @var \Omeka\Api\Representation\ItemSetRepresentation $itemSet */
+$itemSet = $itemSetId ? $api->searchOne('item_sets', ['id' => $itemSetId])->getContent() : null;
+
+$isPartial = $skipFormAction = !empty($skipFormAction);
+
+$documentCount = isset($response) ? $response->getTotalResults() : 0;
+if ($documentCount):
+    $itemSetsCount = $response->getResourceTotalResults('item_sets');
+    $itemsCount = $response->getResourceTotalResults('items');
+    $displayParts = $searchConfig->setting('display', []);
+    $displayPartsHeader = array_filter($displayParts, function ($v) { return in_array($v, ['header', 'both']); });
+    $displayPartsFooter = array_filter($displayParts, function ($v) { return in_array($v, ['footer', 'both']); });
+endif;
+
+$this->htmlElement('body')->appendAttribute('class', 'search-page page resource browse');
+$this->headScript()->appendFile($this->assetUrl('jquery-ui.min.js', 'jQueryUI'));
+$this->headLink()->appendStylesheet($this->assetUrl('jquery-ui.min.css', 'jQueryUI'));
+$this->headLink()->appendStylesheet($assetUrl('css/search.css', 'AdvancedSearch'));
+$this->headScript()->appendFile($assetUrl('js/search.js', 'AdvancedSearch'), 'text/javascript', ['defer' => 'defer']);
+?>
+<!-- intro + image -->
+<div class="section section--lrg section--light">
+   <div class="container">
+      <?php $page = $searchPage;?>
+
+       <!-- breadcrumbs -->
+       <div class="breadcrumb spacer">
+           <span class="breadcrumb__scope">
+               <a href="/" class="breadcrumb__item"><span>Home</span></a>
+           </span>
+           <span class="breadcrumb__scope">
+              <?php if($searchPage->name() == "Tijdschriften"):?>                
+                <a href="/page/digitale-leeszaal-tijdschriften" class="breadcrumb__item">
+                  <span>Tijdschriften</span>
+                </a>
+              <?php elseif($searchPage->name() == "Beeldbank"):?>                
+                <a href="/page/beeldbank" class="breadcrumb__item">
+                  <span>Beeldbank</span>
+                </a>
+              <?php elseif($searchPage->name() == "Cinema Rural Filmdatabank"):?>                
+                <a href="/page/cinema-rural-filmdatabank" class="breadcrumb__item">
+                  <span>Cinema Rural Filmdatabank</span>
+                </a>
+              <?php elseif($searchPage->name() == "Collecties"):?>                
+                <a href="/page/collecties" class="breadcrumb__item">
+                  <span>Collecties</span>
+                </a>
+              <?php elseif($searchPage->name() == "Verhalen"):?>                
+                <a href="/page/verhalen" class="breadcrumb__item">      
+                  <span>Verhalen</span>
+                </a>
+              <?php else: ?>
+               <span><a href="<?= parse_url($_SERVER["REQUEST_URI"], PHP_URL_PATH).'?q=' ?>"><?php echo $page->name();?></a></span>
+              <?php endif;?>  
+              </span>
+              <span class="breadcrumb__scope">
+              <?php if(htmlspecialchars($query->getQuery())):?>                
+                  <span><?= htmlspecialchars($query->getQuery())?></span>
+              <?php else:?>
+               <span>Zoeken</span>
+              <?php endif;?>
+              </span>
+           </span>
+       </div>
+       <h1 class="spacer">
+         <?php echo $page->name()." (".$response->getTotalResults().")";?>
+       </h1>
+
+        <?php
+        $intro = array(
+          "Verhalen" => "De verhalen laten je in woord en beeld de geschiedenis en het erfgoed van landbouw, voeding en landelijke leven vanaf 1750 ontdekken. Zes keer per jaar verschijnt een nieuw verhaal.",
+          "Projecten" => "CAG werkt als initiatiefnemer, uitvoerder en deelnemer aan tal van projecten in het themaveld landbouw, voeding en landelijk leven. Sommige projecten hebben een onderzoekskarakter, andere zijn gericht op een breed publiek. Zowel roerend als immaterieel erfgoed komen aan bod.",
+          "Beeldbank" => "De beeldbank van CAG bevat een grote variatie aan digitale reproducties van agrarisch erfgoed (objecten, foto’s, prenten, boeken ...). Dankzij die rijkdom neemt de beeldbank je mee naar het virtuele land van 1750 tot vandaag.",
+          "Collecties" => "Ben je op zoek naar een publiek toegankelijke collectie met erfgoed van landbouw, voeding en landelijk leven? Hier vind je een overzicht.",
+          "Cinema Rural Filmdatabank" => "De Cinema Rural Filmdatabank biedt een overzicht met uitgebreide inhoudelijke en materiële beschrijvingen van het bewegend beeldmateriaal van landbouw, voeding en landelijk leven dat wordt bewaard in Belgische collecties."
+          );
+        ?>
+        <?php if(isset($intro[$page->name()])):?>
+         <div class="text--lead spacer">
+           <?php echo $intro[$page->name()];?>
+         </div>
+        <?php endif;?>
+   </div>
+</div>
+<?php if($searchPage->name() == "Tijdschriften"):?>  
+  <div class="section section--default ledenbladen">
+<?php else:?>  
+  <div class="section section--default">
+<?php endif;?>    
+  <div class="container">
+
+    <?php if($page->name() != 'Verhalen'):?>
+      <div class="facet-filter-nav">
+        <div class="filter-icon">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+                <path d="M3.9 54.9C10.5 40.9 24.5 32 40 32l432 0c15.5 0 29.5 8.9 36.1 22.9s4.6 30.5-5.2 42.5L320 320.9 320 448c0 12.1-6.8 23.2-17.7 28.6s-23.8 4.3-33.5-3l-64-48c-8.1-6-12.8-15.5-12.8-25.6l0-79.1L9 97.3C-.7 85.4-2.8 68.8 3.9 54.9z" fill="none" stroke="black" transform="scale(0.9) translate(25,25)"/>
+            </svg>
+        </div>
+        <a role="button" class="close-icon">
+            <span></span>
+            <span></span>
+        </a>
+      </div>
+    <?php endif; ?>
+      
+    <?php if($searchPage->name() == "Tijdschriften"):?>  
+      
+      <div class="panel panel--light ledenbladen-advanced">
+        <?php //echo $this->searchForm($searchPage, null,true); ?>          
+            
+            <div class="spacer">
+            <span class="search-loop"><i class="fas fa-search"></i></span>  
+            
+            <?= $searchConfig->renderForm(['template' => null, 'skip_form_action' => $skipFormAction]) ?>
+            <button class="add_field_button" type="button"><i class='fas fa-plus'></i> Een extra veld toevoegen</button>
+            <a id="advanced-toggle" class="active">Uitgebreid zoeken <i class="fas fa-chevron-down"></i></a>          
+            
+          </div>    
+      </div>    
+    <?php endif; ?>
+    <?php if (isset($response)): ?>
+        <?php if ($response->getTotalResults() > 0): ?>
+           <?php
+               echo $this->partial('search/results-header', [
+                'site' => $site,
+                'searchConfig' => $searchConfig,
+                // Kept for compatibility with old themes.
+                'searchPage' => $searchConfig,
+                'query' => $query,
+                'response' => $response,
+                'itemSet' => $itemSet,
+                'resultPart' => 'header',
+                'documentCount' => $documentCount,
+               ]);
+           ?>
+       <?php endif; ?>
+    <?php endif; ?>
+    <div class="grid">
+
+     <!-- search filter -->
+     
+     <?php if($page->name() != 'Verhalen'):?>
+      <?= $partial('search/facets', [
+        'site' => $site,
+        'searchPage' => $searchPage,
+        'query' => $query,
+        'response' => $response,
+        'itemSet' => $itemSet,
+    ]) ?>
+         <?php endif;?>
+
+
+     <!-- filter results -->
+     <?php if (isset($response)): ?>
+          <?php if ($response->getTotalResults() > 0): ?>
+
+              <?php $itemSetsCount = $response->getResourceTotalResults('item_sets'); ?>
+              <?php
+              echo $this->partial('search/resource-list', [
+                  'title' => sprintf($this->translatePlural('%s item set', '%s item sets', $itemSetsCount), $itemSetsCount),
+                  'response' => $response,
+                  'resourceName' => 'item_sets',
+                  'site' => $site
+              ]);
+              ?>
+
+              <?php $itemsCount = $response->getResourceTotalResults('items'); ?>
+              <?php
+              echo $this->partial('search/resource-list', [
+                  'title' => sprintf($this->translatePlural('%s item', '%s items', $itemsCount), $itemsCount),
+                  'response' => $response,
+                  'resourceName' => 'items',
+                  'site' => $site,
+                  'pagename' => $page->name()
+              ]);
+              ?>
+
+
+              <?php echo $this->pagination(); ?>
+          <?php else: ?>
+              <div class="noresults"><?php echo $translate('Your query returned no results'); ?></div>
+          <?php endif; ?>
+      <?php endif; ?>
+      <?php if (empty($isPartial)): ?>
+
+      <?php endif; ?>
+      </div>
+  </div>
+</div>
+<?php 
+  $dates = $query->getDateRangeFilters();
+  //var_dump($dates);
+  $to = date("Y");$from = '1500';
+  if($dates && isset($dates["dcterms_temporal_drm"])):
+    $from = $dates["dcterms_temporal_drm"][0]["from"];                  
+    $to = $dates["dcterms_temporal_drm"][0]["to"];
+    if(!$from){$from = "1500";}       
+    if(!$to){$from = date("Y");}   
+  endif;        
+  if($dates && isset($dates["dcterms_date_drm"])):
+    $from = $dates["dcterms_date_drm"][0]["from"];                  
+    $to = $dates["dcterms_date_drm"][0]["to"];
+    if(!$from){$from = "1890";}       
+    if(!$to){$from = date("Y");}   
+  endif;    
+  
+?>
+<script>
+    $(document).ready(function(){
+        $( ".more-link a" ).click(function(e) {
+            e.preventDefault();
+            $(this).parent().hide();
+            $(this).parent().next( "div" ).show();
+        });
+        $( ".less-link a" ).click(function(e) {
+            e.preventDefault();
+            $(this).parent().parent().hide();
+            $(this).parent().parent().prev( ".more-link" ).show();
+        });
+        $('#q').change(function(e) {
+          $('input[type=submit].search-submit').focus();
+        });
+    });
+</script>
+<script>
+    $(document).ready(function() {
+      <?php if($searchPage->name() == "Beeldbank"):?>
+        var dateFrom = $('#psl-search-form input[name="dcterms_temporal_drm[from]"]');
+        var dateTo = $('#psl-search-form input[name="dcterms_temporal_drm[to]"]');
+        var dateMin =1500;
+        var dateMax = 2023;      
+      <?php endif;?>
+      <?php 
+        if($searchPage->name() == "Tijdschriften"):?>   
+        var dateFrom = $('#psl-search-form input[name="dcterms_date_drm[from]"]');
+        var dateTo = $('#psl-search-form input[name="dcterms_date_drm[to]"]');
+        var dateMin =1890;
+        var dateMax = 2025;
+
+        var filter_i = 0;
+        $('#search-filters').find('.filter').each(function (index) {
+            if(index > 1){
+              var button = "<a href='#' class='removefilter'><i class='fas fa-trash-alt'></i></a>";
+              $(this).append(button);
+            }        
+        });
+
+        $('#search-form').on('submit',function(e){
+          e.preventDefault();
+          const params = new URLSearchParams(window.location.search)
+          
+          params.set('q','"' + $('[name="q"]').val() + '"');     
+          window.location.href = location.protocol + '//' + location.host + location.pathname+'?'+params.toString();
+      
+        });    
+     
+        var wrapper = $("#search-filters span");
+        var filter = $(".filter").first();
+        var add_button = $(".add_field_button");
+        var adv_button = $("#advanced-toggle");
+        var submit_button = $("#submit");
+        var search_loop = $(".search-loop");
+
+        $("#search-filters").append(add_button);
+        add_button.hide()
+
+        filter.prepend(search_loop);
+        filter.append(submit_button);
+        filter.append(adv_button);     
+
+        $(document).on('click',".removefilter",function(e) {
+          e.preventDefault();
+          $(this).parent().remove();
+          filter_i--;
+        });
+
+        $(add_button).click(function (e) {
+            e.preventDefault();
+            filter_i++;
+            //$(wrapper).before('<fieldset class="filter"><select name="filter['+filter_i+'][field]"><option value="dcterms_title_txt">Titel</option><option value="media_txt2">Inhoud</option></select><input type="text" name="filter['+filter_i+'][value]" value=""><a class="removefilter"><i class="fas fa-trash-alt"></i></a></fieldset>'); //add input box
+            wrapper.before('<fieldset class="filter show"><select name="filter['+filter_i+'][join]"><option value="and" selected="selected">and</option><option value="or">or</option><option value="not">not</option></select><select name="filter['+filter_i+'][field]"><option value="dcterms:title" selected="selected">Titel</option></select><input type="text" name="filter['+filter_i+'][value]" value=""><a class="removefilter"><i class="fas fa-trash-alt"></i></a></fieldset>');
+        });
+      
+        $("#advanced-toggle").click(function(e) {
+          e.preventDefault();
+          add_button.toggle();
+          //$(".ledenbladen-advanced #form-search fieldset").toggle();
+          $('.ledenbladen-advanced #form-search').find('fieldset').each(function (index) {
+            if (index > 0) {
+              $(this).toggleClass("show");
+            }
+          });
+
+          $("#advanced-search-form").toggleClass('active');
+          $("#advanced-toggle").toggleClass('active');
+
+          if($("#advanced-toggle").hasClass('active')){
+            $("#advanced-toggle").html('Uitgebreid zoeken <i class="fas fa-chevron-down"></i>');
+            $(adv_button).before(submit_button);
+          }else{        
+            $("#advanced-toggle").html('Uitgebreid zoeken <i class="fas fa-chevron-up"></i>');
+            $(".ledenbladen-advanced #form-search div").last().append(submit_button);
+          }
+        });
+      
+    <?php endif;?>
+
+    <?php if($searchPage->name() == "Beeldbank"):?>
+      $('#psl-search-form-date-slider').slider({
+        range: true,
+        min: dateMin,
+        max: dateMax,        
+        step: 10,
+          
+        //values: [dateFrom.val() || dateMin, dateTo.val() || dateMax],
+        values: [<?php echo $from;?>, <?php echo $to;?>],
+        change: function(event, ui) {
+            var from = ui.values[0] > dateMin ? ui.values[0] : '';
+            var to = ui.values[1] < dateMax ? ui.values[1] : '';
+            if (from != dateFrom.val()) {
+                dateFrom.val(from).change();
+            }
+            if (to != dateTo.val()) {
+                dateTo.val(to).change();
+            }
+
+            var fromv = from;
+            if(from == 0){
+              fromv = dateMin;
+            }
+            var tov = to;
+            if(to == ''){
+              tov = dateMax;
+            }
+            $('.currentDate').text((fromv) + ' - ' + tov);
+        }
+      });
+
+      dateFrom.parents('.field').hide();
+      dateTo.parents('.field').hide();
+    <?php endif;?>
+  });
+</script>
+
+<?php  // search on mobile behind a button ?>
+<script>
+  $(".facet-active").on("click touchstart", function(e) {
+      e.preventDefault();
+      var href = $(this).attr("href");
+      if ($(this).closest('div').hasClass('facets')) {
+          localStorage.setItem('openPopUp', 'true');
+      }
+      window.location.href = href;
+  });
+
+  function activeLink(event) {  
+      event.preventDefault();
+      var facetLink = event.currentTarget.dataset.facetLink;
+      localStorage.setItem('openPopUp', 'true');
+      window.location.href = facetLink;
+  }
+
+  $(window).on('load', function() {
+      var openPopUp = localStorage.getItem('openPopUp');
+      var filterIcon = $(".filter-icon");
+      var closeIcon = $(".close-icon");
+      var page = $('.page');
+      var facetsList = $('.facets').parent();
+
+      if (window.innerWidth < 1024) {
+          if (openPopUp === "true") {
+              var filterNav = $(".facet-filter-nav");
+              $(facetsList).addClass("open-facets-list");
+              $(filterNav).addClass("filter-nav-fixed");
+              $(filterIcon).addClass("active-item");
+              $(page).addClass("pageFixed");
+              localStorage.removeItem('openPopUp');
+          }
+      }
+
+      filterIcon.off("click", filterIconClickHandler);
+      closeIcon.off("click", closeIconClickHandler);
+
+      filterIcon.on("click", filterIconClickHandler);
+      closeIcon.on("click", closeIconClickHandler);
+  });
+
+  function clickOnButton(facetsList, filterNav, filterIcon, page) {
+      var filterOpen = $(facetsList).hasClass("open-facets-list");
+
+      if (!filterOpen) {
+          $(facetsList).addClass("open-facets-list");
+          $(filterNav).addClass("filter-nav-fixed");
+          $(filterIcon).addClass("active-item");
+          $(page).addClass("pageFixed");
+      } else {
+          $(facetsList).removeClass("open-facets-list");
+          $(filterNav).removeClass("filter-nav-fixed");
+          $(filterIcon).removeClass("active-item");
+          $(page).removeClass("pageFixed");
+      }
+  }
+
+  function filterIconClickHandler() {
+      var filterNav = $(".facet-filter-nav");
+      var filterIcon = $(".filter-icon");
+      var page = $('.page');
+      var facetsList = $('.facets').parent();
+      clickOnButton(facetsList, filterNav, filterIcon, page);
+  }
+
+  function closeIconClickHandler() {
+      var filterNav = $(".facet-filter-nav");
+      var filterIcon = $(".filter-icon");
+      var page = $('.page');
+      var facetsList = $('.facets').parent();
+      clickOnButton(facetsList, filterNav, filterIcon, page);
+  }
+</script>

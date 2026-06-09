@@ -1,7 +1,7 @@
 <?php declare(strict_types=1);
 
 /*
- * Copyright Daniel Berthereau, 2018-2024
+ * Copyright Daniel Berthereau, 2018-2026
  *
  * This software is governed by the CeCILL license under French law and abiding
  * by the rules of distribution of free software.  You can use, modify and/ or
@@ -30,27 +30,33 @@
 namespace AdvancedSearch\Service\Form;
 
 use AdvancedSearch\Form\MainSearchForm;
-use Interop\Container\ContainerInterface;
+use Psr\Container\ContainerInterface;
 use Laminas\ServiceManager\Factory\FactoryInterface;
 
 class MainSearchFormFactory implements FactoryInterface
 {
-    public function __invoke(ContainerInterface $services, $requestedName, array $options = null)
+    public function __invoke(ContainerInterface $services, $requestedName, ?array $options = null)
     {
         $plugins = $services->get('ControllerPluginManager');
         $helpers = $services->get('ViewHelperManager');
         $currentSite = $plugins->get('currentSite')();
-        $siteSetting = $currentSite
-            ? $helpers->get('siteSetting')
+        $siteSettings = $currentSite
+            ? $services->get('Omeka\Settings\Site')
             : null;
         return (new MainSearchForm(null, $options))
             ->setBasePath($helpers->get('basePath')())
-            ->setEasyMeta($services->get('EasyMeta'))
             ->setSite($currentSite)
-            ->setSettings($services->get('Omeka\Settings'))
-            ->setSiteSetting($siteSetting)
-            ->setFormElementManager($services->get('FormElementManager'))
+            ->setAcl($services->get('Omeka\Acl'))
+            ->setApi($services->get('Omeka\ApiManager'))
+            ->setEasyMeta($services->get('Common\EasyMeta'))
             ->setEntityManager($services->get('Omeka\EntityManager'))
+            ->setEscapeHtml($helpers->get('escapeHtml'))
+            ->setFormElementManager($services->get('FormElementManager'))
+            ->setItemSetsTree($services->has('ItemSetsTree') ? $services->get('ItemSetsTree') : null)
+            ->setLogger($services->get('Omeka\Logger'))
+            ->setSettings($services->get('Omeka\Settings'))
+            ->setSiteSettings($siteSettings)
+            ->setTranslator($services->get('MvcTranslator'))
         ;
     }
 }

@@ -2,146 +2,185 @@
 
 namespace AdvancedSearch\Api;
 
-// use AdvancedSearch\Mvc\Controller\Plugin\ApiSearch;
 use Laminas\Mvc\Controller\PluginManager as ControllerPluginManager;
+use Omeka\Api\Adapter\AdapterInterface;
+use Omeka\Api\Manager;
+use Omeka\Api\Request;
+use Omeka\Api\Response;
 
 /**
- * API manager service (delegator).
+ * API manager decorator.
+ *
+ * Decorates the Omeka API Manager to intercept search requests with
+ * `index=true` option and route them through the external search engine
+ * (e.g., Solr) for better performance.
+ *
+ * This decorator extends Manager to satisfy type hints but delegates all
+ * operations to the wrapped original instance. Only `search()` has special
+ * handling for the `index` option.
+ *
+ * Note: We must extend Manager (not just wrap it) because Omeka uses concrete
+ * class type hints rather than interfaces. This ensures compatibility with
+ * existing code that expects `Omeka\Api\Manager`.
+ *
+ * Delegate all other methods to the original Manager.
+ *
+ * Note: We must explicitly override every public method because:
+ * 1. We extend Manager to satisfy type hints (no interface in Omeka core)
+ * 2. We don't call parent::__construct() to avoid duplicating dependencies
+ * 3. Therefore parent's properties ($adapterManager, $acl, etc.) are null
+ * 4. Calling parent methods directly would fail
+ *
+ * If Omeka core added an ApiManagerInterface, we could use __call() instead
+ * and only override search().
+ * @todo Do a pull request to create an interface to the api manager.
  */
-class ManagerDelegator extends \Omeka\Api\Manager
+class ManagerDelegator extends Manager
 {
+    /**
+     * The original Manager instance to delegate to.
+     *
+     * @var Manager
+     */
+    protected $delegate;
+
     /**
      * @var ControllerPluginManager
      */
     protected $controllerPlugins;
 
     /**
-     * @var bool
+     * @param Manager $delegate The original API Manager instance
      */
-    protected $hasAdvancedSearch;
+    public function __construct(Manager $delegate)
+    {
+        // Don't call parent constructor - we delegate everything to $delegate.
+        $this->delegate = $delegate;
+    }
 
     /**
-     * Override core api search:
-     * - Allows to override a search when initialize is false.
-     * - Execute a search API request with an option to do a quick search.
+     * Execute a search API request.
      *
-     * The quick search is enabled when the argument "index" is true in the
-     * options or in the data. It would be better to use the argument "options",
-     * but it is not available in the admin user interface, for example in block
-     * layouts, neither in the view helper api().
-     * @todo Remove "index" from the display if any.
-     * @todo Use a real delegator (with the delegate) to simplify override for property.
+     * When `index` option is set to true (in data or options), the search
+     * is routed through the external search engine (e.g., Solr) instead of
+     * the database for better performance.
      *
-     * {@inheritDoc}
-     * @see \Omeka\Api\Manager::search()
+     * @param string $resource
+     * @param array $data
+     * @param array $options
+     * @return Response
      */
     public function search($resource, array $data = [], array $options = [])
+    {
+        // Check for index search request.
+        // The `index` option can be in data (from query string) or options.
+        if (!empty($options['index']) || !empty($data['index'])) {
+            return $this->searchViaIndex($resource, $data, $options);
+        }
+
+        // Standard search via delegate.
+        return $this->delegate->search($resource, $data, $options);
+    }
+
+    /**
+     * Route search through external index (e.g., Solr).
+     */
+    protected function searchViaIndex(string $resource, array $data, array $options): Response
     {
         // ApiSearch is set static to avoid a loop during init of Api Manager.
         /** @var \AdvancedSearch\Mvc\Controller\Plugin\ApiSearch $apiSearch */
         static $apiSearch;
 
-        /** @see \AdvancedSearch\Module::onApiSearchPre() */
-        if (empty($options['index']) && empty($data['index'])) {
-            // Use the standard process when possible.
-            if (array_key_exists('initialize', $options)
-                && !$options['initialize']
-                && in_array($resource, [
-                    /** @see \AdvancedSearch\Module::attachListeners() */
-                    'items',
-                    'media',
-                    'item_sets',
-                    // Annotations are managed directly in Omeka, so no need to override.
-                    // 'annotations',
-                    // Generation does not use complex search for now.
-                    // 'generations',
-                ])
-            ) {
-                $query = &$data;
-
-                // Clean simple useless fields to avoid useless checks in many places.
-                // TODO Clean property, numeric, dates, etc.
-                foreach ($query as $key => $value) {
-                    if ($value === '' || $value === null || $value === []) {
-                        unset($query[$key]);
-                    } elseif ($key === 'id') {
-                        $values = is_array($value) ? $value : [$value];
-                        $values = array_filter($values, function ($id) {
-                            return $id !== '' && $id !== null;
-                        });
-                        if (count($values)) {
-                            $query[$key] = $values;
-                        } else {
-                            unset($query[$key]);
-                        }
-                    } elseif (in_array($key, [
-                        'owner_id',
-                        'site_id',
-                    ])) {
-                        if (is_numeric($value)) {
-                            $query[$key] = (int) $value;
-                        } else {
-                            unset($query[$key]);
-                        }
-                    } elseif (in_array($key, [
-                        'resource_class_id',
-                        'resource_template_id',
-                        'item_set_id',
-                    ])) {
-                        $values = is_array($value) ? $value : [$value];
-                        $values = array_map('intval', array_filter($values, 'is_numeric'));
-                        if (count($values)) {
-                            $query[$key] = $values;
-                        } else {
-                            unset($query[$key]);
-                        }
-                    }
-                }
-
-                // Override some keys (separated from loop for clean process).
-                $override = [];
-                if (isset($query['owner_id'])) {
-                    $override['owner_id'] = $query['owner_id'];
-                    unset($query['owner_id']);
-                }
-                if (isset($query['resource_class_id'])) {
-                    $override['resource_class_id'] = $query['resource_class_id'];
-                    unset($query['resource_class_id']);
-                }
-                if (isset($query['resource_template_id'])) {
-                    $override['resource_template_id'] = $query['resource_template_id'];
-                    unset($query['resource_template_id']);
-                }
-                if (isset($query['item_set_id'])) {
-                    $override['item_set_id'] = $query['item_set_id'];
-                    unset($query['item_set_id']);
-                }
-                if (!empty($query['property'])) {
-                    $override['property'] = $query['property'];
-                    unset($query['property']);
-                }
-                // "site" is more complex and has already a special key "in_sites", that
-                // can be true or false. This key is not overridden.
-                // When the key "site_id" is set, the key "in_sites" is skipped in core.
-                if (isset($query['site_id']) && (int) $query['site_id'] === 0) {
-                    $query['in_sites'] = false;
-                    unset($query['site_id']);
-                }
-                if ($override) {
-                    $options['override'] = $override;
-                }
-            }
-            return parent::search($resource, $data, $options);
-        }
-
-        if (is_null($apiSearch)) {
+        if ($apiSearch === null) {
             $apiSearch = $this->controllerPlugins->get('apiSearch');
         }
 
         return $apiSearch($resource, $data, $options);
     }
 
-    public function setControllerPlugins(ControllerPluginManager $controllerPlugins)
+    // Delegate all other methods to the original Manager.
+
+    /**
+     * @see \Omeka\Api\Manager::create()
+     */
+    public function create($resource, array $data = [], $fileData = [], array $options = [])
+    {
+        return $this->delegate->create($resource, $data, $fileData, $options);
+    }
+
+    /**
+     * @see \Omeka\Api\Manager::batchCreate()
+     */
+    public function batchCreate($resource, array $data = [], $fileData = [], array $options = [])
+    {
+        return $this->delegate->batchCreate($resource, $data, $fileData, $options);
+    }
+
+    /**
+     * @see \Omeka\Api\Manager::read()
+     */
+    public function read($resource, $id, array $data = [], array $options = [])
+    {
+        return $this->delegate->read($resource, $id, $data, $options);
+    }
+
+    /**
+     * @see \Omeka\Api\Manager::update()
+     */
+    public function update($resource, $id, array $data = [], array $fileData = [], array $options = [])
+    {
+        return $this->delegate->update($resource, $id, $data, $fileData, $options);
+    }
+
+    /**
+     * @see \Omeka\Api\Manager::batchUpdate()
+     */
+    public function batchUpdate($resource, array $ids, array $data = [], array $options = [])
+    {
+        return $this->delegate->batchUpdate($resource, $ids, $data, $options);
+    }
+
+    /**
+     * @see \Omeka\Api\Manager::delete()
+     */
+    public function delete($resource, $id, array $data = [], array $options = [])
+    {
+        return $this->delegate->delete($resource, $id, $data, $options);
+    }
+
+    /**
+     * @see \Omeka\Api\Manager::batchDelete()
+     */
+    public function batchDelete($resource, array $ids, array $data = [], array $options = [])
+    {
+        return $this->delegate->batchDelete($resource, $ids, $data, $options);
+    }
+
+    /**
+     * @see \Omeka\Api\Manager::execute()
+     */
+    public function execute(Request $request)
+    {
+        return $this->delegate->execute($request);
+    }
+
+    /**
+     * @see \Omeka\Api\Manager::initialize()
+     */
+    public function initialize(AdapterInterface $adapter, Request $request)
+    {
+        return $this->delegate->initialize($adapter, $request);
+    }
+
+    /**
+     * @see \Omeka\Api\Manager::finalize()
+     */
+    public function finalize(AdapterInterface $adapter, Request $request, Response $response)
+    {
+        return $this->delegate->finalize($adapter, $request, $response);
+    }
+
+    public function setControllerPlugins(ControllerPluginManager $controllerPlugins): self
     {
         $this->controllerPlugins = $controllerPlugins;
         return $this;
