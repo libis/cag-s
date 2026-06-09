@@ -412,7 +412,9 @@ if ($showMapView) {
                     $('.query-inputs').prepend(search_loop);
                     //filter.append(submit_button);
                     $('.query-inputs').append(submit_button);
-                    $('.query-inputs').append(adv_button);
+                    $('.query-inputs').append("<div class='search-buttons'></div>");                    
+                    $('.search-buttons').append(adv_button);
+                    var searchbuttons = $('.search-buttons');
 
                     $(document).on('click', ".removefilter", function(e) {
                         e.preventDefault();
@@ -464,8 +466,11 @@ if ($showMapView) {
 
                         if ($("#advanced-toggle").hasClass('active')) {
                             $("#advanced-toggle").html('Uitgebreid zoeken <i class="fas fa-chevron-down"></i>');
+                           // $('.query-inputs').append(submit_button);
+                           // $('.query-inputs').append(adv_button);
                             $('.query-inputs').append(submit_button);
-                            $('.query-inputs').append(adv_button);
+                            $('.query-inputs').append(searchbuttons);                              
+                            $('.search-buttons').append(adv_button);
                         } else {
                             $("#advanced-toggle").html('Uitgebreid zoeken <i class="fas fa-chevron-up"></i>');
                             
