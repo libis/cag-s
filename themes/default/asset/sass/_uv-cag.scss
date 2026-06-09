@@ -1,0 +1,170 @@
+/* Basis: maak de hele viewer wit */
+$primary: #006b65;
+$lightgray: #9a9a9a;
+$yellow: #e8ae11;
+
+#uv,
+.uv,
+.uv * {
+  color: inherit !important;   
+}
+
+/* Beeldvlak (OpenSeadragon) wit maken */
+.uv .openseadragon-container,
+.uv .openseadragon-container canvas,
+.uv .openseadragon-canvas {
+    
+}
+
+.uv .mainPanel {
+    padding-top: 5px !important;
+    margin-right: 5px !important;
+    margin-left: 5px  !important;
+    background: #9a9a9a !important;
+}
+
+.uv .headerPanel .options {
+    background-color: $primary !important;
+    color: white !important;
+}
+
+.uv .btn-primary {
+  color: #fff;
+  background-color: $primary !important;
+  border-color: white !important;
+}
+
+.uv .btn-primary:hover, .uv .btn-primary:focus, .uv .btn-primary:active, .uv .btn-primary.active, .open .dropdown-toggle.uv .btn-primary {
+  color: #fff;
+  background-color: $primary !important;
+  border-color: white !important;
+}
+
+/* Optioneel: panelen/footers */
+.uv .leftPanel,
+.uv .rightPanel,
+.uv .centerPanel,
+.uv .footerPanel,
+.uv .headerPanel {
+  background-color: #ffffff !important;
+  /*background: #ffffff !important;*/
+  color: #000 !important;
+}
+.uv .leftPanel {
+  color: #000 !important; 
+}
+.uv .footerPanel{
+  background-color: #f9f9f8 !important;
+}
+.uv .rightPanel {
+  background-color: $yellow !important;
+  /*background: #ffffff !important;*/
+  color: #000 !important;
+}
+
+.uv-iiif-extension-host.uv-openseadragon-extension .footerPanel .searchPager {
+  position: relative;
+  background-color: #f9f9f8 !important;
+  height: 32px;
+  overflow: hidden;
+}
+
+.uv-iiif-extension-host.uv-openseadragon-extension .footerPanel .search {
+  background-color: #f9f9f8 !important;
+}
+
+.uv-iiif-extension-host.uv-openseadragon-extension .footerPanel .searchPager .controls .nextResult:hover {
+  background-color: $primary !important;
+}  
+.uv-iiif-extension-host.uv-openseadragon-extension .footerPanel .searchPager .controls .previousResult{
+  color:white !important;
+   background-color: $primary !important;
+}
+.uv-iiif-extension-host.uv-openseadragon-extension .footerPanel .searchPager .controls .nextResult {
+  color:white !important;
+   background-color: $primary !important;
+}
+
+.uv .leftPanel .tabs .tab {
+    background-color: $yellow !important;
+}
+
+
+.uv .rightPanel .main {
+	margin-right: 0px !important;
+    margin-bottom: 0px !important;
+    margin-left: 5px !important;
+    margin-top: 5px !important;
+	background-color: #f9f9f8 !important;
+}
+
+.uv .leftPanel .main {
+	margin-right: 5px !important;
+    margin-bottom: 0px !important;
+    margin-left: 0px !important;
+    margin-top: 5px !important;
+	background-color: #f9f9f8 !important;
+}
+
+.uv > div
+ {
+    background-color: white !important;
+}
+
+.uv-iiif-extension-host.uv-openseadragon-extension .centerPanel .content .viewer .paging.btn {
+    background-color: #ffffff !important;
+}
+
+.uv .footerPanel .options {
+    background: $primary !important;
+}
+
+/* Als je nog een subtiele rand wil laten zien op knoppen of borders */
+.uv .footerPanel,
+.uv .headerPanel {
+  border-color: #e5e7eb; /* lichtgrijze scheiding */
+}
+
+
+/* Buttons, labels en icon‑tekst 
+.uv .btn,
+.uv button,
+.uv .label,
+.uv .tab,
+.uv .toggle {
+  color: #000 !important;
+}
+*/
+.uv .btn.close {
+    background-color: #9a9a9a !important;
+}
+/* Metadata panel (belangrijk: vaak lichtgrijs + wit → moeilijk leesbaar) */
+.uv .metadata .label,
+.uv .metadata .value {
+  color: #000 !important;
+}
+
+/* Inputvelden (search box, paginaveld, nummering) */
+.uv input,
+.uv input[type="text"],
+.uv .searchText {
+  color: #000 !important;
+  background-color: #fff !important; /* bij witte achtergrond */
+}
+
+.uv .headerPanel button.btn.imageBtn.first i, .uv .headerPanel button.btn.imageBtn.prev i, .uv .headerPanel button.btn.imageBtn.next i, .uv .headerPanel button.btn.imageBtn.last i {
+  background-color: $primary !important;
+}
+
+
+.uv .overlay.active {
+  background-color: rgba(255,255,255,0.95) !important;
+}
+
+.uv .loading {
+  background: #ffffff !important;
+}
+
+.uv .spinner {
+  filter: invert(1) brightness(0.3) !important;
+}
