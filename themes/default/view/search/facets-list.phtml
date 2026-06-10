@@ -45,7 +45,7 @@ if (!empty($itemSet)) {
 }
 ?>
 <div class="grid__12 grid__4@med facets-group">
-   <div class="panel panel--light facets">
+   <div class="panel panel--light facets" id="search-facets">
 
     <?php if ($label = $searchConfig->subSetting('facet', 'label', 'Facets')): ?>
     <h3><?= $escape($translate($label)) ?></h3>
@@ -58,7 +58,7 @@ if (!empty($itemSet)) {
     <?= $facetActives(null, $activeFacets, ($searchConfig->setting('facet') ?: []) + ['facets_mode' => $searchConfig->subSetting('results', 'active_facets_mode', 'link_remove'), 'show_field_label' => (bool) $searchConfig->subSetting('facet', 'display_active_field_label', false)]) ?>
     <?php endif; ?>
 
-    <form id="facets-form">
+    <form id="form-facets">
 
         <?php if ($displayFacetButton): ?>
         <?= $this->hiddenInputsFromFilteredQuery(null, ['facet', 'refine', 'page', 'limit', 'offset', 'per_page']) ?>

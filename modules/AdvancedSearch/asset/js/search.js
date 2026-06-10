@@ -179,7 +179,9 @@ var Search = (function() {
                 && !k.startsWith('facet[')
                 && !k.startsWith('facet%5B')
             ) {
+                
                 return true;
+                
             }
         }
         return false;

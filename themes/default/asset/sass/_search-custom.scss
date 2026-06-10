@@ -1,0 +1,805 @@
+// ADVANCED SEARCH & FACETS
+// =============================================================================
+#advanced-search-form {
+  h4 {
+    margin-bottom: 0.5rem;
+  }
+
+  [data-field-type="daterange"] {
+    margin-bottom: 0.5rem;
+
+    .field-meta {
+      display: inline;
+    }
+
+    legend {
+      color: #006B65;
+      font-weight: bold;
+      margin-bottom: 0.5rem;
+    }
+
+    > div {
+      display: inline-block;
+      font-size: 0.9rem;
+
+      > div {
+        display: inline-block;
+      }
+    }
+
+    input {
+      width: 80px;
+      margin: 0 5px;
+    }
+  }
+}
+
+#advanced-search-form.active {
+  #search-filters {
+    margin-bottom: 0.5rem;
+  }
+}
+
+#advanced-toggle {
+  cursor: pointer;
+  display: inline-block;
+  min-width: 200px;
+
+  &:hover {
+    color: rgba(white, 0.7);
+  }
+}
+
+
+// -----------------------------------------------------------------------------
+// .libis-search-advanced — green advanced search bar
+// -----------------------------------------------------------------------------
+
+.libis-search-advanced {
+  margin-bottom: 1.5rem;
+  padding: 1rem !important;
+  background-color: #006b65 !important;
+  color: white;
+
+  a {
+    color: white;
+    text-decoration: none;
+  }
+
+  legend {
+    color: white !important;
+  }
+
+  .advanced-container {
+    display: none;
+    margin-bottom: 15px;
+  }
+
+  // Query row (always visible)
+  .query-search {
+    display: block !important;
+
+    .field-meta {
+      display: none;
+    }
+
+    .query-inputs {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 10px;
+      position: relative;
+
+      .search-buttons {
+        width: 200px;
+        flex-shrink: 0;
+      }
+
+      .search-loop {
+        position: absolute;
+        left: 0;
+        top: 0;
+      }
+
+      input {
+        border: none;
+        padding-left: 34px;
+        width: auto;
+        min-width: 250px;
+        flex-grow: 1;
+      }
+
+      #search-submit {
+        flex-shrink: 0;
+      }
+    }
+  }
+
+  .show {
+    display: flex !important;
+  }
+
+  fieldset fieldset {
+    border: none !important;
+    padding-bottom: 0.2rem !important;
+  }
+
+  #search-filters {
+    border-bottom: none !important;
+    padding-bottom: 0 !important;
+  }
+
+  .form-search {
+    margin: 0;
+
+    .search-loop {
+      padding: 6px 8px;
+      color: #006b65;
+      background: white;
+      height: 36px;
+    }
+
+    #search-filters .filter input {
+      margin-right: 0;
+    }
+
+    #search-filters fieldset {
+      margin-top: 5px;
+
+      input {
+        margin: 0;
+        border: none;
+        border-radius: 0;
+        height: 36px;
+      }
+
+      select {
+        min-width: 38px;
+        margin-left: 0;
+        border-radius: 0;
+        border: none;
+        background: white;
+        height: 36px;
+      }
+    }
+
+    #search-filters fieldset:first-of-type {
+      input {
+        margin: 0;
+        border: none;
+        border-radius: 0;
+        height: 36px;
+      }
+    }
+
+    #q {
+      display: none !important;
+    }
+
+    fieldset .field {
+      background: transparent !important;
+    }
+  }
+
+  #search-submit {
+    padding: 0 5px !important;
+    background: #006b65 !important;
+    color: white !important;
+    height: 36px;
+    width: auto;
+    min-width: auto !important;
+    margin: 0;
+    border: 2px solid white !important;
+    float: none;
+
+    &:hover {
+      color: rgba(white, 0.7);
+    }
+  }
+
+  .search-form-buttons {
+    gap: 10px;
+    display: flex;
+    align-items: center;
+  }
+
+  #search-filters {
+    legend {
+      display: none;
+    }
+
+    .filter {
+      padding: 0.4rem 0 0.2rem 0;
+      position: relative;
+
+      select[name="filter[0][join]"] {
+        min-width: 60px;
+        margin-left: 0;
+      }
+
+      select[name="filter[0][field]"] {
+        min-width: 120px;
+        margin-left: 0;
+      }
+    }
+
+    .removefilter {
+      font-size: 0.9rem;
+      padding: 0 0.5rem;
+      line-height: 2;
+      display: block;
+      height: 100%;
+      cursor: pointer;
+      z-index: 10;
+    }
+
+    .add_field_button {
+      border: none;
+      background-color: inherit;
+      width: 200px;
+      color: white;
+      padding: 0.5rem 0;
+      font-size: 16px;
+      cursor: pointer;
+      display: inline-block;
+
+      i {
+        color: white;
+        font-size: 0.8rem;
+      }
+    }
+
+    input {
+      width: calc(100% - 70px);
+    }
+  }
+}
+
+
+// -----------------------------------------------------------------------------
+// Ledenbladen advanced search overrides
+// -----------------------------------------------------------------------------
+
+.ledenbladen {
+  .form-search fieldset {
+    border: 0;
+    margin: 0;
+    padding: 0;
+  }
+
+  select {
+    min-width: 38px;
+    margin-left: 0;
+    border-radius: 0;
+    background: white;
+    border: none;
+    height: 36px;
+  }
+
+  #search-filters .filter input {
+    width: calc(100% - 200px);
+  }
+
+  #search-filters .filter select,
+  #search-filters .filter input {
+    margin-right: 6px;
+    margin-left: 6px;
+  }
+
+  #advanced-search-form legend {
+    font-weight: bold;
+    margin-bottom: 0.5rem;
+  }
+
+  .search-filters {
+    padding: 2px 7px;
+    background: rgba(#006b65, 0.1);
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .search-results-sort {
+    display: flex;
+    justify-content: space-between;
+    gap: 1rem;
+  }
+
+  .add_field_button {
+    display: none;
+  }
+}
+
+
+// -----------------------------------------------------------------------------
+// Active facet tags
+// -----------------------------------------------------------------------------
+
+.search-facets-active {
+  margin-bottom: 1rem;
+
+  span.tag {
+    background: rgba(#006b65, 0.1);
+    margin: 0.2rem 0;
+    margin-right: 5px;
+    margin-bottom: 3px;
+    padding: 1px 0;
+    font-size: 0.9rem;
+    border-bottom: 1px solid #006b65;
+
+    a {
+      text-decoration: none;
+    }
+  }
+
+  span.reset {
+    background: rgba(#006b65, 0.3);
+  }
+}
+
+
+// -----------------------------------------------------------------------------
+// Facet item links & checkboxes
+// -----------------------------------------------------------------------------
+
+.search-facet-item a {
+  text-decoration: none;
+  position: relative;
+  display: block;
+  padding-left: 26px;
+}
+
+.search-facet-item a::before {
+  display: inline-block;
+  font-family: "icons" !important;
+  font-weight: 400 !important;
+  width: 1.5em;
+  content: "\F112" !important;
+  font-size: 1.125rem !important;
+  transition: color 100ms ease-in-out;
+  position: absolute;
+  top: -1px;
+  left: 0;
+}
+
+.search-facet-item .active a::before {
+  content: "\F111" !important;
+}
+
+.search-facet-item input[type="checkbox"] {
+  position: absolute;
+  top: 5px;
+  left: 0;
+}
+
+.search-facet-item label {
+  position: relative;
+  padding-left: 20px;
+  display: block;
+}
+
+.no-caps {
+  .search-facet-item a {
+    text-transform: lowercase;
+  }
+}
+
+.facet-active {
+  font-size: 1rem;
+}
+
+
+// -----------------------------------------------------------------------------
+// #form-facets — facet panel buttons & actions
+// -----------------------------------------------------------------------------
+
+#form-facets {
+  .facets-actions {
+    margin-bottom: 1rem;
+  }
+
+  .facets-actions .button {
+    color: #006B65;
+    background-color: transparent;
+    border-color: #006B65;
+    transition: background 100ms ease-in-out, border 100ms ease-in-out, color 100ms ease-in-out;
+    display: inline-block;
+    padding: 0.5em 1em;
+    border-style: solid;
+    border-width: 2px;
+    font-weight: 600;
+    line-height: 1.5;
+    text-decoration: none;
+  }
+
+  .button {
+    color: #006B65;
+    font-weight: 600;
+  }
+
+  .btn:visited {
+    color: #006B65;
+    background-color: transparent;
+    border-color: #006B65;
+  }
+
+  .btn:hover,
+  .btn:focus {
+    color: #fff;
+    background-color: #006B65;
+    border-color: #00605b;
+  }
+
+  .btn__icon {
+    display: inline-block;
+    vertical-align: bottom;
+  }
+
+  .btn__icon:before {
+    display: block;
+  }
+
+  .btn--ext:after {
+    margin-left: 6.5px;
+    vertical-align: bottom;
+  }
+
+  .btn:active,
+  .btn.active {
+    outline: 0;
+  }
+
+  .btn--disabled,
+  .btn[disabled] {
+    opacity: 0.65;
+    cursor: not-allowed;
+  }
+
+  .btn--link {
+    display: inline-block;
+    background: none;
+    border: none;
+    color: #006B65;
+    font-size: 1.125rem;
+    line-height: 1.444;
+    text-transform: none;
+    text-decoration: underline;
+  }
+
+  .btn--link:visited {
+    color: #014D49;
+  }
+
+  .btn--link:hover {
+    color: #014D49;
+    background: none;
+    text-decoration: none;
+  }
+
+  .btn--lrg {
+    font-size: 1.25rem;
+  }
+
+  .btn--sml {
+    font-size: 0.75rem;
+  }
+
+  .btn--block {
+    display: block;
+    width: 100%;
+  }
+}
+
+
+// -----------------------------------------------------------------------------
+// Date range slider
+// -----------------------------------------------------------------------------
+
+#psl-search-form {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  margin: 1.5rem 0;
+}
+
+#psl-search-form-date {
+  flex: 1;
+
+  > label {
+    font-weight: bold;
+  }
+
+  #psl-search-form-date-slider {
+    margin-top: 1em;
+    height: 5px;
+
+    .ui-slider-handle {
+      background: #666;
+      width: 5px;
+      margin-left: -5px;
+      top: -8px;
+      border-radius: 0;
+      border: 0 none;
+    }
+
+    .ui-slider-range {
+      background: #006b65;
+    }
+  }
+}
+
+.ui-widget.ui-widget-content {
+  border: none;
+}
+
+#psl-search-form-date-graduations {
+  display: flex;
+  justify-content: space-around;
+  margin-top: 0.8em;
+  font-size: 0.9rem;
+
+  > div {
+    border-right: 1px solid #ccc;
+    border-left: 1px solid #ccc;
+    flex-grow: 1;
+    flex-basis: 12.5%;
+    text-align: center;
+  }
+
+  > div:last-child {
+    border-right: 0 none;
+  }
+
+  > div:first-child {
+    border-left: 0 none;
+  }
+}
+
+.psl-tab-submit {
+  input[type=submit] {
+    background: #006b65;
+    color: white;
+    border: none;
+    padding: 0.4rem 0.5rem 0.3rem 0.4rem;
+    margin-left: 1rem;
+    font-size: 1rem;
+  }
+}
+
+
+// -----------------------------------------------------------------------------
+// Search results header / footer
+// -----------------------------------------------------------------------------
+
+.search-results-header {
+  margin-bottom: 20px;
+  display: flex;
+  justify-content: space-between;
+  flex-wrap: wrap;
+
+  > div {
+    display: flex;
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  label {
+    margin-right: 5px;
+  }
+
+  select {
+    background: #f9f9f9;
+  }
+}
+
+.search-results-footer {
+  display: flex;
+  justify-content: space-between;
+  flex-wrap: wrap;
+}
+
+.search-results-header > :only-child,
+.search-results-footer > :only-child {
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.search-results-sort {
+  margin-left: auto;
+}
+
+.search-results .resource-list.grid {
+  gap: 0;
+  margin-top: -26px;
+}
+
+.snippet {
+  font-size: 0.9rem;
+  margin-bottom: 1rem;
+
+  .hit {
+    background: rgba(#006b65, 0.2);
+  }
+}
+
+
+// -----------------------------------------------------------------------------
+// Facet filter nav & drawer (tablet + mobile)
+// -----------------------------------------------------------------------------
+
+.facet-filter-nav {
+  display: none;
+}
+
+@media screen and (max-width: 1024px) {
+  .facet-filter-nav {
+    width: 101%;
+    display: flex;
+    justify-content: flex-end;
+    padding: 1rem 0.75rem 0.75rem;
+    position: sticky;
+    top: 97px;
+    left: 0;
+    z-index: 99;
+    margin: 0 -2px;
+    background-color: white;
+
+    .filter-icon {
+      width: 50px;
+      height: 50px;
+      display: flex;
+      flex-direction: row;
+      justify-content: flex-end;
+      align-items: center;
+      cursor: pointer;
+
+      svg {
+        width: 40px;
+        height: 40px;
+        stroke-width: 25px;
+      }
+    }
+
+    .close-icon {
+      display: none;
+    }
+  }
+
+  .facet-filter-nav:has(.active-item) {
+    .filter-icon {
+      display: none;
+    }
+
+    .close-icon {
+      width: 50px;
+      height: 50px;
+      position: relative;
+      display: block;
+      cursor: pointer;
+      z-index: 999;
+
+      span {
+        background-color: #000000;
+        display: block;
+        height: 2px;
+        width: 35px;
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform-origin: center;
+      }
+
+      span:nth-child(1) {
+        transform: translate(-50%, -50%) rotate(45deg);
+      }
+
+      span:nth-child(2) {
+        transform: translate(-50%, -50%) rotate(-45deg);
+      }
+    }
+  }
+
+  .filter-nav-fixed {
+    position: fixed;
+    top: 0;
+    z-index: 999;
+    padding: 0.75rem 30px;
+  }
+
+  .facets-group {
+    width: 100%;
+    position: fixed;
+    right: 0;
+    top: 74px;
+    height: calc(100vh - 74px);
+    transform: translateX(100%);
+    background-color: #ffffff;
+    z-index: 999;
+    padding: 30px 0 80px;
+
+    .facets {
+      width: 100%;
+      display: flex;
+      flex-direction: column;
+      height: calc(100vh - 190px);
+      overflow-x: hidden;
+      padding: 0 30px;
+    }
+  }
+
+  .facets-group.open-facets-list {
+    display: block;
+    transform: translateX(0%);
+    width: 100%;
+    margin-top: 0;
+    padding-left: 0;
+    padding-right: 0;
+
+    .search-facet {
+      display: block;
+    }
+
+    .search-facet-items {
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+    }
+
+    .facets {
+      background-color: #ffffff;
+    }
+  }
+
+  .facets::-webkit-scrollbar {
+    width: 3px;
+  }
+
+  .facets::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .facets::-webkit-scrollbar-thumb {
+    background-color: rgba(#006b65, 0.5);
+    border-radius: 20px;
+    border: transparent;
+  }
+
+  .apply-facets-top {
+    display: none;
+  }
+
+  .apply-facets-bottom {
+    position: fixed;
+    bottom: 15px;
+    left: 0;
+    width: 100%;
+    padding: 0 30px;
+
+    button {
+      width: 100%;
+      color: #006b65;
+      padding: 10px 0;
+    }
+  }
+
+  // Search page: full-width on tablet/mobile
+  .search-page {
+    .grid__8\@med {
+      width: 100%;
+    }
+  }
+}
+
+//search
+.search-page {
+  .pagination {
+    padding: 0 13px;
+    display: flex;
+    flex-direction: row;
+    gap: 15px;
+    justify-content: center;
+    align-items: center;
+  }
+}
