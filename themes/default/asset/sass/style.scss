@@ -2,6 +2,9 @@
 @import "uv-cag";
 @import "search-custom";
 
+$primary: #006b65;
+$yellow: #e8ae11;
+
 img {
   pointer-events: none;
 }
@@ -24,7 +27,7 @@ html, body {
 }
 
 .nav--main .nav__menu li a {
-  color: #006B65;
+  color: $primary;
   display: block;
   padding: 6.5px 0;
   background-image: -webkit-gradient(linear, left top, right top, from(#014D49), to(#014D49));
@@ -54,7 +57,7 @@ html, body {
 
 
 .nav--doormat .nav__menu li a {
-  color: #006B65;
+  color: $primary;
   font-size: 20px;
   font-size: 1.25rem;
   display: block;
@@ -94,7 +97,7 @@ html, body {
 .nav--flyout .nav--main .nav__menu li a {
   font-size: 24px;
   font-size: 1.5rem;
-  color: #006B65;
+  color: $primary;
   font-weight: 600;
   padding: 0;
 }
@@ -179,7 +182,7 @@ html, body {
     top: 0;
     left: 0;
     display: block;
-    color: #006B65;
+    color: $primary;
   }
 }
 
@@ -413,10 +416,10 @@ html, body {
 }
 
 .biblio-search a {
-  background: #006b65;
+  background: $primary;
   color: white !important;
   padding: 0.5rem;
-  border: 1px solid rgba(#006b65, 0.7);
+  border: 1px solid rgba($primary, 0.7);
   text-decoration: none;
 
   &::after {
@@ -431,7 +434,7 @@ html, body {
 .scrollToTop {
   text-align: center;
   font-weight: bold;
-  color: #006b65;
+  color: $primary;
   text-decoration: none;
   position: fixed;
   bottom: 5%;
@@ -441,16 +444,16 @@ html, body {
   font-size: 1;
   z-index: 11;
   padding: 0.5em 1em;
-  border: 2px solid #006B65;
+  border: 2px solid $primary;
   transition: background 100ms ease-in-out, border 100ms ease-in-out, color 100ms ease-in-out;
 
   &:visited {
-    color: #006b65;
+    color: $primary;
   }
 
   &:hover {
     color: #fff;
-    background-color: #006B65;
+    background-color: $primary;
     border-color: #00605b;
   }
 }
@@ -473,7 +476,7 @@ html, body {
 }
 
 .right-img {
-  background: #006b65;
+  background: $primary;
   height: 30px;
   padding: 5px;
 }
@@ -572,7 +575,7 @@ html, body {
   font-size: 1.125rem;
   vertical-align: bottom;
   color: white;
-  background: #006B65;
+  background: $primary;
   font-family: "icons";
   margin-right: 5px;
   width: 1.5rem;
@@ -599,7 +602,7 @@ html, body {
 }
 
 input[type=checkbox] {
-  accent-color: #006b65;
+  accent-color: $primary;
 }
 
 video {

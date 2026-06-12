@@ -13,7 +13,7 @@
     }
 
     legend {
-      color: #006B65;
+      color: $primary;
       font-weight: bold;
       margin-bottom: 0.5rem;
     }
@@ -58,7 +58,7 @@
 .libis-search-advanced {
   margin-bottom: 1.5rem;
   padding: 1rem !important;
-  background-color: #006b65 !important;
+  background-color: $primary !important;
   color: white;
 
   a {
@@ -134,7 +134,7 @@
 
     .search-loop {
       padding: 6px 8px;
-      color: #006b65;
+      color: $primary;
       background: white;
       height: 36px;
     }
@@ -183,7 +183,7 @@
 
   #search-submit {
     padding: 0 5px !important;
-    background: #006b65 !important;
+    background: $primary !important;
     color: white !important;
     height: 36px;
     width: auto;
@@ -293,7 +293,7 @@
 
   .search-filters {
     padding: 2px 7px;
-    background: rgba(#006b65, 0.1);
+    background: rgba($primary, 0.1);
     display: flex;
     align-items: center;
     gap: 0.5rem;
@@ -319,13 +319,13 @@
   margin-bottom: 1rem;
 
   span.tag {
-    background: rgba(#006b65, 0.1);
+    background: rgba($primary, 0.1);
     margin: 0.2rem 0;
     margin-right: 5px;
     margin-bottom: 3px;
     padding: 1px 0;
     font-size: 0.9rem;
-    border-bottom: 1px solid #006b65;
+    border-bottom: 1px solid $primary;
 
     a {
       text-decoration: none;
@@ -333,7 +333,7 @@
   }
 
   span.reset {
-    background: rgba(#006b65, 0.3);
+    background: rgba($primary, 0.3);
   }
 }
 
@@ -399,9 +399,9 @@
   }
 
   .facets-actions .button {
-    color: #006B65;
+    color: $primary;
     background-color: transparent;
-    border-color: #006B65;
+    border-color: $primary;
     transition: background 100ms ease-in-out, border 100ms ease-in-out, color 100ms ease-in-out;
     display: inline-block;
     padding: 0.5em 1em;
@@ -413,20 +413,20 @@
   }
 
   .button {
-    color: #006B65;
+    color: $primary;
     font-weight: 600;
   }
 
   .btn:visited {
-    color: #006B65;
+    color: $primary;
     background-color: transparent;
-    border-color: #006B65;
+    border-color: $primary;
   }
 
   .btn:hover,
   .btn:focus {
     color: #fff;
-    background-color: #006B65;
+    background-color: $primary;
     border-color: #00605b;
   }
 
@@ -459,7 +459,7 @@
     display: inline-block;
     background: none;
     border: none;
-    color: #006B65;
+    color: $primary;
     font-size: 1.125rem;
     line-height: 1.444;
     text-transform: none;
@@ -524,7 +524,7 @@
     }
 
     .ui-slider-range {
-      background: #006b65;
+      background: $primary;
     }
   }
 }
@@ -558,7 +558,7 @@
 
 .psl-tab-submit {
   input[type=submit] {
-    background: #006b65;
+    background: $primary;
     color: white;
     border: none;
     padding: 0.4rem 0.5rem 0.3rem 0.4rem;
@@ -577,6 +577,7 @@
   display: flex;
   justify-content: end;
   flex-wrap: wrap;
+  gap:2rem;
 
   > div {
     display: flex;
@@ -599,6 +600,7 @@
   display: flex;
   justify-content: space-between;
   flex-wrap: wrap;
+  gap: 2rem;
 }
 
 .search-results-footer > :only-child {
@@ -620,7 +622,7 @@
   margin-bottom: 1rem;
 
   .hit {
-    background: rgba(#006b65, 0.2);
+    background: rgba($primary, 0.2);
   }
 }
 
@@ -761,7 +763,7 @@
   }
 
   .facets::-webkit-scrollbar-thumb {
-    background-color: rgba(#006b65, 0.5);
+    background-color: rgba($primary, 0.5);
     border-radius: 20px;
     border: transparent;
   }
@@ -779,7 +781,7 @@
 
     button {
       width: 100%;
-      color: #006b65;
+      color: $primary;
       padding: 10px 0;
     }
   }
@@ -820,7 +822,31 @@
     content: "+ Een extra veld toevoegen" !important;
     font-size: larger;
     font-size: bolder;
-    background: red;
     border: none;
     color: white;
-  }
+}
+
+.facets-active .facet-active .facet-active-value::after {
+    content: "" !important;
+    margin: 0 !important;
+}
+
+.facet-active-remove{
+  text-decoration: none;
+  font-size: 1.1rem;
+  padding-right: 4px;
+}
+
+.facet {
+display: block;
+margin-bottom: 1.5rem;
+}
+
+.range-double .range-progress::before {
+    content: '';
+    position: absolute;
+    height: 100%;
+    left: var(--from, 0%);
+    right: calc(100% - var(--to, 100%));
+    background: linear-gradient(90deg, $primary, $primary);
+}
