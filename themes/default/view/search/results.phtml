@@ -161,30 +161,41 @@ $showLocale = (bool) $setting('show_locale_label');
               <?php endif; ?>
 
               <?php
-              if ($type == 'Ledenblad' && (isset($_GET["q"]) || isset($_GET["filter"]))):
-                $media = $resource->media();
+                if ($type === 'Ledenblad' && (!empty($_GET["q"]) || !empty($_GET["filter"]))) {
 
-                if (isset($media[1])):
-                  $text = $helper->normalize_ocr_text($media[1]->render());
-                endif;
+                    $media = $resource->media();
+                    $text = null;
 
-                if ($text) {
-                  $search_text = htmlspecialchars(strip_tags($_GET["q"])) ?? "";
-
-                  foreach ($_GET["filter"] as $key => $value) {
-
-                    if ($value["join"] != "not" && $value["value"]) {
-                      $search_text .= $value["value"]; // raw user input
-                      $snippet = $helper->make_flexible_snippet($text, $search_text);
-
-                      if ($snippet) {
-                        echo "<div class='snippet'>{$snippet}</div>";
-                        break;
-                      }
+                    if (isset($media[1])) {
+                        $text = $helper->normalize_ocr_text($media[1]->render());
                     }
+
+                    if ($text) {
+
+                      $search_text = isset($_GET["q"]) ? htmlspecialchars(strip_tags($_GET["q"])) : "";
+
+                      if (!empty($_GET["filter"]) && is_array($_GET["filter"])) {
+
+                          foreach ($_GET["filter"] as $key => $value) {
+
+                              $valueJoin = $value["join"] ?? null;
+                              $valueText = $value["value"] ?? null;
+
+                              if ($valueJoin !== "not" && !empty($valueText)) {
+
+                                  $search_text .= ' ' . htmlspecialchars(strip_tags($valueText));
+
+                                  $snippet = $helper->make_flexible_snippet($text, $search_text);
+
+                                  if ($snippet) {
+                                      echo "<div class='snippet'>{$snippet}</div>";
+                                      break;
+                                  }
+                              }
+                          }
+                      }
                   }
                 }
-              endif;
               ?>
 
               <?php if ($type == 'Film' && $resource->value('dcterms:source')): ?>
