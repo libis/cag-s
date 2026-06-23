@@ -68,6 +68,20 @@ class Custom extends AbstractHelper
         if ($text === '') return null;
 
         // variants: "tomaat garnaal" and "tomaat-garnaal"
+        //remove quotes from search term to avoid regex issues
+        
+        // Step 1: decode URL encoding
+        $search = urldecode($search);
+
+        // Step 2: decode HTML entities (e.g. &quot;)
+        $search = html_entity_decode($search, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+
+        // Step 3: remove all quote variants
+        $search = preg_replace('/["“”„\'`]/u', '', $search);
+
+        // Step 4: trim whitespace
+        $search = trim($search);        
+        
         $variants = $this->flexible_search_variants($search);
 
         // build an alternation group of escaped variants for regex
