@@ -19,6 +19,7 @@ $resources = $response->getResources($resourceType);
 if (!$resources) return;
 
 $plugins = $this->getHelperPluginManager();
+$helper = $this->plugin('Custom');
 $escape = $plugins->get('escapeHtml');
 $assetUrl = $plugins->get('assetUrl');
 $translate = $plugins->get('translate');
@@ -160,7 +161,7 @@ $showLocale = (bool) $setting('show_locale_label');
               <?php endif; ?>
 
               <?php
-              if ($type == 'Ledenblad' && isset($_GET["filter"])):
+              if ($type == 'Ledenblad' && (isset($_GET["q"]) || isset($_GET["filter"]))):
                 $media = $resource->media();
 
                 if (isset($media[1])):
@@ -168,12 +169,12 @@ $showLocale = (bool) $setting('show_locale_label');
                 endif;
 
                 if ($text) {
+                  $search_text = htmlspecialchars(strip_tags($_GET["q"])) ?? "";
+
                   foreach ($_GET["filter"] as $key => $value) {
 
                     if ($value["join"] != "not" && $value["value"]) {
-
-                      $search_text = $value["value"]; // raw user input
-
+                      $search_text .= $value["value"]; // raw user input
                       $snippet = $helper->make_flexible_snippet($text, $search_text);
 
                       if ($snippet) {
