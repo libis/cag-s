@@ -94,19 +94,19 @@ $showLocale = (bool) $setting('show_locale_label');
         $url = $resource->url() . "?ref=search";
       endif;
     ?>
-      <?php
-
-      //var_dump($_GET["filter"]);
-      if ($type == 'Ledenblad' && isset($_GET["filter"])):
-        $q = "";
-        foreach ($_GET["filter"] as $key => $value):
-          if ($value["join"] != "not"):
-            $q = $q . " " . htmlspecialchars(strip_tags($value["value"]));
-          endif;
-        endforeach;
+    <?php
+      if ($type == 'Ledenblad' &&  (!empty($_GET["q"]) || !empty($_GET["filter"]))):
+        $q = isset($_GET["q"]) ? htmlspecialchars(strip_tags($_GET["q"])): "";
+        if(!$q && !empty($_GET["filter"])):
+          foreach ($_GET["filter"] as $key => $value):
+            if ($value["join"] != "not"):
+              $q = $q . " " . htmlspecialchars(strip_tags($value["value"]));
+            endif;
+          endforeach;
+        endif;
         $url = $url . "#?searchText=" . trim($q);
       endif;
-      ?>
+    ?>
 
       <div class="grid__item">
         <div class="card card--clickable card--link card--variant2">
@@ -172,29 +172,40 @@ $showLocale = (bool) $setting('show_locale_label');
 
                     if ($text) {
 
-                      $search_text = isset($_GET["q"]) ? htmlspecialchars(strip_tags($_GET["q"])) : "";
+                        // Base search text from q
+                        $search_text = isset($_GET["q"])
+                            ? htmlspecialchars(strip_tags($_GET["q"]))
+                            : "";
 
-                      if (!empty($_GET["filter"]) && is_array($_GET["filter"])) {
+                        $snippet = null;
 
-                          foreach ($_GET["filter"] as $key => $value) {
+                        if (!empty($search_text)) {
+                            $snippet = $helper->make_flexible_snippet($text, $search_text);
+                        }
 
-                              $valueJoin = $value["join"] ?? null;
-                              $valueText = $value["value"] ?? null;
+                        if (!$snippet && !empty($_GET["filter"]) && is_array($_GET["filter"])) {
+                            foreach ($_GET["filter"] as $value) {
 
-                              if ($valueJoin !== "not" && !empty($valueText)) {
+                                $valueJoin = $value["join"] ?? null;
+                                $valueText = $value["value"] ?? null;
 
-                                  $search_text .= ' ' . htmlspecialchars(strip_tags($valueText));
+                                if ($valueJoin !== "not" && !empty($valueText)) {
 
-                                  $snippet = $helper->make_flexible_snippet($text, $search_text);
+                                    $extended_search = $search_text . ' ' . htmlspecialchars(strip_tags($valueText));
 
-                                  if ($snippet) {
-                                      echo "<div class='snippet'>{$snippet}</div>";
-                                      break;
-                                  }
-                              }
-                          }
-                      }
-                  }
+                                    $snippet = $helper->make_flexible_snippet($text, trim($extended_search));
+
+                                    if ($snippet) {
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+
+                        if ($snippet) {
+                            echo "<div class='snippet'>{$snippet}</div>";
+                        }
+                    }
                 }
               ?>
 
