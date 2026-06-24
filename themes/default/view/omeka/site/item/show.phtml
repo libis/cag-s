@@ -402,20 +402,20 @@ $translate = $this->plugin('translate');
 
 if($type != 'Nieuws' && $type != 'Agendapunt'):
   if($type == "Collectie"):
-    $provincie = $item->value('dcterms:coverage');
-    parse_str("property[0][joiner]=and&property[0][property]=14&property[0][type]=eq&property[0][text]=".$provincie."&resource_class_id[]=&resource_template_id[]=7&item_set_id[]=&site_id=&submit=Zoeken", $query);
+    $provincie = $item->value('dcterms:coverage').'';
+    parse_str("property[0][joiner]=and&property[0][property]=14&property[0][type]=eq&property[0][text]=".$provincie."&resource_class_id[]=&resource_template_id[]=7", $query);
   elseif($type == "Beeld"):
-    parse_str("property[0][joiner]=and&property[0][property]=3&property[0][type]=eq&property[0][text]=&resource_class_id[]=&resource_template_id[]=6&item_set_id[]=&site_id=&submit=Zoeken", $query);
-    $query['property'][0]['text'] = $item->value('dcterms:subject');
+    parse_str("property[0][joiner]=and&property[0][property]=3&property[0][type]=eq&property[0][text]=&resource_class_id[]=&resource_template_id[]=6", $query);
+    $query['property'][0]['text'] = $item->value('dcterms:subject').'';
   elseif($type == "Film"):
-      parse_str("property[0][joiner]=and&property[0][property]=3&property[0][type]=in&property[0][text]=&resource_class_id[]=&resource_template_id[]=10&item_set_id[]=&site_id=&submit=Zoeken", $query);
-      $subject = explode(';',$item->value('dcterms:subject'));
+      parse_str("property[0][joiner]=and&property[0][property]=3&property[0][type]=in&property[0][text]=&resource_class_id[]=&resource_template_id[]=10", $query);
+      $subject = explode(';',$item->value('dcterms:subject').'');
       $query['property'][0]['text'] = $subject[0];
   elseif($type == "Filmkopie"):
-      parse_str("property[0][joiner]=and&property[0][property]=3&property[0][type]=eq&property[0][text]=&resource_class_id[]=&resource_template_id[]=13&item_set_id[]=&site_id=&submit=Zoeken", $query);
-      $query['property'][0]['text'] = $item->value('dcterms:subject');
+      parse_str("property[0][joiner]=and&property[0][property]=3&property[0][type]=eq&property[0][text]=&resource_class_id[]=&resource_template_id[]=13", $query);
+      $query['property'][0]['text'] = $item->value('dcterms:subject').'';
   elseif($type == "Ledenblad"):
-      parse_str("resource_template_id[]=37&item_set_id[]=&site_id=&submit=Zoeken", $query);
+      parse_str("resource_template_id[]=37", $query);
       //$query['property'][0]['text'] = $item->value('dcterms:subject');
   endif;
 
