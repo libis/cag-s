@@ -64,9 +64,12 @@ $pagename = $searchConfig->name();
 $properties = !empty($properties) ? $properties : $searchConfig->subSetting('results', 'properties', []);
 $showProperties = !empty($properties);
 $showLocale = (bool) $setting('show_locale_label');
+
+$displayParts = $searchConfig->setting('results', []);
+$displayFacets = $displayParts ? $displayParts['facets'] ?? 'before' : 'none';
 ?>
 
-<div class="grid__12 <?php echo ($pagename != 'Verhalen' ? 'grid__8@med' : ''); ?>">
+<div class="grid__12 <?php echo ($displayFacets != 'none' ? 'grid__8@med' : ''); ?>">
   <div class=" <?php echo ($pagename != 'Tijdschriften' ? 'grid--2-col@med' : 'ledenbox grid--3-col@med'); ?> spacer--xsm  grrid">
     <?php /** @var \Omeka\Api\Representation\AbstractResourceEntityRepresentation $resource */
     foreach ($resources as $resource):
