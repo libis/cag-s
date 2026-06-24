@@ -590,6 +590,38 @@ class Harvest extends AbstractJob
                     ];
                 }
             }
+
+            //add media if Beeld or Collectie
+            if(($localName == 'temporal' && $args['resource_template'] == 6) || ($localName == 'date' && $args['resource_template'] == 10)){
+                foreach ($dcMetadata->$localName as $date) {
+                    //date looks like 1900 - 2000, or 1900-2000, or 1900, or 1900-2000, 2001-2010, 2011-2020                
+                    //get first part of date if it is a range
+                    $date = explode("-",$date);
+                    $first_date = trim($date[0]);
+                    if(sizeof($date) > 1){
+                        $last_date = trim($date[1]);
+                    }else{
+                        $last_date = $first_date;
+                    }
+
+                    $elementTexts["dcterms:issued"] = [
+                        [
+                            'property_id' => 23,
+                            'type' => 'literal',
+                            '@language' => '',
+                            '@value' => $first_date.'',
+                        ],
+                    ];
+                    $elementTexts["dcterms:valid"] = [
+                        [
+                            'property_id' => 21,
+                            'type' => 'literal',
+                            '@language' => '',
+                            '@value' => $last_date.'',
+                        ],
+                    ];
+                }
+            }
         }    
           
         $meta = $elementTexts;

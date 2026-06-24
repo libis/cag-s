@@ -212,126 +212,113 @@ if ($showMapView) {
             <?php endif; ?>
         </div>
     </div>
-    <?php if ($searchPage->name() == "Tijdschriften"): ?>
-        <div class="section section--default ledenbladen">
-        <?php else: ?>
-            <div class="section section--default">
-            <?php endif; ?>
+    
+        <div class="section section--default">
 
             <div class="container">
-            <?php endif; // End NOT partial.?>            
-                <?php
-                if ($query->isBrowse()) {
-                    // No search query.
-                    $mainTitle = $translate($searchConfig->subSetting('results', 'label_default') ?: 'Search');
-                } else {
-                    $mainTitle = $response->getTotalResults()
-                        ? $translate($searchConfig->subSetting('results', 'label_results') ?: 'Search results')
-                        : $translate($searchConfig->subSetting('results', 'label_no_results') ?: 'No results');
-                }
+            <?php endif; // End NOT partial.
+            ?>
+            <?php
+            if ($query->isBrowse()) {
+                // No search query.
+                $mainTitle = $translate($searchConfig->subSetting('results', 'label_default') ?: 'Search');
+            } else {
+                $mainTitle = $response->getTotalResults()
+                    ? $translate($searchConfig->subSetting('results', 'label_results') ?: 'Search results')
+                    : $translate($searchConfig->subSetting('results', 'label_no_results') ?: 'No results');
+            }
 
-                $this->htmlElement('body')->appendAttribute('class', 'search-page resource browse');
-                ?>
-                <?= $this->pageTitle($mainTitle, 2) ?>
+            $this->htmlElement('body')->appendAttribute('class', 'search-page resource browse');
+            ?>
+            <!--<?= $this->pageTitle($mainTitle, 2) ?>-->
 
-                <!--<div class="panel panel--light ledenbladen-advanced">
-                    <?php //echo $this->searchForm($searchPage, null,true); ?>          
-            
-                        <div class="spacer">
-                        <span class="search-loop"><i class="fas fa-search"></i></span>  
-                        
-                        <?= $searchConfig->renderForm(['template' => null, 'skip_form_action' => $skipFormAction]) ?>
-                        <button class="add_field_button" type="button"><i class='fas fa-plus'></i> Een extra veld toevoegen</button>
-                        <a id="advanced-toggleold" class="active">Uitgebreid zoeken <i class="fas fa-chevron-down"></i></a>          
-                        
-                    </div>    
-                </div>    -->
-            
-                <div class="panel panel--light libis-search-advanced">
-                    
-                    <?= $searchConfig->renderForm(['template' => null, 'skip_form_action' => $skipFormAction, 'form_action' => $formAction ?? null]) ?>
-                    <span class="search-loop"><i class="fas fa-search"></i></span>  
-                    <button class="add_field_button" type="button"><i class='fas fa-plus'></i> Een extra veld toevoegen</button>
-                        
-                    <a id="advanced-toggle" class="active">Uitgebreid zoeken <i class="fas fa-chevron-down"></i></a>          
-                            
+            <?php $not_adv_pages= ["Verhalen"];?>
+
+            <?php if(!in_array($page->name(),$not_adv_pages)):?>
+            <div class="panel panel--light libis-search-advanced">
+
+                <?= $searchConfig->renderForm(['template' => null, 'skip_form_action' => $skipFormAction, 'form_action' => $formAction ?? null]) ?>
+                <span class="search-loop"><i class="fas fa-search"></i></span>
+                <button class="add_field_button" type="button"><i class='fas fa-plus'></i> Een extra veld toevoegen</button>
+
+                <a id="advanced-toggle" class="active">Uitgebreid zoeken <i class="fas fa-chevron-down"></i></a>
+            </div>
+            <?php endif;?>    
+            <?php if ($displayPartsHeader): ?>
+                <div class="search-results-part search-results-header">
+                    <?= $partial('search/results-header-footer', $variables + ['resultPart' => 'header']) ?>
+                </div>
+            <?php endif; ?>
+
+            <?php $this->trigger('view.browse.before'); ?>
+
+            <?php if ($documentCount): ?>
+
+                <div class="grid">
+                    <?php if ($displayFacets === 'before'): ?>
+                        <?= $partial('search/facets-list') ?>
+                    <?php endif; ?>
+                    <?php foreach (array_filter($response->getResourceTotalResults()) as $resourceType => $count): ?>
+                        <?= $partial('search/results', $variables + ['resourceType' => $resourceType]) ?>
+                    <?php endforeach; ?>
+                    <?php if ($displayFacets === 'after'): ?>
+                        <?= $partial('search/facets-list') ?>
+                    <?php endif; ?>
                 </div>
 
-                <?php if ($displayPartsHeader): ?>
-                    <div class="search-results-part search-results-header">
-                        <?= $partial('search/results-header-footer', $variables + ['resultPart' => 'header']) ?>
-                    </div>
-                <?php endif; ?>
-
-                <?php $this->trigger('view.browse.before'); ?>
-
-                <?php if ($documentCount): ?>
-
-                    <div class="grid">
-                        <?php if ($displayFacets === 'before'): ?>
-                            <?= $partial('search/facets-list') ?>
-                        <?php endif; ?>
-                        <?php foreach (array_filter($response->getResourceTotalResults()) as $resourceType => $count): ?>
-                            <?= $partial('search/results', $variables + ['resourceType' => $resourceType]) ?>
-                        <?php endforeach; ?>
-                        <?php if ($displayFacets === 'after'): ?>
-                            <?= $partial('search/facets-list') ?>
-                        <?php endif; ?>
-                    </div>
-
-                    <?php // Map view container (hidden by default, shown when map view is selected). 
+                <?php // Map view container (hidden by default, shown when map view is selected). 
+                ?>
+                <?php if (!empty($showMapView)): ?>
+                    <?php
+                    // For map view, determine if we should pass item IDs or let Mapping show all.
+                    // - If browse (no query): don't pass IDs, show all features
+                    // - If filtered search with reasonable count: pass IDs
+                    // - If filtered search with too many results: don't pass IDs (would be excessive)
+                    $isBrowse = $query->isBrowse();
+                    $totalItems = $response->getResourceTotalResults('items') ?: 0;
+                    $maxItemsForMap = 10000; // Reasonable limit for passing IDs
+                    // Use comma-separated format (Omeka supports "id=x,y,z").
+                    $itemIdsString = (!$isBrowse && $totalItems > 0 && $totalItems <= $maxItemsForMap)
+                        ? implode(',', $response->getAllResourceIds('items'))
+                        : '';
                     ?>
-                    <?php if (!empty($showMapView)): ?>
-                        <?php
-                        // For map view, determine if we should pass item IDs or let Mapping show all.
-                        // - If browse (no query): don't pass IDs, show all features
-                        // - If filtered search with reasonable count: pass IDs
-                        // - If filtered search with too many results: don't pass IDs (would be excessive)
-                        $isBrowse = $query->isBrowse();
-                        $totalItems = $response->getResourceTotalResults('items') ?: 0;
-                        $maxItemsForMap = 10000; // Reasonable limit for passing IDs
-                        // Use comma-separated format (Omeka supports "id=x,y,z").
-                        $itemIdsString = (!$isBrowse && $totalItems > 0 && $totalItems <= $maxItemsForMap)
-                            ? implode(',', $response->getAllResourceIds('items'))
-                            : '';
-                        ?>
-                        <div class="search-results-part search-results-map" style="display: none;">
-                            <div id="search-map"
-                                data-basemap-provider="<?= $escape($mappingBasemapProvider) ?>"
-                                data-disable-clustering="<?= $mappingDisableClustering ?>"
-                                data-features-url="<?= $escape($mappingFeaturesUrl) ?>"
-                                data-feature-popup-content-url="<?= $escape($mappingPopupUrl) ?>"
-                                data-item-ids="<?= $escape($itemIdsString) ?>">
-                            </div>
+                    <div class="search-results-part search-results-map" style="display: none;">
+                        <div id="search-map"
+                            data-basemap-provider="<?= $escape($mappingBasemapProvider) ?>"
+                            data-disable-clustering="<?= $mappingDisableClustering ?>"
+                            data-features-url="<?= $escape($mappingFeaturesUrl) ?>"
+                            data-feature-popup-content-url="<?= $escape($mappingPopupUrl) ?>"
+                            data-item-ids="<?= $escape($itemIdsString) ?>">
                         </div>
-                    <?php endif; ?>
+                    </div>
+                <?php endif; ?>
 
-                <?php else: ?>
+            <?php else: ?>
 
-                    <div class="noresults">
-                        <?php if (empty($query) && !$itemSet): ?>
-                            <?= $translate('Fill a query and get results.') ?>
-                        <?php elseif (empty($query) && $itemSet): ?>
-                            <?= $translate('This item set has no items.') ?>
-                        <?php else: ?>
-                            <?php if (in_array($searchConfig->subSetting('results', 'search_filters', 'header'), ['header', 'both'])): ?>
-                                <div class="search-results-part search-results-header">
-                                    <?= $searchConfig->renderSearchFilters($query, ['template' => 'common/search-filters-links']) ?>
-                                </div>
-                            <?php endif; ?>
-                            <?= $translate('The query returned no results') ?>
+                <div class="noresults">
+                    <?php if (empty($query) && !$itemSet): ?>
+                        <?= $translate('Fill a query and get results.') ?>
+                    <?php elseif (empty($query) && $itemSet): ?>
+                        <?= $translate('This item set has no items.') ?>
+                    <?php else: ?>
+                        <?php if (in_array($searchConfig->subSetting('results', 'search_filters', 'header'), ['header', 'both'])): ?>
+                            <div class="search-results-part search-results-header">
+                                <?= $searchConfig->renderSearchFilters($query, ['template' => 'common/search-filters-links']) ?>
+                            </div>
                         <?php endif; ?>
-                    </div>
+                        <?= $translate('The query returned no results') ?>
+                    <?php endif; ?>
+                </div>
 
-                <?php endif; ?>
+            <?php endif; ?>
 
-                <?php $this->trigger('view.browse.after'); ?>
+            <?php $this->trigger('view.browse.after'); ?>
 
-                <?php if ($displayPartsFooter): ?>
-                    <div class="search-results-part search-results-footer">
-                        <?= $partial('search/results-header-footer', $variables + ['resultPart' => 'footer']) ?>
-                    </div>
-                <?php endif; ?>
+            <?php if ($displayPartsFooter): ?>
+                <div class="search-results-part search-results-footer">
+                    <?= $partial('search/results-header-footer', $variables + ['resultPart' => 'footer']) ?>
+                </div>
+            <?php endif; ?>
 
             </div>
 
@@ -339,219 +326,221 @@ if ($showMapView) {
             </div>
 
             <?php if (empty($isPartial)): ?>
-            </div>
-        <?php endif; ?>
         </div>
-       
-        <script>
-            $(document).ready(function() {
-                $(".more-link a").click(function(e) {
-                    e.preventDefault();
-                    $(this).parent().hide();
-                    $(this).parent().next("div").show();
-                });
-                $(".less-link a").click(function(e) {
-                    e.preventDefault();
-                    $(this).parent().parent().hide();
-                    $(this).parent().parent().prev(".more-link").show();
-                });
-                $('#q').change(function(e) {
-                    $('input[type=submit].search-submit').focus();
-                });
-            });
-        </script>
-        <script>
-            $(document).ready(function() {
-                <?php if ($searchPage->name() == "Beeldbank"): ?>
-                    var dateFrom = $('#psl-search-form input[name="dcterms_temporal_drm[from]"]');
-                    var dateTo = $('#psl-search-form input[name="dcterms_temporal_drm[to]"]');
-                    var dateMin = 1500;
-                    var dateMax = 2023;
-                <?php endif; ?>
-                <?php
-                //if ($searchPage->name() == "Tijdschriften"): ?>
-                    var dateFrom = $('#psl-search-form input[name="dcterms_date_drm[from]"]');
-                    var dateTo = $('#psl-search-form input[name="dcterms_date_drm[to]"]');
-                    var dateMin = 1890;
-                    var dateMax = 2025;
-                   
-                    var filter_i = 0;
-                    $('#search-filters').find('.filter').each(function(index) {
-                        if (index > 1) {
-                            var button = "<a href='#' class='removefilter'><i class='fas fa-trash-alt'></i></a>";
-                            $(this).append(button);
-                        }
-                    });
+    <?php endif; ?>
+    </div>
 
-                    $('#form-search').on('submit', function(e) {
-                        e.preventDefault();
-                        const params = new URLSearchParams(window.location.search)
-
-                        params.set('q', '"' + $('[name="q"]').val() + '"');
-                        window.location.href = location.protocol + '//' + location.host + location.pathname + '?' + params.toString();
-                    });
-
-                    var wrapper = $("#search-filters span");
-                    var filter = $(".filter").first();
-                    var add_button = $(".add_field_button");
-                    var adv_button = $("#advanced-toggle");
-                    var submit_button = $("#search-submit");
-                    var search_loop = $(".search-loop");
-
-                    $("#search-filters").append(add_button);
-                    add_button.hide()
-
-                    $('fieldset.search-form > div.field')
-                    .first()
-                    .addClass('query-search')
-                    .find('div.inputs')
-                    .addClass('query-inputs');
-                    $('fieldset.search-form > *:not(.query-search)')
-                    .wrapAll('<div class="advanced-container"></div>');
-                    //filter.prepend(search_loop);
-                    $('.query-inputs').prepend(search_loop);
-                    //filter.append(submit_button);
-                    $('.query-inputs').append(submit_button);
-                    $('.query-inputs').append("<div class='search-buttons'></div>");                    
-                    $('.search-buttons').append(adv_button);
-                    var searchbuttons = $('.search-buttons');
-
-                    $(document).on('click', ".removefilter", function(e) {
-                        e.preventDefault();
-                        $(this).parent().remove();
-                        filter_i--;
-                    });
-
-                    /*$(add_button).click(function(e) {
-                        e.preventDefault();
-                        filter_i++;
-                        //$(wrapper).before('<fieldset class="filter"><select name="filter['+filter_i+'][field]"><option value="dcterms_title_txt">Titel</option><option value="media_txt2">Inhoud</option></select><input type="text" name="filter['+filter_i+'][value]" value=""><a class="removefilter"><i class="fas fa-trash-alt"></i></a></fieldset>'); //add input box
-                        wrapper.before('<fieldset class="filter show"><select name="filter[' + filter_i + '][join]"><option value="and" selected="selected">and</option><option value="or">or</option><option value="not">not</option></select><select name="filter[' + filter_i + '][field]"><option value="dcterms:title" selected="selected">Titel</option></select><input type="text" name="filter[' + filter_i + '][value]" value=""><a class="removefilter"><i class="fas fa-trash-alt"></i></a></fieldset>');
-                    });*/
-
-                    $(add_button).click(function(e) {
-                        e.preventDefault();
-                        filter_i++;
-
-                        var $original = $('fieldset.filter[name="filter[0]"]');
-                        var $clone = $original.clone();
-
-                        // Update all name attributes with the new index
-                        $clone.find('[name]').each(function() {
-                            var newName = $(this).attr('name').replace('[0]', '[' + filter_i + ']');
-                            $(this).attr('name', newName);
-                        });
-
-                        // Update the fieldset's own name attribute
-                        $clone.attr('name', 'filter[' + filter_i + ']');
-
-                        // Clear any input values in the clone
-                        $clone.find('input[type="text"]').val('');
-
-                        // Add show class and insert before wrapper
-                        $clone.addClass('show');
-
-                        wrapper.before($clone);
-                    });
-
-                    $("#advanced-toggle").click(function(e) {
-                        e.preventDefault();
-                        //add_button.toggle();
-                        
-                        $('.advanced-container').toggle();
-                        //$('fieldset.search-form').children(':first-child').show();
-
-                        $("#advanced-search-form").toggleClass('active');
-                        $("#advanced-toggle").toggleClass('active');
-
-                        if ($("#advanced-toggle").hasClass('active')) {
-                            $("#advanced-toggle").html('Uitgebreid zoeken <i class="fas fa-chevron-down"></i>');
-                           // $('.query-inputs').append(submit_button);
-                           // $('.query-inputs').append(adv_button);
-                            $('.query-inputs').append(submit_button);
-                            $('.query-inputs').append(searchbuttons);                              
-                            $('.search-buttons').append(adv_button);
-                        } else {
-                            $("#advanced-toggle").html('Uitgebreid zoeken <i class="fas fa-chevron-up"></i>');
-                            
-                            $('.search-form-buttons').append(submit_button);
-                            $('.search-form-buttons').append(adv_button);
-                        }
-                    });
-
-                <?php //endif; ?>
-            });
-        
-            $(".facet-active").on("click touchstart", function(e) {
+    <script>
+        $(document).ready(function() {
+            $(".more-link a").click(function(e) {
                 e.preventDefault();
-                var href = $(this).attr("href");
-                if ($(this).closest('div').hasClass('facets')) {
-                    localStorage.setItem('openPopUp', 'true');
+                $(this).parent().hide();
+                $(this).parent().next("div").show();
+            });
+            $(".less-link a").click(function(e) {
+                e.preventDefault();
+                $(this).parent().parent().hide();
+                $(this).parent().parent().prev(".more-link").show();
+            });
+            $('#q').change(function(e) {
+                $('input[type=submit].search-submit').focus();
+            });
+        });
+    </script>
+    <script>
+        $(document).ready(function() {
+            <?php if ($searchPage->name() == "Beeldbank"): ?>
+                var dateFrom = $('#psl-search-form input[name="dcterms_temporal_drm[from]"]');
+                var dateTo = $('#psl-search-form input[name="dcterms_temporal_drm[to]"]');
+                var dateMin = 1500;
+                var dateMax = 2023;
+            <?php endif; ?>
+            <?php
+            //if ($searchPage->name() == "Tijdschriften"): 
+            ?>
+            var dateFrom = $('#psl-search-form input[name="dcterms_date_drm[from]"]');
+            var dateTo = $('#psl-search-form input[name="dcterms_date_drm[to]"]');
+            var dateMin = 1890;
+            var dateMax = 2025;
+
+            var filter_i = 0;
+            $('#search-filters').find('.filter').each(function(index) {
+                if (index > 1) {
+                    var button = "<a href='#' class='removefilter'><i class='fas fa-trash-alt'></i></a>";
+                    $(this).append(button);
                 }
-                window.location.href = href;
             });
 
-            function activeLink(event) {
-                event.preventDefault();
-                var facetLink = event.currentTarget.dataset.facetLink;
+            $('#form-search').on('submit', function(e) {
+                e.preventDefault();
+                const params = new URLSearchParams(window.location.search)
+
+                params.set('q', '"' + $('[name="q"]').val() + '"');
+                window.location.href = location.protocol + '//' + location.host + location.pathname + '?' + params.toString();
+            });
+
+            var wrapper = $("#search-filters span");
+            var filter = $(".filter").first();
+            var add_button = $(".add_field_button");
+            var adv_button = $("#advanced-toggle");
+            var submit_button = $("#search-submit");
+            var search_loop = $(".search-loop");
+
+            $("#search-filters").append(add_button);
+            add_button.hide()
+
+            $('fieldset.search-form > div.field')
+                .first()
+                .addClass('query-search')
+                .find('div.inputs')
+                .addClass('query-inputs');
+            $('fieldset.search-form > *:not(.query-search)')
+                .wrapAll('<div class="advanced-container"></div>');
+            //filter.prepend(search_loop);
+            $('.query-inputs').prepend(search_loop);
+            //filter.append(submit_button);
+            $('.query-inputs').append(submit_button);
+            $('.query-inputs').append("<div class='search-buttons'></div>");
+            $('.search-buttons').append(adv_button);
+            var searchbuttons = $('.search-buttons');
+
+            $(document).on('click', ".removefilter", function(e) {
+                e.preventDefault();
+                $(this).parent().remove();
+                filter_i--;
+            });
+
+            /*$(add_button).click(function(e) {
+                e.preventDefault();
+                filter_i++;
+                //$(wrapper).before('<fieldset class="filter"><select name="filter['+filter_i+'][field]"><option value="dcterms_title_txt">Titel</option><option value="media_txt2">Inhoud</option></select><input type="text" name="filter['+filter_i+'][value]" value=""><a class="removefilter"><i class="fas fa-trash-alt"></i></a></fieldset>'); //add input box
+                wrapper.before('<fieldset class="filter show"><select name="filter[' + filter_i + '][join]"><option value="and" selected="selected">and</option><option value="or">or</option><option value="not">not</option></select><select name="filter[' + filter_i + '][field]"><option value="dcterms:title" selected="selected">Titel</option></select><input type="text" name="filter[' + filter_i + '][value]" value=""><a class="removefilter"><i class="fas fa-trash-alt"></i></a></fieldset>');
+            });*/
+
+            $(add_button).click(function(e) {
+                e.preventDefault();
+                filter_i++;
+
+                var $original = $('fieldset.filter[name="filter[0]"]');
+                var $clone = $original.clone();
+
+                // Update all name attributes with the new index
+                $clone.find('[name]').each(function() {
+                    var newName = $(this).attr('name').replace('[0]', '[' + filter_i + ']');
+                    $(this).attr('name', newName);
+                });
+
+                // Update the fieldset's own name attribute
+                $clone.attr('name', 'filter[' + filter_i + ']');
+
+                // Clear any input values in the clone
+                $clone.find('input[type="text"]').val('');
+
+                // Add show class and insert before wrapper
+                $clone.addClass('show');
+
+                wrapper.before($clone);
+            });
+
+            $("#advanced-toggle").click(function(e) {
+                e.preventDefault();
+                //add_button.toggle();
+
+                $('.advanced-container').toggle();
+                //$('fieldset.search-form').children(':first-child').show();
+
+                $("#advanced-search-form").toggleClass('active');
+                $("#advanced-toggle").toggleClass('active');
+
+                if ($("#advanced-toggle").hasClass('active')) {
+                    $("#advanced-toggle").html('Uitgebreid zoeken <i class="fas fa-chevron-down"></i>');
+                    // $('.query-inputs').append(submit_button);
+                    // $('.query-inputs').append(adv_button);
+                    $('.query-inputs').append(submit_button);
+                    $('.query-inputs').append(searchbuttons);
+                    $('.search-buttons').append(adv_button);
+                } else {
+                    $("#advanced-toggle").html('Uitgebreid zoeken <i class="fas fa-chevron-up"></i>');
+
+                    $('.search-form-buttons').append(submit_button);
+                    $('.search-form-buttons').append(adv_button);
+                }
+            });
+
+            <?php //endif; 
+            ?>
+        });
+
+        $(".facet-active").on("click touchstart", function(e) {
+            e.preventDefault();
+            var href = $(this).attr("href");
+            if ($(this).closest('div').hasClass('facets')) {
                 localStorage.setItem('openPopUp', 'true');
-                window.location.href = facetLink;
             }
+            window.location.href = href;
+        });
 
-            $(window).on('load', function() {
-                var openPopUp = localStorage.getItem('openPopUp');
-                var filterIcon = $(".filter-icon");
-                var closeIcon = $(".close-icon");
-                var page = $('.page');
-                var facetsList = $('.facets').parent();
+        function activeLink(event) {
+            event.preventDefault();
+            var facetLink = event.currentTarget.dataset.facetLink;
+            localStorage.setItem('openPopUp', 'true');
+            window.location.href = facetLink;
+        }
 
-                if (window.innerWidth < 1024) {
-                    if (openPopUp === "true") {
-                        var filterNav = $(".facet-filter-nav");
-                        $(facetsList).addClass("open-facets-list");
-                        $(filterNav).addClass("filter-nav-fixed");
-                        $(filterIcon).addClass("active-item");
-                        $(page).addClass("pageFixed");
-                        localStorage.removeItem('openPopUp');
-                    }
-                }
+        $(window).on('load', function() {
+            var openPopUp = localStorage.getItem('openPopUp');
+            var filterIcon = $(".filter-icon");
+            var closeIcon = $(".close-icon");
+            var page = $('.page');
+            var facetsList = $('.facets').parent();
 
-                filterIcon.off("click", filterIconClickHandler);
-                closeIcon.off("click", closeIconClickHandler);
-
-                filterIcon.on("click", filterIconClickHandler);
-                closeIcon.on("click", closeIconClickHandler);
-            });
-
-            function clickOnButton(facetsList, filterNav, filterIcon, page) {
-                var filterOpen = $(facetsList).hasClass("open-facets-list");
-
-                if (!filterOpen) {
+            if (window.innerWidth < 1024) {
+                if (openPopUp === "true") {
+                    var filterNav = $(".facet-filter-nav");
                     $(facetsList).addClass("open-facets-list");
                     $(filterNav).addClass("filter-nav-fixed");
                     $(filterIcon).addClass("active-item");
                     $(page).addClass("pageFixed");
-                } else {
-                    $(facetsList).removeClass("open-facets-list");
-                    $(filterNav).removeClass("filter-nav-fixed");
-                    $(filterIcon).removeClass("active-item");
-                    $(page).removeClass("pageFixed");
+                    localStorage.removeItem('openPopUp');
                 }
             }
 
-            function filterIconClickHandler() {
-                var filterNav = $(".facet-filter-nav");
-                var filterIcon = $(".filter-icon");
-                var page = $('.page');
-                var facetsList = $('.facets').parent();
-                clickOnButton(facetsList, filterNav, filterIcon, page);
-            }
+            filterIcon.off("click", filterIconClickHandler);
+            closeIcon.off("click", closeIconClickHandler);
 
-            function closeIconClickHandler() {
-                var filterNav = $(".facet-filter-nav");
-                var filterIcon = $(".filter-icon");
-                var page = $('.page');
-                var facetsList = $('.facets').parent();
-                clickOnButton(facetsList, filterNav, filterIcon, page);
+            filterIcon.on("click", filterIconClickHandler);
+            closeIcon.on("click", closeIconClickHandler);
+        });
+
+        function clickOnButton(facetsList, filterNav, filterIcon, page) {
+            var filterOpen = $(facetsList).hasClass("open-facets-list");
+
+            if (!filterOpen) {
+                $(facetsList).addClass("open-facets-list");
+                $(filterNav).addClass("filter-nav-fixed");
+                $(filterIcon).addClass("active-item");
+                $(page).addClass("pageFixed");
+            } else {
+                $(facetsList).removeClass("open-facets-list");
+                $(filterNav).removeClass("filter-nav-fixed");
+                $(filterIcon).removeClass("active-item");
+                $(page).removeClass("pageFixed");
             }
-        </script>
+        }
+
+        function filterIconClickHandler() {
+            var filterNav = $(".facet-filter-nav");
+            var filterIcon = $(".filter-icon");
+            var page = $('.page');
+            var facetsList = $('.facets').parent();
+            clickOnButton(facetsList, filterNav, filterIcon, page);
+        }
+
+        function closeIconClickHandler() {
+            var filterNav = $(".facet-filter-nav");
+            var filterIcon = $(".filter-icon");
+            var page = $('.page');
+            var facetsList = $('.facets').parent();
+            clickOnButton(facetsList, filterNav, filterIcon, page);
+        }
+    </script>
