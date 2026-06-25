@@ -129,6 +129,9 @@ $displayFacets = $displayParts ? $displayParts['facets'] ?? 'before' : 'none';
             <?php if ($media): ?>
               <?php
               $file_url = str_replace('http:', '', $media->thumbnailUrl('medium'));
+              if($displayFacets == 'none'):
+                $file_url = str_replace('http:', '', $media->thumbnailUrl('large'));
+              endif; 
               //$file_url = $media->originalUrl();
               if ($file_url == "/application/asset/thumbnails/default.png?v=3.2.3") {
                 $media = $resource->thumbnail();
