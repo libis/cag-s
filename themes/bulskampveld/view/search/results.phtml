@@ -79,10 +79,10 @@ $displayFacets = $displayParts ? $displayParts['facets'] ?? 'before' : 'none';
       $body = $bodyTerm ? $resource->value($bodyTerm, ['lang' => $langValue, 'default' => '']) : $resource->displayDescription(null, $langValue);
       $resourceThumbnail = $noThumbnail ? null : $thumbnail($resource, $thumbnailType);
       $type = $resource->resourceTemplate();
-      if ($type):
-        $type = $type->label();
+      if($type):
+        $type= $type->label();
       else:
-        $type = "Object";
+        $type= "Object";
       endif;
       if($type == 'Agendapunt BKV'):
         $type = 'Activiteit';

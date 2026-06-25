@@ -84,17 +84,8 @@ $displayFacets = $displayParts ? $displayParts['facets'] ?? 'before' : 'none';
       else:
         $type = "Object";
       endif;
-      if($type == 'Agendapunt BKV'):
-        $type = 'Activiteit';
-      endif;
-      if($type == 'Nieuws BKV'):
-        $type = 'Nieuwsbericht';
-      endif;
-      if($type == 'Object BKV'):
-        $type = 'Object';
-      endif;
 
-      if ($type == 'Verhaal' || $type == 'Project' || $type == 'Agendapunt' || $type == 'Nieuws'):
+      if ($type == 'Verhaal' || $type == 'Project' || $type == 'Agendapunt' || $type == 'Nieuws' || $type == 'News' || $type == 'Event'):
         if ($resource->value('dcterms:relation')):
           $url = '/page/' . $resource->value('dcterms:relation');
         else:
@@ -278,11 +269,11 @@ $displayFacets = $displayParts ? $displayParts['facets'] ?? 'before' : 'none';
                 </p>
               <?php endif; ?>
               <?php if ($type == 'Film' || $type == 'Filmkopie'): ?>
-                <div class="link link--ext card__link"><a href="<?php echo $url; ?>">Lees meer</a></div>
+                <div class="link link--ext card__link"><a href="<?php echo $url; ?>">Read more</a></div>
               <?php elseif ($type == 'Ledenblad'): ?>
                 <div class="link link--ext card__link"><a href="<?php echo $url; ?>">Tijdschrift bekijken</a></div>
               <?php else: ?>
-                <div class="link link--ext card__link"><a href="<?php echo $url; ?>"><?php echo $type; ?> bekijken</a></div>
+                <div class="link link--ext card__link"><a href="<?php echo $url; ?>">View <?php echo $type; ?></a></div>
               <?php endif; ?>
             </div>
           </a>
