@@ -1,0 +1,123 @@
+<div class="section section--default ledenbladen" style="padding:52px 0 0 0">
+  <div class="container">
+      <?php $searchConfig = $this->api()->searchOne('search_configs', ['id' =>2])->getContent(); ?>
+      <?php $not_adv_pages= ["Verhalen"];?>
+            <?php $adv_pages= ["Beeldbank","Tijdschriften","Cinema Rural Filmdatabank"];?>    
+            <?php if(!in_array($searchConfig->name(),$not_adv_pages)):?>
+                <?php if(in_array($searchConfig->name(),$adv_pages)):?>
+                    <div class="panel panel--light libis-search-advanced">
+                        <?= $searchConfig->renderForm(['template' => null]) ?>
+                        <span class="search-loop"><i class="fas fa-search"></i></span>
+                        <button class="add_field_button" type="button"><i class='fas fa-plus'></i> Een extra veld toevoegen</button>
+
+                        <a id="advanced-toggle" class="active">Uitgebreid zoeken <i class="fas fa-chevron-down"></i></a>
+                    </div>
+                <?php else: ?>
+                     <div class="panel panel--light libis-search-advanced">
+                        <?= $searchConfig->renderForm(['template' => null]) ?>
+                        <span class="search-loop"><i class="fas fa-search"></i></span>                      
+                    </div>   
+                <?php endif;?>    
+            <?php endif;?>    
+      
+  </div>
+</div>
+<script>
+  $(document).ready(function() {
+    $('#search-filters').find('.filter').each(function(index) {
+                if (index > 1) {
+                    var button = "<a href='#' class='removefilter'><i class='fas fa-trash-alt'></i></a>";
+                    $(this).append(button);
+                }
+            });
+
+            $('#form-search').on('submit', function(e) {
+                e.preventDefault();
+                const params = new URLSearchParams(window.location.search)
+
+                params.set('q', '' + $('[name="q"]').val() + '');
+                window.location.href = location.protocol + '//' + location.host + '/s/start/ledenbladen' + '?' + params.toString();
+            });
+
+            var wrapper = $("#search-filters span");
+            var filter = $(".filter").first();
+            var add_button = $(".add_field_button");
+            var adv_button = $("#advanced-toggle");
+            var submit_button = $("#search-submit");
+            console.log(submit_button)
+            var search_loop = $(".search-loop");
+
+            $("#search-filters").append(add_button);
+            add_button.hide()
+
+            $('fieldset.search-form > div.field')
+                .first()
+                .addClass('query-search')
+                .find('div.inputs')
+                .addClass('query-inputs');
+            $('fieldset.search-form > *:not(.query-search)')
+                .wrapAll('<div class="advanced-container"></div>');
+            //filter.prepend(search_loop);
+            $('.query-inputs').prepend(search_loop);
+            //filter.append(submit_button);
+            $('.query-inputs').append(submit_button);
+            $('.query-inputs').append("<div class='search-buttons'></div>");
+            $('.search-buttons').append(adv_button);
+            var searchbuttons = $('.search-buttons');
+
+            $(document).on('click', ".removefilter", function(e) {
+                e.preventDefault();
+                $(this).parent().remove();
+                filter_i--;
+            });
+
+            $(add_button).click(function(e) {
+                e.preventDefault();
+                filter_i++;
+
+                var $original = $('fieldset.filter[name="filter[0]"]');
+                var $clone = $original.clone();
+
+                // Update all name attributes with the new index
+                $clone.find('[name]').each(function() {
+                    var newName = $(this).attr('name').replace('[0]', '[' + filter_i + ']');
+                    $(this).attr('name', newName);
+                });
+
+                // Update the fieldset's own name attribute
+                $clone.attr('name', 'filter[' + filter_i + ']');
+
+                // Clear any input values in the clone
+                $clone.find('input[type="text"]').val('');
+
+                // Add show class and insert before wrapper
+                $clone.addClass('show');
+
+                wrapper.before($clone);
+            });
+
+            $("#advanced-toggle").click(function(e) {
+                e.preventDefault();
+
+                $('.advanced-container').toggle();
+
+                $("#advanced-search-form").toggleClass('active');
+                $("#advanced-toggle").toggleClass('active');
+
+                if ($("#advanced-toggle").hasClass('active')) {
+                    $("#advanced-toggle").html('Uitgebreid zoeken <i class="fas fa-chevron-down"></i>');
+                    $('.query-inputs').append(submit_button);
+                    $('.query-inputs').append(searchbuttons);
+                    $('.search-buttons').append(adv_button);
+                } else {
+                    $("#advanced-toggle").html('Uitgebreid zoeken <i class="fas fa-chevron-up"></i>');
+
+                    $('.search-form-buttons').append(submit_button);
+                    $('.search-form-buttons').append(adv_button);
+                }
+            });
+
+            <?php //endif; 
+            ?>
+        });
+</script>
