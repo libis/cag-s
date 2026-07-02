@@ -380,7 +380,7 @@ if ($showMapView) {
                 e.preventDefault();
                 const params = new URLSearchParams(window.location.search)
 
-                params.set('q', '"' + $('[name="q"]').val() + '"');
+                params.set('q', '' + $('[name="q"]').val() + '');
                 window.location.href = location.protocol + '//' + location.host + location.pathname + '?' + params.toString();
             });
 
