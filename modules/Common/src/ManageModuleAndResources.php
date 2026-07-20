@@ -87,11 +87,10 @@ class ManageModuleAndResources
 
         // Vocabularies.
         foreach ($this->listFilesInDir($filepathData . 'vocabularies', ['json']) as $filepath) {
-            $data = file_get_contents($filepath);
-            $data = json_decode($data, true);
-            if (!is_array($data)) {
+            $data = $this->getJsonArrayFromFile($filepath);
+            if (!$data) {
                 throw new ModuleCannotInstallException((string) new PsrMessage(
-                    'An error occured when loading vocabulary "{vocabulary}": file has no json content.', // @translate
+                    'An error occured when loading vocabulary file "{vocabulary}": file has no json content.', // @translate
                     ['vocabulary' => pathinfo($filepath, PATHINFO_FILENAME)]
                 ));
             }
@@ -107,6 +106,13 @@ class ManageModuleAndResources
         // Custom vocabs.
         // The presence of the module should be already checked during install.
         foreach ($this->listFilesInDir($filepathData . 'custom-vocabs') as $filepath) {
+            $data = $this->getJsonArrayFromFile($filepath);
+            if (!$data) {
+                throw new ModuleCannotInstallException((string) new PsrMessage(
+                    'An error occured when loading custom vocab file "{file}": file has no json content.', // @translate
+                    ['file' => pathinfo($filepath, PATHINFO_FILENAME)]
+                ));
+            }
             $exists = $this->checkCustomVocab($filepath);
             if ($exists === null) {
                 throw new ModuleCannotInstallException((string) new PsrMessage(
@@ -118,6 +124,13 @@ class ManageModuleAndResources
 
         // Resource templates.
         foreach ($this->listFilesInDir($filepathData . 'resource-templates') as $filepath) {
+            $data = $this->getJsonArrayFromFile($filepath);
+            if (!$data) {
+                throw new ModuleCannotInstallException((string) new PsrMessage(
+                    'An error occured when loading resource template file "{file}": file has no json content.', // @translate
+                    ['file' => pathinfo($filepath, PATHINFO_FILENAME)]
+                ));
+            }
             $exists = $this->checkResourceTemplate($filepath);
             if ($exists === null) {
                 throw new ModuleCannotInstallException((string) new PsrMessage(
@@ -128,6 +141,92 @@ class ManageModuleAndResources
         }
 
         return true;
+    }
+
+    /**
+     * Delete all resources installed by a module.
+     *
+     * Safe by default: vocabularies are NEVER deleted (their properties or
+     * resource classes may still be referenced by user-created resources).
+     * Resource templates and custom vocabs are deleted when they match the file
+     * label. Pass $deleteVocabularies = true to opt in to vocabulary deletion
+     * (caller is responsible for the data risk).
+     *
+     * @return string[] Human-readable messages for skipped or failed
+     * deletions (empty when everything went fine).
+     */
+    public function deleteAllResources(string $module, bool $deleteVocabularies = false): array
+    {
+        $modulePath = $this->resolveModulePath($module);
+        $filepathData = ($modulePath ?? OMEKA_PATH . '/modules/' . $module) . '/data/';
+
+        $messages = [];
+
+        // Resource templates first: they reference vocabs/custom vocabs.
+        foreach ($this->listFilesInDir($filepathData . 'resource-templates') as $filepath) {
+            $data = $this->getJsonArrayFromFile($filepath);
+            if (!$data || empty($data['label'])) {
+                continue;
+            }
+            $template = $this->apiRead('resource_templates', ['label' => $data['label']]);
+            if (!$template) {
+                continue;
+            }
+            try {
+                $this->api->delete('resource_templates', $template->id());
+            } catch (\Throwable $e) {
+                $messages[] = sprintf('Resource template "%s" not deleted: %s', $data['label'], $e->getMessage());
+            }
+        }
+
+        // Custom vocabs.
+        foreach ($this->listFilesInDir($filepathData . 'custom-vocabs') as $filepath) {
+            $data = $this->getJsonArrayFromFile($filepath);
+            if (!$data || empty($data['o:label'])) {
+                continue;
+            }
+            $cv = $this->apiRead('custom_vocabs', ['label' => $data['o:label']]);
+            if (!$cv) {
+                continue;
+            }
+            try {
+                $this->api->delete('custom_vocabs', $cv->id());
+            } catch (\Throwable $e) {
+                $messages[] = sprintf('Custom vocab "%s" not deleted: %s', $data['o:label'], $e->getMessage());
+            }
+        }
+
+        // Vocabularies (opt-in only).
+        if ($deleteVocabularies) {
+            foreach ($this->listFilesInDir($filepathData . 'vocabularies', ['json']) as $filepath) {
+                $data = $this->getJsonArrayFromFile($filepath);
+                if (!$data || empty($data['vocabulary']['o:namespace_uri'])) {
+                    continue;
+                }
+                $vocab = $this->apiRead('vocabularies', ['namespaceUri' => $data['vocabulary']['o:namespace_uri']]);
+                if (!$vocab) {
+                    continue;
+                }
+                try {
+                    $this->api->delete('vocabularies', $vocab->id());
+                } catch (\Throwable $e) {
+                    $messages[] = sprintf('Vocabulary "%s" not deleted: %s', $data['vocabulary']['o:prefix'] ?? '?', $e->getMessage());
+                }
+            }
+        } else {
+            foreach ($this->listFilesInDir($filepathData . 'vocabularies', ['json']) as $filepath) {
+                $data = $this->getJsonArrayFromFile($filepath);
+                if (!$data || empty($data['vocabulary']['o:namespace_uri'])) {
+                    continue;
+                }
+                $vocab = $this->apiRead('vocabularies', ['namespaceUri' => $data['vocabulary']['o:namespace_uri']]);
+                if ($vocab) {
+                    $messages[] = sprintf('Vocabulary "%s" kept (may be used by resources)', $data['vocabulary']['o:prefix'] ?? '?');
+                }
+            }
+        }
+
+        return $messages;
     }
 
     /**
@@ -142,9 +241,8 @@ class ManageModuleAndResources
 
         // Vocabularies.
         foreach ($this->listFilesInDir($filepathData . 'vocabularies', ['json']) as $filepath) {
-            $data = file_get_contents($filepath);
-            $data = json_decode($data, true);
-            if (is_array($data)) {
+            $data = $this->getJsonArrayFromFile($filepath);
+            if ($data && is_array($data)) {
                 $this->createOrUpdateVocabulary($data, $module);
             }
         }
@@ -219,11 +317,7 @@ class ManageModuleAndResources
      */
     public function checkResourceTemplate(string $filepath): bool
     {
-        if (!$this->isFileReadable($filepath)) {
-            return false;
-        }
-
-        $data = json_decode(file_get_contents($filepath), true);
+        $data = $this->getJsonArrayFromFile($filepath);
         if (!$data || empty($data['label'])) {
             return false;
         }
@@ -243,7 +337,7 @@ class ManageModuleAndResources
      */
     public function checkCustomVocab(string $filepath): ?bool
     {
-        $data = json_decode(file_get_contents($filepath), true);
+        $data = $this->getJsonArrayFromFile($filepath);
         if (!$data || empty($data['o:label'])) {
             return false;
         }
@@ -561,9 +655,12 @@ class ManageModuleAndResources
      * @throws \Omeka\Api\Exception\RuntimeException
      * @return \Omeka\Api\Representation\ResourceTemplateRepresentation
      */
-    public function createResourceTemplate(string $filepath): ResourceTemplateRepresentation
+    public function createResourceTemplate(string $filepath): ?ResourceTemplateRepresentation
     {
-        $data = json_decode(file_get_contents($filepath), true);
+        $data = $this->getJsonArrayFromFile($filepath);
+        if (!$data) {
+            return null;
+        }
 
         // Check if the resource template exists, so it is not replaced.
         $label = $data['o:label'] ?? '';
@@ -611,7 +708,7 @@ class ManageModuleAndResources
      */
     public function createCustomVocab(string $filepath): ?\CustomVocab\Api\Representation\CustomVocabRepresentation
     {
-        $data = json_decode(file_get_contents($filepath), true);
+        $data = $this->getJsonArrayFromFile($filepath);
         if (!$data) {
             return null;
         }
@@ -761,7 +858,15 @@ class ManageModuleAndResources
      */
     public function updateCustomVocab(string $filepath): \CustomVocab\Api\Representation\CustomVocabRepresentation
     {
-        $data = json_decode(file_get_contents($filepath), true);
+        $data = $this->getJsonArrayFromFile($filepath);
+        if (!$data) {
+            throw new RuntimeException(
+                (string) new PsrMessage(
+                    'An error occured when loading custom vocab file "{file}": file has no json content.', // @translate
+                    ['file' => pathinfo($filepath, PATHINFO_FILENAME)]
+                )
+            );
+        }
 
         $label = $data['o:label'];
         /** @var \CustomVocab\Api\Representation\CustomVocabRepresentation $customVocab */
@@ -978,7 +1083,40 @@ class ManageModuleAndResources
      */
     protected function isFileReadable(string $filepath): bool
     {
-        return file_exists($filepath) && filesize($filepath) && is_readable($filepath);
+        return file_exists($filepath)
+            && is_file($filepath)
+            && filesize($filepath)
+            && is_readable($filepath);
+    }
+
+    /**
+     * Check if a file exists, is readable, and is not empty and get json array.
+     */
+    protected function getJsonArrayFromFile(string $filepath): ?array
+    {
+        if (!$this->isFileReadable($filepath)) {
+            $message = new PsrMessage(
+                'The file path {file} does not exist or is empty.', // @translate
+                ['file' => pathinfo($filepath, PATHINFO_FILENAME)]
+            );
+            $messenger = $this->services->get('ControllerPluginManager')->get('messenger');
+            $messenger->addError($message);
+            return null;
+        }
+
+        $content = file_get_contents($filepath);
+        $data = json_decode($content, true);
+        if (!is_array($data)) {
+            $message = new PsrMessage(
+                'The file path {file} does not contain a json array.', // @translate
+                ['file' => pathinfo($filepath, PATHINFO_FILENAME)]
+            );
+            $messenger = $this->services->get('ControllerPluginManager')->get('messenger');
+            $messenger->addError($message);
+            return null;
+        }
+
+        return $data;
     }
 
     /**
@@ -1087,7 +1225,7 @@ class ManageModuleAndResources
         }
         $list = array_filter(
             array_map(fn ($file) => $dirpath . DIRECTORY_SEPARATOR . $file, scandir($dirpath)),
-            fn ($file) => is_file($file) && is_readable($file) && filesize($file)
+            fn ($file) => $this->isFileReadable($file)
         );
         if ($extensions) {
             $list = array_filter($list, fn ($file) => in_array(pathinfo($file, PATHINFO_EXTENSION), $extensions));
@@ -1130,7 +1268,7 @@ class ManageModuleAndResources
 
         $paths = glob($globPath, GLOB_BRACE);
         foreach ($paths as $filepath) {
-            if (!is_file($filepath) || !$this->isFileReadable($filepath)) {
+            if (!$this->isFileReadable($filepath)) {
                 continue;
             }
             $phtml = file_get_contents($filepath);
@@ -1190,6 +1328,20 @@ class ManageModuleAndResources
                     $cache->clear();
                 } elseif (method_exists($cache, 'deleteAll')) {
                     $cache->deleteAll();
+                }
+            }
+
+            // Omeka forces setAutoGenerateProxyClasses(-1): proxies are never
+            // regenerated on demand. After a module upgrade that changes an
+            // entity (renamed/added/removed property), stale proxy files on
+            // disk still reference the old shape and Doctrine fails with
+            // "Property X::$Y does not exist". Force regeneration here.
+            $metadataFactory = $entityManager->getMetadataFactory();
+            $allMetadata = $metadataFactory->getAllMetadata();
+            if ($allMetadata) {
+                $proxyDir = $config->getProxyDir();
+                if ($proxyDir && is_dir($proxyDir) && is_writable($proxyDir)) {
+                    $entityManager->getProxyFactory()->generateProxyClasses($allMetadata, $proxyDir);
                 }
             }
         } catch (\Throwable $e) {

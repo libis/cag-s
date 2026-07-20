@@ -4,13 +4,13 @@ namespace CleanUrl;
 
 // The check of "slugs_site" may avoid an issue when empty, after install or
 // during/after upgrade. When empty, there must be a slug site (default "s/").
-if (mb_strlen(SLUGS_SITE) || mb_strlen(SLUG_SITE)) {
-    $slugSite = SLUG_SITE;
-    $regexSite = SLUGS_SITE;
-} else {
-    $slugSite = SLUG_SITE_DEFAULT;
-    $regexSite = '[a-zA-Z0-9_-]+';
-}
+// Fallback to a generic slug regex so site routes still match.
+$slugSite = (mb_strlen(SLUGS_SITE) || mb_strlen(SLUG_SITE))
+    ? SLUG_SITE
+    : SLUG_SITE_DEFAULT;
+$regexSite = mb_strlen(SLUGS_SITE)
+    ? SLUGS_SITE
+    : '[a-zA-Z0-9_-]+';
 
 // Prepare to get the slug of a page, that can be anything except reserved strings.
 $regexSitePage = SLUG_PAGE
@@ -64,53 +64,58 @@ return [
         ],
     ],
     'router' => [
-        'routes' => [
-            // Routes for the main site when "s/site-slug/" is skipped.
-            // Clean routes for resources depend on settings and are added during bootstrap.
-            'top' => [
-                // Override the top controller in order to use the site homepage.
-                'options' => [
-                    'defaults' => [
-                        // TODO Remove __SITE__ to allow the main setting for default site or not.
-                        '__NAMESPACE__' => 'Omeka\Controller\Site',
-                        '__SITE__' => true,
-                        'site-slug' => SLUG_MAIN_SITE,
-                        'page-slug' => null,
-                        'controller' => 'Page',
-                        'action' => 'show',
+        'routes' => array_merge(
+            // Override the top route only when "s/site-slug/" is skipped
+            // for a main site, so the default Omeka top route (site index
+            // or default site) is preserved when no main site is set.
+            // Clean routes for resources depend on settings and are added
+            // during bootstrap.
+            SLUG_MAIN_SITE ? [
+                'top' => [
+                    // Override the top controller in order to use the site homepage.
+                    'options' => [
+                        'defaults' => [
+                            '__NAMESPACE__' => 'Omeka\Controller\Site',
+                            '__SITE__' => true,
+                            'site-slug' => SLUG_MAIN_SITE,
+                            'page-slug' => null,
+                            'controller' => 'Page',
+                            'action' => 'show',
+                        ],
+                    ],
+                    'may_terminate' => true,
+                    // Same routes than "site", except initial "/" and routes, without starting "/".
+                    // Allows to access main site resources and pages.
+                    // TODO Find a way to avoid to copy all the site routes, in particular for modules. Add "|" to the regex of site slug?
+                    'child_routes' => [
+                        'page-browse' => [
+                            'type' => \Laminas\Router\Http\Literal::class,
+                            'priority' => 5,
+                            'options' => [
+                                'route' => SLUG_PAGE ? rtrim(SLUG_PAGE, '/') : 'page',
+                                'defaults' => [
+                                    'controller' => 'Page',
+                                    'action' => 'browse',
+                                ],
+                            ],
+                        ],
+                        'page' => [
+                            'type' => \CleanUrl\Router\Http\RegexPage::class,
+                            // The priority avoids to exclude the slug page as a controller in top/resource and top/resource-id.
+                            'priority' => 5,
+                            'options' => [
+                                'regex' => $regexSitePage,
+                                'spec' => SLUG_PAGE . '%page-slug%',
+                                'defaults' => [
+                                    'controller' => 'Page',
+                                    'action' => 'show',
+                                ],
+                            ],
+                        ],
                     ],
                 ],
-                'may_terminate' => true,
-                // Same routes than "site", except initial "/" and routes, without starting "/".
-                // Allows to access main site resources and pages.
-                // TODO Find a way to avoid to copy all the site routes, in particular for modules. Add "|" to the regex of site slug?
-                'child_routes' => SLUG_MAIN_SITE ? [
-                    'page-browse' => [
-                        'type' => \Laminas\Router\Http\Literal::class,
-                        'priority' => 5,
-                        'options' => [
-                            'route' => SLUG_PAGE ? rtrim(SLUG_PAGE, '/') : 'page',
-                            'defaults' => [
-                                'controller' => 'Page',
-                                'action' => 'browse',
-                            ],
-                        ],
-                    ],
-                    'page' => [
-                        'type' => \CleanUrl\Router\Http\RegexPage::class,
-                        // The priority avoids to exclude the slug page as a controller in top/resource and top/resource-id.
-                        'priority' => 5,
-                        'options' => [
-                            'regex' => $regexSitePage,
-                            'spec' => SLUG_PAGE . '%page-slug%',
-                            'defaults' => [
-                                'controller' => 'Page',
-                                'action' => 'show',
-                            ],
-                        ],
-                    ],
-                ] : [],
-            ],
+            ] : [],
+            [
             // Override the default config to remove the slug for main site.
             'site' => [
                 'type' => \CleanUrl\Router\Http\SegmentMain::class,
@@ -136,12 +141,12 @@ return [
                     ],
                 ],
             ],
-        ],
+        ]),
     ],
     'translator' => [
         'translation_file_patterns' => [
             [
-                'type' => 'gettext',
+                'type' => \Laminas\I18n\Translator\Loader\Gettext::class,
                 'base_dir' => dirname(__DIR__) . '/language',
                 'pattern' => '%s.mo',
                 'text_domain' => null,
@@ -193,6 +198,21 @@ return [
                 'keep_slash' => false,
                 'case_sensitive' => false,
             ],
+
+            'cleanurl_digital_object' => [
+                'default' => 'digital-object/{digital_object_identifier}',
+                'short' => '',
+                'paths' => [],
+                'pattern' => '[a-zA-Z0-9][a-zA-Z0-9_-]*',
+                'pattern_short' => '',
+                'property' => 10,
+                'prefix' => '',
+                'prefix_part_of' => false,
+                'keep_slash' => false,
+                'case_sensitive' => false,
+            ],
+
+            'cleanurl_canonical' => false,
 
             'cleanurl_admin_use' => false,
             'cleanurl_admin_reserved' => [],

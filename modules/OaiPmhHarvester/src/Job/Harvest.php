@@ -604,29 +604,25 @@ class Harvest extends AbstractJob
                         $last_date = $first_date;
                     }
 
-                    $elementTexts["dcterms:issued"] = [
+                    $elementTexts["dcterms:issued"][] = 
                         [
                             'property_id' => 23,
                             'type' => 'literal',
                             '@language' => '',
                             '@value' => $first_date.'',
-                        ],
-                    ];
-                    $elementTexts["dcterms:valid"] = [
+                        ];
+                    $elementTexts["dcterms:valid"][] = 
                         [
                             'property_id' => 21,
                             'type' => 'literal',
                             '@language' => '',
                             '@value' => $last_date.'',
-                        ],
-                    ];
+                        ];
                 }
             }
         }    
           
         $meta = $elementTexts;
-        //set item set        
-        //$meta['o:item_set'][] = ['o:id' => $itemSetId];
 
         //media
         $imgs = array();

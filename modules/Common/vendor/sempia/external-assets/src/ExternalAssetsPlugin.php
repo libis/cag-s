@@ -134,17 +134,36 @@ class ExternalAssetsPlugin implements PluginInterface, EventSubscriberInterface
      */
     protected function downloadMissingAssets(array $assets, string $basePath, string $packageName): void
     {
+        $manifestPath = $basePath . '/vendor/external-assets.lock.json';
+        $manifest = is_file($manifestPath)
+            ? (json_decode((string) file_get_contents($manifestPath), true) ?: [])
+            : [];
+        $filesystem = new Filesystem();
+
         foreach ($assets as $destination => $url) {
             $destPath = $basePath . '/' . ltrim($destination, '/');
             $isDirectory = substr($destination, -1) === '/';
+            $exists = $isDirectory
+                ? (is_dir($destPath) && count(array_diff(
+                    scandir($destPath),
+                    ['.', '..', '.htaccess', '.gitkeep', '.gitignore', 'index.html']
+                )) > 0)
+                : file_exists($destPath);
+            $urlChanged = ($manifest[$destination] ?? null) !== $url;
 
-            // Skip assets that already exist.
-            if ($isDirectory) {
-                if (is_dir($destPath) && count(array_diff(scandir($destPath), ['.', '..'])) > 0) {
-                    continue;
-                }
-            } elseif (file_exists($destPath)) {
+            if ($exists && !$urlChanged) {
                 continue;
+            }
+
+            if ($exists) {
+                if ($isDirectory) {
+                    foreach (array_diff(scandir($destPath), ['.', '..', '.htaccess', '.gitkeep', '.gitignore', 'index.html']) as $entry) {
+                        $path = $destPath . '/' . $entry;
+                        is_dir($path) ? $filesystem->removeDirectory($path) : $filesystem->unlink($path);
+                    }
+                } else {
+                    $filesystem->unlink($destPath);
+                }
             }
 
             $isArchive = preg_match('/\.(zip|tar\.gz|tgz)$/i', $url);
@@ -163,6 +182,7 @@ class ExternalAssetsPlugin implements PluginInterface, EventSubscriberInterface
                 } else {
                     $this->downloadFile($url, $destPath);
                 }
+                $manifest[$destination] = $url;
             } catch (\Exception $e) {
                 $this->io->writeError(sprintf(
                     '<warning>Failed to download asset %s: %s</warning>',
@@ -171,6 +191,14 @@ class ExternalAssetsPlugin implements PluginInterface, EventSubscriberInterface
                 ));
             }
         }
+
+        // Drop entries removed from composer.json.
+        $manifest = array_intersect_key($manifest, $assets);
+        $filesystem->ensureDirectoryExists(dirname($manifestPath));
+        file_put_contents(
+            $manifestPath,
+            json_encode($manifest, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) . "\n"
+        );
     }
 
     /**

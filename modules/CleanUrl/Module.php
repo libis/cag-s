@@ -2,8 +2,14 @@
 
 namespace CleanUrl;
 
-if (!class_exists(\Common\TraitModule::class)) {
-    require_once dirname(__DIR__) . '/Common/TraitModule.php';
+if (!trait_exists(\Common\TraitModule::class, false)) {
+    if (file_exists(OMEKA_PATH . '/modules/Common/src/TraitModule.php')) {
+        require_once OMEKA_PATH . '/modules/Common/src/TraitModule.php';
+    } elseif (file_exists(OMEKA_PATH . '/composer-addons/modules/Common/src/TraitModule.php')) {
+        require_once OMEKA_PATH . '/composer-addons/modules/Common/src/TraitModule.php';
+    } elseif (file_exists(dirname(__DIR__) . '/Common/src/TraitModule.php')) {
+        require_once dirname(__DIR__) . '/Common/src/TraitModule.php';
+    }
 }
 
 use CleanUrl\Form\ConfigForm;
@@ -23,7 +29,7 @@ use Omeka\Module\AbstractModule;
  *
  * Allows to have links like https://example.net/collection/dcterms:identifier.
  *
- * @copyright Daniel Berthereau, 2012-2024
+ * @copyright Daniel Berthereau, 2012-2026
  * @copyright BibLibre, 2016-2017
  * @license http://www.cecill.info/licences/Licence_CeCILL_V2.1-en.txt
  */
@@ -50,53 +56,113 @@ class Module extends AbstractModule
         // At this point, the config is read only, so it is copied and replaced.
         $config = $configListener->getMergedConfig(false);
 
-        // Manage the routes for the main site when "s/site-slug/" is skipped.
-        // So copy routes from "site", without starting "/".
+        $config = $this->copyChildRoutesToTop($config);
+
+        $configListener->setMergedConfig($config);
+    }
+
+    /**
+     * Copy child routes of site to top for main site: skip s/slug/, remove leading /.
+     *
+     * Should be a specific function to manage tests.
+     *
+     * The "top" route serves the main site home with controller "Page", but
+     * child routes inherit the controller from their parent. Under "site" they
+     * inherit "Index" (the site default controller); module routes without an
+     * explicit controller (for example Collecting) must keep it under "top"
+     * too, otherwise they resolve to a "...\Page" controller that does not
+     * exist (page not found on submit with module Collecting).
+     */
+    protected function copyChildRoutesToTop(array $config): array
+    {
+        $siteController = $config['router']['routes']['site']['options']['defaults']['controller'] ?? null;
         foreach ($config['router']['routes']['site']['child_routes'] as $routeName => $options) {
             // Skip some routes for pages that are set directly in the config.
             if (isset($config['router']['routes']['top']['child_routes'][$routeName])) {
                 continue;
             }
+            if ($siteController !== null && !isset($options['options']['defaults']['controller'])) {
+                $options['options']['defaults']['controller'] = $siteController;
+            }
             $config['router']['routes']['top']['child_routes'][$routeName] = $options;
             $config['router']['routes']['top']['child_routes'][$routeName]['options']['route'] =
-                ltrim($config['router']['routes']['top']['child_routes'][$routeName]['options']['route'], '/');
+                ltrim($options['options']['route'], '/');
         }
-
-        $configListener->setMergedConfig($config);
+        return $config;
     }
 
     public function getConfig()
     {
-        $localCleanUrlConfig = OMEKA_PATH . '/config/cleanurl.config.php';
-        require_once file_exists($localCleanUrlConfig)
-            ? $localCleanUrlConfig
-            : __DIR__ . '/config/cleanurl.config.php';
+        require_once __DIR__ . '/config/cleanurl.config.php';
+
+        // Dynamic route constants are stored in a setting and defined here
+        // because the service manager is not yet available at this stage.
+        if (!defined('CleanUrl\SLUG_MAIN_SITE')) {
+            $data = $this->readRouteData();
+            define('CleanUrl\SLUG_MAIN_SITE', $data['main_site'] ?? false);
+            define('CleanUrl\SLUG_SITE', $data['site'] ?? 's/');
+            define('CleanUrl\SLUG_PAGE', $data['page'] ?? 'page/');
+            define('CleanUrl\SLUGS_SITE', $data['sites'] ?? '');
+        }
+
         return include __DIR__ . '/config/module.config.php';
     }
 
     public function onBootstrap(MvcEvent $event): void
     {
         parent::onBootstrap($event);
+
+        /** @see https://forum.omeka.org/t/csv-import-error-call-to-a-member-function-getparam/28675 */
+        // In CLI context (background jobs), set a minimal RouteMatch on the
+        // MvcEvent to prevent Status::getRouteMatch() from falling back to
+        // $router->match(), which can match CleanUrl routes and flag the
+        // request as a site request. This avoids "Call to a member function
+        // getParam() on null" in siteUrl() when modules serialize
+        // representations during jobs (e.g. CSVImport).
+        // TODO Remove once integrated in Omeka (https://github.com/omeka/omeka-s/pull/2439).
+        if (PHP_SAPI === 'cli' && !$event->getRouteMatch()) {
+            $event->setRouteMatch(new \Laminas\Router\Http\RouteMatch([]));
+        }
+
         // The page controller is already allowed, because it's an override.
         $this->addRoutes();
+
+        // Rebuild the route data cache when it is missing, typically right
+        // after a deployment of this version: the file does not exist yet and
+        // is otherwise only (re)built on a relevant event (install, upgrade,
+        // config or site save). This paid once keeps the main site routes
+        // available without a database read in getConfig().
+        if (!is_readable($this->getRouteDataCachePath())) {
+            $this->cacheCleanData();
+        }
     }
 
     protected function preInstall(): void
     {
-        if (!$this->isConfigWriteable()) {
-            throw new \Omeka\Module\Exception\ModuleCannotInstallException('The file "cleanurl.config.php" in the config directory of Omeka is not writeable.'); // @translate
+        $services = $this->getServiceLocator();
+        $translator = $services->get('MvcTranslator');
+
+        $errors = [];
+
+        if (!method_exists($this, 'checkModuleActiveVersion') || !$this->checkModuleActiveVersion('Common', '3.4.88')) {
+            $errors[] = (string) new \Omeka\Stdlib\Message(
+                $translator->translate('The module %1$s should be upgraded to version %2$s or later.'), // @translate
+                'Common', '3.4.88'
+            );
         }
 
-        $services = $this->getServiceLocator();
-        $plugins = $services->get('ControllerPluginManager');
-        $translate = $plugins->get('translate');
+        $config = $services->get('Config');
+        $basePath = $config['file_store']['local']['base_path'] ?: (OMEKA_PATH . '/files');
 
-        if (!method_exists($this, 'checkModuleActiveVersion') || !$this->checkModuleActiveVersion('Common', '3.4.63')) {
-            $message = new \Omeka\Stdlib\Message(
-                $translate('The module %1$s should be upgraded to version %2$s or later.'), // @translate
-                'Common', '3.4.63'
-            );
-            throw new \Omeka\Module\Exception\ModuleCannotInstallException((string) $message);
+        if (!$this->checkDestinationDir($basePath . '/cleanurl')) {
+            $errors[] = (string) (new PsrMessage(
+                'The directory "{directory}" is not writeable.', // @translate
+                ['directory' => $basePath . '/xsl']
+            ))->setTranslator($translator);
+        }
+
+        if ($errors) {
+            throw new \Omeka\Module\Exception\ModuleCannotInstallException(implode("\n", $errors));
         }
     }
 
@@ -104,13 +170,6 @@ class Module extends AbstractModule
     {
         $this->cacheCleanData();
         $this->cacheRouteSettings();
-    }
-
-    protected function isConfigWriteable(): bool
-    {
-        $filepath = OMEKA_PATH . '/config/cleanurl.config.php';
-        return (file_exists($filepath) && is_writeable($filepath))
-            || (!file_exists($filepath) && is_writeable(dirname($filepath)));
     }
 
     /**
@@ -205,6 +264,22 @@ class Module extends AbstractModule
             [$this, 'handleSaveSite']
         );
 
+        // The main site is the general Omeka setting "default_site", and the
+        // site prefixes are module settings; both can change at any time. Omeka
+        // 4.2 triggers "setting.update"/"setting.insert" on the settings
+        // service, so the route data cache is rebuilt when a relevant setting
+        // changes (no effect on Omeka < 4.2, where the event is not triggered).
+        $sharedEventManager->attach(
+            \Omeka\Settings\Settings::class,
+            'setting.update',
+            [$this, 'handleMainSettingChange']
+        );
+        $sharedEventManager->attach(
+            \Omeka\Settings\Settings::class,
+            'setting.insert',
+            [$this, 'handleMainSettingChange']
+        );
+
         $sharedEventManager->attach(
             \Omeka\Api\Adapter\SiteAdapter::class,
             'api.create.pre',
@@ -225,13 +300,84 @@ class Module extends AbstractModule
             'api.update.pre',
             [$this, 'handleCheckSlugPage']
         );
+
+        // Add a canonical link to the clean url on public resource and page
+        // pages, so search engines do not index the duplicate (original and
+        // clean) urls as separate pages.
+        foreach ([
+            'Omeka\Controller\Site\Item',
+            'Omeka\Controller\Site\ItemSet',
+            'Omeka\Controller\Site\Media',
+            'Omeka\Controller\Site\Page',
+            'DigitalObject\Controller\Site\DigitalObject',
+        ] as $controller) {
+            $sharedEventManager->attach(
+                $controller,
+                'view.show.after',
+                [$this, 'handleCanonicalUrl']
+            );
+        }
+    }
+
+    /**
+     * Add a canonical link to the clean url, only when the current url is not
+     * already the clean one (no self-referencing link).
+     *
+     * @param Event $event
+     */
+    public function handleCanonicalUrl(Event $event): void
+    {
+        $view = $event->getTarget();
+        if (!$view->setting('cleanurl_canonical')) {
+            return;
+        }
+
+        // Item/media show use "resource", page show uses "page", digital object
+        // show uses "digitalObject".
+        $resource = $view->resource ?? $view->page ?? null;
+        if (!$resource) {
+            return;
+        }
+
+        $canonical = $this->canonicalUrl(
+            $resource->siteUrl(null, true),
+            (string) $view->serverUrl(true)
+        );
+        if ($canonical === null) {
+            return;
+        }
+
+        // Don't add a second canonical link when the theme already set one.
+        $headLink = $view->headLink();
+        foreach ($headLink->getContainer() as $link) {
+            if (($link->rel ?? null) === 'canonical') {
+                return;
+            }
+        }
+        $headLink(['rel' => 'canonical', 'href' => $canonical]);
+    }
+
+    /**
+     * Return the clean url to use as canonical, or null when the current url is
+     * already the clean one (so no self-referencing canonical is added) or when
+     * there is no clean url.
+     *
+     * The comparison is done on the path only (ignoring the query string and a
+     * trailing slash).
+     */
+    public function canonicalUrl(?string $cleanUrl, string $currentUrl): ?string
+    {
+        if (!$cleanUrl) {
+            return null;
+        }
+        $cleanPath = rtrim((string) parse_url($cleanUrl, PHP_URL_PATH), '/');
+        $currentPath = rtrim((string) parse_url($currentUrl, PHP_URL_PATH), '/');
+        return $cleanPath === $currentPath ? null : $cleanUrl;
     }
 
     public function getConfigForm(PhpRenderer $renderer)
     {
         $services = $this->getServiceLocator();
-        $messenger = $services->get('ControllerPluginManager')->get('messenger');
-
         $translate = $renderer->plugin('translate');
         $html = $translate('"Clean Url" module allows to have clean, readable and search engine optimized urls for pages and resources, like https://example.net/item_set_identifier/item_identifier.') // @translate
             . '<br/>'
@@ -242,12 +388,6 @@ class Module extends AbstractModule
             . sprintf($translate('See %s for more information.'), // @translate
                 sprintf('<a href="https://gitlab.com/Daniel-KM/Omeka-S-module-CleanUrl">%s</a>', 'Readme')
             );
-
-        if (!$this->isConfigWriteable()) {
-            $messenger->addError(new PsrMessage(
-                'Warning: the config of the module cannot be saved in "config/cleanurl.config.php". It is required to skip the site paths.' // @translate
-            ));
-        }
 
         return $html
             . $this->getConfigFormAuto($renderer);
@@ -281,14 +421,6 @@ class Module extends AbstractModule
         $hasError = false;
 
         // TODO Move the formatters and validators inside the config form.
-
-        // TODO Make it an hidden input to forbid submission.
-        if (!$this->isConfigWriteable()) {
-            $controller->messenger()->addError(
-                'The config of the module cannot be saved in "config/cleanurl.config.php". It is required to skip the site paths.' // @translate
-            );
-            $hasError = true;
-        }
 
         // Sanitize params first.
 
@@ -341,7 +473,7 @@ class Module extends AbstractModule
             if ($result) {
                 $message = new PsrMessage(
                     'The sites "{site_slugs}" use a reserved string which prevents "/s/site-slug" from being removed. Rename these sites if you want to skip "/s/site-slug". See the {link}list of reserved strings{link_end}.', // @translate
-                    ['site_slugs' => implode('", "', $result), 'link' => '<a href="https://gitlab.com/Daniel-KM/Omeka-S-module-CleanUrl/-/blob/master/config/cleanurl.config.php"  target="_blank" rel="noopener">', 'link_end' => '</a>']
+                    ['site_slugs' => htmlspecialchars(implode('", "', $result), ENT_QUOTES, 'UTF-8'), 'link' => '<a href="https://gitlab.com/Daniel-KM/Omeka-S-module-CleanUrl/-/blob/master/config/cleanurl.config.php"  target="_blank" rel="noopener">', 'link_end' => '</a>']
                 );
                 $message->setEscapeHtml(false);
                 $messenger->addError($message);
@@ -356,7 +488,7 @@ class Module extends AbstractModule
             if ($result) {
                 $message = new PsrMessage(
                     'The sites pages "{page_slugs}" use a reserved string or a site slug which prevents "/s/site-slug" from being removed. Rename these pages if you want to skip "/s/site-slug". See the {link}list of reserved strings{link_end}.', // @translate
-                    ['page_slugs' => implode('", "', $result), 'link' => '<a href="https://gitlab.com/Daniel-KM/Omeka-S-module-CleanUrl/-/blob/master/config/cleanurl.config.php"  target="_blank" rel="noopener">', 'link_end' => '</a>']
+                    ['page_slugs' => htmlspecialchars(implode('", "', $result), ENT_QUOTES, 'UTF-8'), 'link' => '<a href="https://gitlab.com/Daniel-KM/Omeka-S-module-CleanUrl/-/blob/master/config/cleanurl.config.php"  target="_blank" rel="noopener">', 'link_end' => '</a>']
                 );
                 $message->setEscapeHtml(false);
                 $messenger->addError($message);
@@ -371,7 +503,7 @@ class Module extends AbstractModule
         ) {
             $message = new PsrMessage(
                 'The prefix "{slug}" is reserved, which prevents from being used as a prefix. Use another prefix. See the {link}list of reserved strings{link_end}.', // @translate
-                ['slug' => $siteSlug, 'link' => '<a href="https://gitlab.com/Daniel-KM/Omeka-S-module-CleanUrl/-/blob/master/config/cleanurl.config.php"  target="_blank" rel="noopener">', 'link_end' => '</a>']
+                ['slug' => htmlspecialchars($siteSlug, ENT_QUOTES, 'UTF-8'), 'link' => '<a href="https://gitlab.com/Daniel-KM/Omeka-S-module-CleanUrl/-/blob/master/config/cleanurl.config.php"  target="_blank" rel="noopener">', 'link_end' => '</a>']
             );
             $message->setEscapeHtml(false);
             $messenger->addError($message);
@@ -382,7 +514,7 @@ class Module extends AbstractModule
         ) {
             $message = new PsrMessage(
                 'The prefix "{slug}" is already set for a site, which prevents from being used as a prefix. Use another prefix or rename the site. See the {link}list of reserved strings{link_end}.', // @translate
-                ['slug' => $siteSlug, 'link' => '<a href="https://gitlab.com/Daniel-KM/Omeka-S-module-CleanUrl/-/blob/master/config/cleanurl.config.php"  target="_blank" rel="noopener">', 'link_end' => '</a>']
+                ['slug' => htmlspecialchars($siteSlug, ENT_QUOTES, 'UTF-8'), 'link' => '<a href="https://gitlab.com/Daniel-KM/Omeka-S-module-CleanUrl/-/blob/master/config/cleanurl.config.php"  target="_blank" rel="noopener">', 'link_end' => '</a>']
             );
             $message->setEscapeHtml(false);
             $messenger->addError($message);
@@ -399,7 +531,7 @@ class Module extends AbstractModule
             if (count($result)) {
                 $message = new PsrMessage(
                     'The sites "{site_slugs}" use a reserved string which prevents the prefix for site from being removed. Rename these sites if you want to skip the prefix. See the {link}list of reserved strings{link_end}.', // @translate
-                    ['site_slugs' => implode('", "', $result), 'link' => '<a href="https://gitlab.com/Daniel-KM/Omeka-S-module-CleanUrl/-/blob/master/config/cleanurl.config.php"  target="_blank" rel="noopener">', 'link_end' => '</a>']
+                    ['site_slugs' => htmlspecialchars(implode('", "', $result), ENT_QUOTES, 'UTF-8'), 'link' => '<a href="https://gitlab.com/Daniel-KM/Omeka-S-module-CleanUrl/-/blob/master/config/cleanurl.config.php"  target="_blank" rel="noopener">', 'link_end' => '</a>']
                 );
                 $message->setEscapeHtml(false);
                 $messenger->addError($message);
@@ -414,7 +546,7 @@ class Module extends AbstractModule
         ) {
             $message = new PsrMessage(
                 'The prefix "{slug}" is reserved, which prevents from being used as a prefix for pages. Use another prefix. See the {link}list of reserved strings{link_end}.', // @translate
-                ['slug' => $pageSlug, 'link' => '<a href="https://gitlab.com/Daniel-KM/Omeka-S-module-CleanUrl/-/blob/master/config/cleanurl.config.php"  target="_blank" rel="noopener">', 'link_end' => '</a>']
+                ['slug' => htmlspecialchars($pageSlug, ENT_QUOTES, 'UTF-8'), 'link' => '<a href="https://gitlab.com/Daniel-KM/Omeka-S-module-CleanUrl/-/blob/master/config/cleanurl.config.php"  target="_blank" rel="noopener">', 'link_end' => '</a>']
             );
             $message->setEscapeHtml(false);
             $messenger->addError($message);
@@ -425,7 +557,7 @@ class Module extends AbstractModule
         ) {
             $message = new PsrMessage(
                 'The prefix "{slug}" is already set for a site, which prevents from being used as a prefix for pages. Use another prefix or rename the site. See the {link}list of reserved strings{link_end}.', // @translate
-                ['slug' => $pageSlug, 'link' => '<a href="https://gitlab.com/Daniel-KM/Omeka-S-module-CleanUrl/-/blob/master/config/cleanurl.config.php"  target="_blank" rel="noopener">', 'link_end' => '</a>']
+                ['slug' => htmlspecialchars($pageSlug, ENT_QUOTES, 'UTF-8'), 'link' => '<a href="https://gitlab.com/Daniel-KM/Omeka-S-module-CleanUrl/-/blob/master/config/cleanurl.config.php"  target="_blank" rel="noopener">', 'link_end' => '</a>']
             );
             $message->setEscapeHtml(false);
             $messenger->addError($message);
@@ -442,7 +574,7 @@ class Module extends AbstractModule
             if ($result) {
                 $message = new PsrMessage(
                     'The sites pages "{page_slugs}" use a reserved string which prevents the prefix for pages from being removed. Rename these pages if you want to skip the prefix. See the {link}list of reserved strings{link_end}.', // @translate
-                    ['page_slugs' => implode('", "', $result), 'link' => '<a href="https://gitlab.com/Daniel-KM/Omeka-S-module-CleanUrl/-/blob/master/config/cleanurl.config.php"  target="_blank" rel="noopener">', 'link_end' => '</a>']
+                    ['page_slugs' => htmlspecialchars(implode('", "', $result), ENT_QUOTES, 'UTF-8'), 'link' => '<a href="https://gitlab.com/Daniel-KM/Omeka-S-module-CleanUrl/-/blob/master/config/cleanurl.config.php"  target="_blank" rel="noopener">', 'link_end' => '</a>']
                 );
                 $message->setEscapeHtml(false);
                 $messenger->addError($message);
@@ -451,6 +583,9 @@ class Module extends AbstractModule
         }
 
         $resourceTypes = ['item_set', 'item', 'media'];
+        if (class_exists('DigitalObject\Module', false)) {
+            $resourceTypes[] = 'digital_object';
+        }
 
         foreach ($resourceTypes as $resourceType) {
             $paramName = 'cleanurl_' . $resourceType;
@@ -571,6 +706,29 @@ class Module extends AbstractModule
     }
 
     /**
+     * Rebuild the route data cache when a routing-related setting changes.
+     *
+     * The main site comes from the general Omeka setting "default_site" and the
+     * prefixes from the module settings; both feed cacheCleanData(). The
+     * computed setting "cleanurl_route_data" is excluded to avoid an infinite
+     * loop, since cacheCleanData() writes it.
+     *
+     * @param Event $event
+     */
+    public function handleMainSettingChange(Event $event): void
+    {
+        $relevant = [
+            'default_site',
+            'cleanurl_site_skip_main',
+            'cleanurl_site_slug',
+            'cleanurl_page_slug',
+        ];
+        if (in_array($event->getParam('id'), $relevant, true)) {
+            $this->cacheCleanData();
+        }
+    }
+
+    /**
      * Check a site before saving it.
      *
      * @param Event $event
@@ -617,7 +775,7 @@ class Module extends AbstractModule
             return;
         }
 
-        $data['o:slug'] .= '_' . substr(str_replace(['+', '/', '='], ['', '', ''], base64_encode(random_bytes(128))), 0, 4);
+        $data['o:slug'] .= '_' . substr(strtr(base64_encode(random_bytes(128)), ['+' => '', '/' => '', '=' => '']), 0, 4);
         $request->setContent($data);
 
         $services = $this->getServiceLocator();
@@ -632,69 +790,102 @@ class Module extends AbstractModule
     }
 
     /**
-     * Cache site slugs in file config/clean_url.config.php.
+     * Cache dynamic route data (site slugs, prefixes) in a setting.
      */
     protected function cacheCleanData()
     {
         $services = $this->getServiceLocator();
-
-        $filepath = OMEKA_PATH . '/config/cleanurl.config.php';
-        if (!$this->isConfigWriteable()) {
-            $logger = $services->get('Omeka\Logger');
-            $logger->err('The file "cleanurl.config.php" in the config directory of Omeka is not writeable.'); // @translate
-            return false;
-        }
-
         $settings = $services->get('Omeka\Settings');
 
-        // The file is always reset from the original file.
-        $sourceFilepath = __DIR__ . '/config/cleanurl.config.php';
-        $content = file_get_contents($sourceFilepath);
-
-        // Update main site.
+        // Compute main site.
         $default = $settings->get('default_site', '');
         $skip = $settings->get('cleanurl_site_skip_main');
         $siteSlug = $settings->get('cleanurl_site_slug');
         $pageSlug = $settings->get('cleanurl_page_slug');
 
-        // Check the default site.
         $skip = $skip
             || !($siteSlug . $pageSlug);
-        if ($default) {
+        $mainSite = false;
+        if ($skip && $default) {
             try {
-                $default = $services->get('Omeka\ApiManager')->read('sites', ['id' => $default])->getContent()->slug();
+                $mainSite = $services->get('Omeka\ApiManager')
+                    ->read('sites', ['id' => $default])->getContent()->slug();
             } catch (\Omeka\Api\Exception\NotFoundException $e) {
-                $default = '';
+                $mainSite = false;
             }
         }
-        $replaceRegex = $skip && strlen($default) ? "'$default'" : 'false';
-        $regex = "~const SLUG_MAIN_SITE = (?:'[^']*?'|false);~";
-        $replace = "const SLUG_MAIN_SITE = $replaceRegex;";
-        $content = preg_replace($regex, $replace, $content, 1);
 
-        // Update options for site prefix.
+        // Site prefix.
         $siteSlug = trim($settings->get('cleanurl_site_slug', ''), ' /');
         $siteSlug = mb_strlen($siteSlug) ? $siteSlug . '/' : '';
-        $regex = "~const SLUG_SITE = '[^']*?';~";
-        $replace = "const SLUG_SITE = '$siteSlug';";
-        $content = preg_replace($regex, $replace, $content, 1);
 
-        // Update options for page prefix.
+        // Page prefix.
         $pageSlug = trim($settings->get('cleanurl_page_slug', ''), ' /');
         $pageSlug = mb_strlen($pageSlug) ? $pageSlug . '/' : '';
-        $regex = "~const SLUG_PAGE = '[^']*?';~";
-        $replace = "const SLUG_PAGE = '$pageSlug';";
-        $content = preg_replace($regex, $replace, $content, 1);
 
-        // Update list of sites.
-        // Get all site slugs, public or not.
-        $slugs = $services->get('Omeka\Connection')->executeQuery('SELECT slug FROM site ORDER BY id ASC;')->fetchFirstColumn();
-        $replaceRegex = $this->prepareRegex($slugs);
-        $regex = "~const SLUGS_SITE = '[^']*?';~";
-        $replace = "const SLUGS_SITE = '" . $replaceRegex . "';";
-        $content = preg_replace($regex, $replace, $content, 1);
+        // All site slugs as regex.
+        $slugs = $services->get('Omeka\Connection')
+            ->executeQuery('SELECT slug FROM site ORDER BY id ASC;')
+            ->fetchFirstColumn();
+        $slugsSite = $this->prepareRegex($slugs);
 
-        file_put_contents($filepath, $content);
+        $data = [
+            'main_site' => $mainSite ?: false,
+            'site' => $siteSlug,
+            'page' => $pageSlug,
+            'sites' => $slugsSite,
+        ];
+        $settings->set('cleanurl_route_data', $data);
+        $this->writeRouteDataCache($data);
+
+        return true;
+    }
+
+    /**
+     * Path of the file caching the dynamic route data (site slugs, prefixes).
+     *
+     * The data is computed by cacheCleanData() with the service manager, then
+     * cached in this file so getConfig() can read it without any database
+     * access, since neither the service manager nor the database connection are
+     * available at that bootstrap stage.
+     */
+    private function getRouteDataCachePath(): string
+    {
+        return OMEKA_PATH . '/files/cleanurl/route-data.json';
+    }
+
+    /**
+     * Read dynamic route data from the file cache.
+     *
+     * Returns an empty array when the cache is missing (fresh install, or right
+     * after an upgrade before cacheCleanData() runs): the default routing then
+     * applies until the cache is (re)built in onBootstrap() or on config save.
+     */
+    private function readRouteData(): array
+    {
+        $path = $this->getRouteDataCachePath();
+        if (!is_readable($path)) {
+            return [];
+        }
+        $data = json_decode((string) file_get_contents($path), true);
+        return is_array($data) ? $data : [];
+    }
+
+    /**
+     * Write the dynamic route data to the file cache.
+     */
+    private function writeRouteDataCache(array $data): void
+    {
+        $path = $this->getRouteDataCachePath();
+        $dir = dirname($path);
+        if (!is_dir($dir)) {
+            @mkdir($dir, 0775, true);
+        }
+        @file_put_contents(
+            $path,
+            (string) json_encode($data, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE),
+            LOCK_EX
+        );
     }
 
     /**
@@ -714,6 +905,10 @@ class Module extends AbstractModule
             'item' => 'item',
             'media' => 'media',
         ];
+        $hasDigitalObject = class_exists('DigitalObject\Module', false);
+        if ($hasDigitalObject) {
+            $resourceTypes['digital-object'] = 'digital_object';
+        }
 
         $defaults = [
             'default' => 'resource/{resource_id}',
@@ -732,11 +927,12 @@ class Module extends AbstractModule
             'default_site' => (int) $settings->get('default_site'),
             'site_skip_main' => (bool) $settings->get('cleanurl_site_skip_main', false),
             'site_slug' => $settings->get('cleanurl_site_slug', 's/'),
-            'page_slug' => $settings->get('cleanurl_site_slug', 'page/'),
+            'page_slug' => $settings->get('cleanurl_page_slug', 'page/'),
             'resource' => $settings->get('cleanurl_resource', $defaults) + $defaults,
             'item_set' => $settings->get('cleanurl_item_set', $defaults) + $defaults,
             'item' => $settings->get('cleanurl_item', $defaults) + $defaults,
             'media' => $settings->get('cleanurl_media', $defaults) + $defaults,
+            'digital_object' => $settings->get('cleanurl_digital_object', $defaults) + $defaults,
             'admin_use' => $settings->get('cleanurl_admin_use', true),
             'admin_reserved' => $settings->get('cleanurl_admin_reserved', []),
             'routes' => [],
@@ -747,8 +943,13 @@ class Module extends AbstractModule
 
         // Default, short and core urls are merged to manage paths simpler,
         // Set the default route the first in stacks if any for performance.
-        // foreach (['resource' => 'resource', 'item_set' => 'item-set', 'item' => 'item', 'media' => 'media'] as $resourceType => $controller) {
-        foreach (['resource', 'item_set', 'item', 'media'] as $resourceType) {
+        // foreach (['resource' => 'resource', 'item_set' => 'item-set', 'item'
+        // => 'item', 'media' => 'media'] as $resourceType => $controller) {
+        $normalizeTypes = ['resource', 'item_set', 'item', 'media'];
+        if ($hasDigitalObject) {
+            $normalizeTypes[] = 'digital_object';
+        }
+        foreach ($normalizeTypes as $resourceType) {
             array_unshift($params[$resourceType]['paths'], $params[$resourceType]['default']);
             $params[$resourceType]['paths'][] = $params[$resourceType]['short'];
             // Core paths.
@@ -774,6 +975,7 @@ class Module extends AbstractModule
                         'item_set' => 'Omeka\Controller\Site\ItemSet',
                         'item' => 'Omeka\Controller\Site\Item',
                         'media' => 'Omeka\Controller\Site\Media',
+                        'digital_object' => 'DigitalObject\Controller\Site\DigitalObject',
                     ],
                     'action' => 'show',
                 ],
@@ -792,6 +994,7 @@ class Module extends AbstractModule
                         'item_set' => 'Omeka\Controller\Admin\ItemSet',
                         'item' => 'Omeka\Controller\Admin\Item',
                         'media' => 'Omeka\Controller\Admin\Media',
+                        'digital_object' => 'DigitalObject\Controller\Admin\DigitalObject',
                     ],
                     'action' => 'show',
                 ],
@@ -810,6 +1013,7 @@ class Module extends AbstractModule
                         'item_set' => 'Omeka\Controller\Site\ItemSet',
                         'item' => 'Omeka\Controller\Site\Item',
                         'media' => 'Omeka\Controller\Site\Media',
+                        'digital_object' => 'DigitalObject\Controller\Site\DigitalObject',
                     ],
                     'action' => 'show',
                 ],
@@ -830,6 +1034,9 @@ class Module extends AbstractModule
             '{media_identifier}' => '(?P<media_identifier>' . $params['media']['pattern'] . ')',
             '{media_identifier_short}' => '(?P<media_identifier_short>' . $params['media']['pattern_short'] . ')',
             '{media_position}' => '(?P<media_position>\d+)',
+            '{digital_object_id}' => '(?P<digital_object_id>\d+)',
+            '{digital_object_identifier}' => '(?P<digital_object_identifier>' . $params['digital_object']['pattern'] . ')',
+            '{digital_object_identifier_short}' => '(?P<digital_object_identifier_short>' . $params['digital_object']['pattern_short'] . ')',
         ];
 
         $specs = [
@@ -846,6 +1053,9 @@ class Module extends AbstractModule
             '{media_identifier}' => '%media_identifier%',
             '{media_identifier_short}' => '%media_identifier_short%',
             '{media_position}' => '%media_position%',
+            '{digital_object_id}' => '%digital_object_id%',
+            '{digital_object_identifier}' => '%digital_object_identifier%',
+            '{digital_object_identifier_short}' => '%digital_object_identifier_short%',
         ];
 
         $trimSlash = function ($v) {
@@ -1013,6 +1223,50 @@ class Module extends AbstractModule
             return $resourceIdentifier;
         };
 
+        $checkPathDigitalObject = function (string $path) use ($messager): ?string {
+            $checks = [
+                '{digital_object_id}',
+                '{digital_object_identifier}',
+                '{digital_object_identifier_short}',
+            ];
+            $resourceIdentifier = array_filter($checks, function ($v) use ($path) {
+                return mb_strpos($path, $v) !== false;
+            });
+            if (count($resourceIdentifier) !== 1) {
+                $messager(new PsrMessage(
+                    'The path "{path}" for digital objects should contain one and only one digital object identifier.', // @translate
+                    ['path' => $path]
+                ));
+                return null;
+            }
+            $checks = [
+                '{site_slug}',
+                '{resource_id}',
+                '{resource_identifier}',
+                '{resource_identifier_short}',
+                '{item_set_id}',
+                '{item_set_identifier}',
+                '{item_set_identifier_short}',
+                '{item_id}',
+                '{item_identifier}',
+                '{item_identifier_short}',
+                '{media_id}',
+                '{media_identifier}',
+                '{media_identifier_short}',
+                '{media_position}',
+            ];
+            foreach ($checks as $check) {
+                if (mb_strpos($path, $check) !== false) {
+                    $messager(new PsrMessage(
+                        'The path "{path}" for digital objects should not contain identifier "{identifier}".', // @translate
+                        ['path' => $path, 'identifier' => $check]
+                    ));
+                    return null;
+                }
+            }
+            return reset($resourceIdentifier);
+        };
+
         $checkPatterns = function (string $path) use ($resourceTypes, $params, $messager): bool {
             foreach ($resourceTypes as $resourceType) {
                 if (mb_strpos($path, "{{$resourceType}_identifier}") !== false && !$params[$resourceType]['pattern']) {
@@ -1052,6 +1306,12 @@ class Module extends AbstractModule
                 || mb_strpos($path, '{media_position}') !== false
             ) {
                 $route .= '-media';
+            }
+            if (mb_strpos($path, '{digital_object_id}') !== false
+                || mb_strpos($path, '{digital_object_identifier}') !== false
+                || mb_strpos($path, '{digital_object_identifier_short}') !== false
+            ) {
+                $route .= '-digital-object';
             }
             return trim($route, '-');
         };
@@ -1096,6 +1356,13 @@ class Module extends AbstractModule
                 'name' => 'media',
             ],
         ];
+        if ($hasDigitalObject) {
+            $resourcesParams['digital_object'] = [
+                'check' => $checkPathDigitalObject,
+                'controller' => 'digital-object',
+                'name' => 'digital_objects',
+            ];
+        }
 
         $index = 0;
         $mapRoutes = [];
@@ -1123,7 +1390,7 @@ class Module extends AbstractModule
                 }
                 foreach ($siteParts as $sitePart) {
                     $routeName = 'cleanurl_' . $resourceType . '_' . $sitePart . '_' . ++$index;
-                    $spec = $baseRoutes[$sitePart]['base_spec'] . str_replace(array_keys($specs), array_values($specs), $resourcePath);
+                    $spec = $baseRoutes[$sitePart]['base_spec'] . strtr($resourcePath, $specs);
                     $parts = $getSpecParts($spec);
                     $isAdmin = $sitePart === 'admin';
                     if ($sitePart === 'public') {
@@ -1134,7 +1401,7 @@ class Module extends AbstractModule
                         'resource_type' => $resourceParams['name'],
                         'resource_identifier' => trim($resourceIdentifier, '{}'),
                         'context' => $isAdmin ? 'admin' : 'site',
-                        'regex' => $baseRoutes[$sitePart]['base_regex'] . str_replace(array_keys($regexes), array_values($regexes), $resourcePath),
+                        'regex' => $baseRoutes[$sitePart]['base_regex'] . strtr($resourcePath, $regexes),
                         'spec' => $spec,
                         'part' => $sitePart,
                         'parts' => $parts,
@@ -1235,11 +1502,11 @@ class Module extends AbstractModule
 
         // Don't quote "-", it's useless for matches.
         $listRegex = array_map(function ($v) {
-            return str_replace('\\-', '-', preg_quote($v));
+            return strtr(preg_quote($v), ['\\-' => '-']);
         }, $list);
 
         // To avoid a bug with identifiers that contain a "/", that is not
         // escaped with preg_quote().
-        return str_replace('/', '\/', implode('|', $listRegex));
+        return strtr(implode('|', $listRegex), ['/' => '\/']);
     }
 }

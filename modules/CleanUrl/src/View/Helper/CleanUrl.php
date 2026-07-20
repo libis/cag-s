@@ -2,6 +2,7 @@
 
 namespace CleanUrl\View\Helper;
 
+use CleanUrl\ResourceNameTrait;
 use Laminas\Mvc\ModuleRouteListener;
 use Laminas\Router\RouteMatch;
 use Laminas\View\Exception;
@@ -17,6 +18,7 @@ use Traversable;
  */
 class CleanUrl extends Url
 {
+    use ResourceNameTrait;
     /**
      * @var \CleanUrl\Router\Http\CleanRoute
      */
@@ -89,6 +91,14 @@ class CleanUrl extends Url
 
         /* End of the copy. */
 
+        // Clean urls and the override of the main site route do not support the
+        // "force_canonical" option of the router: a missing identifier or the
+        // main site (slug removed) makes the router return the site root. So
+        // urls are always assembled as relative paths, then made absolute with
+        // the server url when a canonical url is requested.
+        $forceCanonical = !empty($options['force_canonical']);
+        $options['force_canonical'] = false;
+
         // Check if there is a clean url for pages of resources.
         switch ($name) {
             case 'site/resource-id':
@@ -97,9 +107,9 @@ class CleanUrl extends Url
                     $cleanOptions = $options;
                     $cleanOptions['route_name'] = $name;
                     $cleanOptions['name'] = 'clean-url';
-                    $cleanUrl = $this->router->assemble($params, $cleanOptions);
-                    if ($cleanUrl && $cleanUrl !== $this->getBasePath()) {
-                        return $cleanUrl;
+                    $cleanUrl = $this->assembleCleanUrl($params, $cleanOptions);
+                    if ($cleanUrl !== '') {
+                        return $this->applyCanonical($cleanUrl, $forceCanonical);
                     }
                 }
                 // TODO Check if it is still needed.
@@ -134,9 +144,9 @@ class CleanUrl extends Url
                     $cleanOptions = $options;
                     $cleanOptions['route_name'] = $name;
                     $cleanOptions['name'] = 'clean-url';
-                    $cleanUrl = $this->router->assemble($cleanParams, $cleanOptions);
-                    if ($cleanUrl && $cleanUrl !== $this->getBasePath()) {
-                        return $cleanUrl;
+                    $cleanUrl = $this->assembleCleanUrl($cleanParams, $cleanOptions);
+                    if ($cleanUrl !== '') {
+                        return $this->applyCanonical($cleanUrl, $forceCanonical);
                     }
                 }
                 $params['controller'] = 'item';
@@ -158,9 +168,9 @@ class CleanUrl extends Url
                     $cleanOptions = $options;
                     $cleanOptions['route_name'] = $name;
                     $cleanOptions['name'] = 'clean-url';
-                    $cleanUrl = $this->router->assemble($params, $cleanOptions);
-                    if ($cleanUrl && $cleanUrl !== $this->getBasePath()) {
-                        return $cleanUrl;
+                    $cleanUrl = $this->assembleCleanUrl($params, $cleanOptions);
+                    if ($cleanUrl !== '') {
+                        return $this->applyCanonical($cleanUrl, $forceCanonical);
                     }
                 }
                 break;
@@ -179,7 +189,8 @@ class CleanUrl extends Url
         }
 
         // Use the standard url when no identifier exists (copy of Laminas Url).
-        return $this->router->assemble($params, $options);
+        $url = $this->router->assemble($params, $options);
+        return $this->applyCanonical($url, $forceCanonical);
     }
 
     /**
@@ -187,6 +198,8 @@ class CleanUrl extends Url
      *
      * @param array $params
      * @return array
+     *
+     * @todo Fix the deprecation when calling services from helper.
      */
     protected function appendSiteSlug(array $params): array
     {
@@ -198,6 +211,8 @@ class CleanUrl extends Url
 
     /**
      * @see \Laminas\Mvc\Service\ViewHelperManagerFactory::injectOverrideFactories()
+     *
+     * @todo Fix the deprecation when calling services from helper.
      */
     protected function prepareRouter(): void
     {
@@ -218,10 +233,38 @@ class CleanUrl extends Url
      */
     protected function getBasePath(): string
     {
-        if (is_null($this->basePath)) {
+        if ($this->basePath === null) {
             $this->basePath = $this->getView()->basePath();
         }
         return $this->basePath;
+    }
+
+    /**
+     * Assemble a clean url as a relative path, or return an empty string when
+     * none is available.
+     *
+     * The clean route is always assembled as a relative path: when the route
+     * does not apply (for example a resource without identifier), it returns an
+     * empty path, detected here as a failure. The canonical prefix, if any, is
+     * added later by the caller via applyCanonical().
+     */
+    protected function assembleCleanUrl(array $params, array $cleanOptions): string
+    {
+        $cleanOptions['force_canonical'] = false;
+        $cleanUrl = $this->router->assemble($params, $cleanOptions);
+        return !$cleanUrl || $cleanUrl === $this->getBasePath()
+            ? ''
+            : $cleanUrl;
+    }
+
+    /**
+     * Make a relative url absolute when a canonical url is requested.
+     */
+    protected function applyCanonical(string $url, bool $forceCanonical): string
+    {
+        return $forceCanonical && $url !== ''
+            ? $this->view->serverUrl($url)
+            : $url;
     }
 
     /**
@@ -241,7 +284,7 @@ class CleanUrl extends Url
         }
 
         $controller = $this->controllerName($params['controller']);
-        if (in_array($controller, ['item-set', 'item', 'media'])) {
+        if (in_array($controller, ['item-set', 'item', 'media', 'digital-object'])) {
             return $controller;
         }
 
@@ -250,8 +293,12 @@ class CleanUrl extends Url
         ) {
             /** @var \Omeka\Api\Representation\AbstractResourceEntityRepresentation $resource */
             $resource = $this->view->getResourceFromIdentifier($params['resource_identifier']);
-            if (!$resource) {
-                $resource = $this->view->api()->read('resources', $params['resource_identifier'])->getContent();
+            if (!$resource && is_numeric($params['resource_identifier'])) {
+                try {
+                    $resource = $this->view->api()->read('resources', ['id' => $params['resource_identifier']])->getContent();
+                } catch (\Throwable $e) {
+                    // Resource not found.
+                }
             }
             if ($resource) {
                 return $resource->getControllerName();
@@ -259,34 +306,6 @@ class CleanUrl extends Url
         }
 
         return '';
-    }
-
-    /**
-     * Normalize the controller name.
-     *
-     * @param string $name
-     * @return string|null
-     */
-    protected function controllerName(string $name): ?string
-    {
-        $controllers = [
-            'item-set' => 'item-set',
-            'item' => 'item',
-            'media' => 'media',
-            'item_sets' => 'item-set',
-            'items' => 'item',
-            'media' => 'media',
-            'Omeka\Controller\Admin\ItemSet' => 'item-set',
-            'Omeka\Controller\Admin\Item' => 'item',
-            'Omeka\Controller\Admin\Media' => 'media',
-            'Omeka\Controller\Site\ItemSet' => 'item-set',
-            'Omeka\Controller\Site\Item' => 'item',
-            'Omeka\Controller\Site\Media' => 'media',
-            \Omeka\Entity\ItemSet::class => 'item-set',
-            \Omeka\Entity\Item::class => 'item',
-            \Omeka\Entity\Media::class => 'media',
-        ];
-        return $controllers[$name] ?? null;
     }
 
     /**

@@ -239,6 +239,15 @@ trait TraitModule
         return $this;
     }
 
+    /**
+     * Failed-submit config form preserved across
+     * handleConfigForm()/getConfigForm() so per-field error messages render
+     * inline in the same request.
+     *
+     * @var \Laminas\Form\Form|null
+     */
+    protected $invalidConfigForm;
+
     public function getConfigForm(PhpRenderer $renderer)
     {
         return $this->getConfigFormAuto($renderer);
@@ -265,16 +274,80 @@ trait TraitModule
             return null;
         }
 
-        $form = $formManager->get($formClass);
-        $form->init();
-        $form->setData($data);
+        if ($this->invalidConfigForm) {
+            // Reuse the validated, failing form so per-field error messages
+            // remain attached and render inline via formCollection().
+            $form = $this->invalidConfigForm;
+        } else {
+            $form = $formManager->get($formClass);
+            $form->init();
+            $form->setData($data);
+        }
         $form->prepare();
+
+        // When the form declares element groups, render them as sections via
+        // the dedicated helper, since the default formCollection() ignores the
+        // "element_groups" option. Fieldset-based (tabbed) layouts remain the
+        // responsibility of each module's own getConfigForm().
+        if ($form->getOption('element_groups')
+            && $renderer->getHelperPluginManager()->has('formCollectionElementGroups')
+        ) {
+            return $renderer->formCollectionElementGroups($form);
+        }
+
         return $renderer->formCollection($form);
+    }
+
+    /**
+     * Load the asset adding the "Apply" button to the config form, so the
+     * settings can be saved while staying on the form. To be called from any
+     * getConfigForm() that does not rely on getConfigFormAuto().
+     */
+    protected function appendConfigApplyAsset(PhpRenderer $renderer): void
+    {
+        $renderer->headScript()
+            ->appendScript(sprintf('var CommonConfigApply = %s;', json_encode(['label' => $renderer->translate('Apply')])))
+            ->appendFile($renderer->assetUrl('js/common-config-apply.js', 'Common'));
     }
 
     public function handleConfigForm(AbstractController $controller)
     {
-        return $this->handleConfigFormAuto($controller);
+        if (!$this->handleConfigFormAuto($controller)) {
+            return false;
+        }
+        $this->redirectToConfigFormOnApply($controller);
+        return true;
+    }
+
+    /**
+     * Stay on the config form when the user clicked "Apply" instead of
+     * "Submit". Core ModuleController always redirects to the module list on
+     * success, so a direct redirect to the configure action is sent and the
+     * core response is short-circuited. The flash messages added during the
+     * submit (notices, dispatched job links, etc.) survive the redirect and are
+     * displayed on the reloaded form. Does nothing on a standard submit.
+     */
+    protected function redirectToConfigFormOnApply(AbstractController $controller): void
+    {
+        $request = $controller->getRequest();
+        if (!$request->isPost() || !$request->getPost('apply')) {
+            return;
+        }
+
+        $controller->messenger()->addSuccess('The module was successfully configured'); // @translate
+
+        $options = ['query' => ['id' => static::NAMESPACE]];
+        $fragment = (string) $request->getPost('apply_fragment');
+        if ($fragment !== '') {
+            $options['fragment'] = $fragment;
+        }
+        $url = $controller->url()->fromRoute(null, ['action' => 'configure'], $options, true);
+
+        $response = $controller->getResponse();
+        $response->setStatusCode(302);
+        $response->getHeaders()->addHeaderLine('Location', $url);
+        $response->send();
+        exit;
     }
 
     protected function handleConfigFormAuto(AbstractController $controller): bool
@@ -297,7 +370,11 @@ trait TraitModule
         $form->init();
         $form->setData($params);
         if (!$form->isValid()) {
-            $controller->messenger()->addErrors($form->getMessages());
+            // Stash the failed form so getConfigFormAuto() can reuse it in the
+            // same request and render per-field errors inline; keep the flash
+            // messages for the page-level message strip.
+            $this->invalidConfigForm = $form;
+            $controller->messenger()->addFormErrors($form);
             return false;
         }
 
@@ -488,9 +565,13 @@ trait TraitModule
         if (count($dropTables)) {
             // No check: if a table cannot be removed, an exception will be
             // thrown later.
+            // DBAL executeStatement() may not run multiple statements, so
+            // SET FOREIGN_KEY_CHECKS and DROP TABLE must be sent separately.
+            $connection->executeStatement('SET FOREIGN_KEY_CHECKS=0;');
             foreach ($dropTables as $table) {
-                $connection->executeStatement("SET FOREIGN_KEY_CHECKS=0; DROP TABLE `$table`;");
+                $connection->executeStatement("DROP TABLE `$table`;");
             }
+            $connection->executeStatement('SET FOREIGN_KEY_CHECKS=1;');
 
             $message = new PsrMessage(
                 'The module removed tables "{tables}" from a previous broken install.', // @translate
@@ -637,8 +718,12 @@ trait TraitModule
             foreach ($defaultSettings as $name => $value) {
                 $value = $this->isSettingTranslatable($settingsType, $name)
                     ? $translator->translate($value) : $value;
+                // INSERT IGNORE keeps the install idempotent: a previous broken
+                // install may have left some settings, and a duplicate primary
+                // key (id, target) must not abort the process nor overwrite an
+                // existing value.
                 $connection->executeStatement(
-                    "INSERT INTO `$table` (`id`, `$targetColumn`, `value`)"
+                    "INSERT IGNORE INTO `$table` (`id`, `$targetColumn`, `value`)"
                         . " SELECT ?, `id`, ? FROM $targetTable",
                     [$name, json_encode($value)]
                 );
@@ -858,12 +943,32 @@ trait TraitModule
         // In practice, there is a new option to set in each fieldset the group
         // where params are displayed.
 
-        // TODO Order element groups.
         // TODO Move main params to site settings and user settings.
 
+        // Merge module groups into form groups, then optionally reorder. A
+        // fieldset can declare an "element_groups_order" option as an ordered
+        // list of group keys (own groups and core ones); listed keys come first
+        // in that exact order, unlisted keys keep their original relative order
+        // at the end.
         $fieldsetElementGroups = $fieldset->getOption('element_groups');
         if ($fieldsetElementGroups) {
-            $form->setOption('element_groups', array_merge($form->getOption('element_groups') ?: [], $fieldsetElementGroups));
+            $merged = array_merge($form->getOption('element_groups') ?: [], $fieldsetElementGroups);
+            $order = $fieldset->getOption('element_groups_order');
+            if (is_array($order) && $order) {
+                $ordered = [];
+                foreach ($order as $key) {
+                    if (array_key_exists($key, $merged)) {
+                        $ordered[$key] = $merged[$key];
+                    }
+                }
+                foreach ($merged as $key => $label) {
+                    if (!array_key_exists($key, $ordered)) {
+                        $ordered[$key] = $label;
+                    }
+                }
+                $merged = $ordered;
+            }
+            $form->setOption('element_groups', $merged);
         }
 
         // The user view is managed differently.
@@ -928,8 +1033,6 @@ trait TraitModule
      * @param string $settingsType
      * @param int|null $id Site id or user id.
      * @param bool True if processed.
-     *
-     * @todo Allow to set default options for arrays (see module Reference).
      */
     protected function initDataToPopulate(SettingsInterface $settings, string $settingsType, ?int $id = null): bool
     {
@@ -961,20 +1064,36 @@ trait TraitModule
         $translator = $services->get(TranslatorInterface::class);
 
         $currentSettings = $stmt->fetchAllKeyValue();
-        // Skip settings that are arrays, because the fields "multi-checkbox"
-        // and "multi-select" are removed when no value are selected, so it's
-        // not possible to determine if it's a new setting or an old empty
-        // setting currently. So fill them via upgrade in that case or fill the
-        // values.
-        // TODO Find a way to save empty multi-checkboxes and multi-selects (core fix).
-        $defaultSettings = array_filter($defaultSettings, fn ($v) => !is_array($v));
+
+        // This check fix the issues with multi-valued fields, where it was not
+        // possible if an config was set by the user or by the module.
+        // Check for first time init: when present, the module has already been
+        // initialized for this settings scope (config/site/user).
+        // Array defaults (multi-checkbox, multi-select) are then owned by the
+        // user (these fields submit no key when empty, so a missing row is
+        // intentional, not "never set").
+        // On first init, every default scalars and arrays are pushed and a
+        // "sentinel" key allows to mark this scope as initialized.
+        $sentinelKey = strtolower(static::NAMESPACE) . '_initialized_' . $settingsType;
+        $isFirstInit = !array_key_exists($sentinelKey, $currentSettings);
+
+        if (!$isFirstInit) {
+            $defaultSettings = array_filter($defaultSettings, fn ($v) => !is_array($v));
+        }
+
         $missingSettings = array_diff_key($defaultSettings, $currentSettings);
 
         foreach ($missingSettings as $name => $value) {
             $settings->set(
                 $name,
-                $this->isSettingTranslatable($settingsType, $name) ? $translator->translate($value) : $value
+                !is_array($value) && $this->isSettingTranslatable($settingsType, $name)
+                    ? $translator->translate($value)
+                    : $value
             );
+        }
+
+        if ($isFirstInit) {
+            $settings->set($sentinelKey, '1');
         }
 
         return true;
@@ -1212,30 +1331,51 @@ trait TraitModule
     /**
      * Check or create the destination folder.
      *
+     * Guarantees that new entries can be created inside the directory, not that
+     * existing files can be overwritten: a file may belong to another user even
+     * when the directory itself is writeable.
+     *
      * @param string $dirPath Absolute path of the directory to check.
      * @return string|null The dirpath if valid, else null.
      */
     protected function checkDestinationDir(string $dirPath): ?string
     {
-        if (file_exists($dirPath)) {
-            if (!is_dir($dirPath) || !is_readable($dirPath) || !is_writeable($dirPath)) {
+        // Create the directory if needed, tolerating a concurrent creation
+        // (mkdir then fails but the directory exists). The mkdir mode is
+        // altered by the umask, so group-write is enforced afterwards for
+        // shared/multi-process setups (fails silently when not the owner).
+        if (!file_exists($dirPath)) {
+            if (!@mkdir($dirPath, 0775, true) && !is_dir($dirPath)) {
                 $this->getServiceLocator()->get('Omeka\Logger')->err(
-                    'The directory "{path}" is not writeable.', // @translate
-                    ['path' => $dirPath]
+                    'The directory "{path}" cannot be created: {error}.', // @translate
+                    ['path' => $dirPath, 'error' => error_get_last()['message'] ?? 'unknown error']
                 );
                 return null;
             }
-            return $dirPath;
+            @chmod($dirPath, 0775);
         }
 
-        $result = @mkdir($dirPath, 0775, true);
-        if (!$result) {
+        // Fast checks first: cheap rejection without touching the filesystem.
+        if (!is_dir($dirPath) || !is_readable($dirPath) || !is_writeable($dirPath)) {
+            $this->getServiceLocator()->get('Omeka\Logger')->err(
+                'The path "{path}" is not a readable and writeable directory.', // @translate
+                ['path' => $dirPath]
+            );
+            return null;
+        }
+
+        // Definitive writability test: is_writeable() does not check the
+        // execute bit nor ACLs, so actually create and remove a probe file.
+        $probe = $dirPath . '/.omeka-write-test-' . getmypid() . '-' . uniqid('', true);
+        if (@file_put_contents($probe, '') === false) {
             $this->getServiceLocator()->get('Omeka\Logger')->err(
                 'The directory "{path}" is not writeable: {error}.', // @translate
                 ['path' => $dirPath, 'error' => error_get_last()['message'] ?? 'unknown error']
             );
             return null;
         }
+        @unlink($probe);
+
         return $dirPath;
     }
 
