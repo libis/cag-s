@@ -599,9 +599,9 @@ class Harvest extends AbstractJob
                     $date = explode("-",$date);
                     $first_date = trim($date[0]);
                     if(sizeof($date) > 1){
-                        $last_date = trim($date[1]);
+                        $last_date = trim($date[1]) == 'heden' ? 3000 : trim($date[1]);
                     }else{
-                        $last_date = $first_date;
+                        $last_date = $first_date == 'heden' ? 3000 : $first_date;
                     }
 
                     $elementTexts["dcterms:issued"][] = 
