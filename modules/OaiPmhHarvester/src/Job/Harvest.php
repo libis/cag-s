@@ -1,6 +1,9 @@
 <?php
+
 namespace OaiPmhHarvester\Job;
+
 ini_set('memory_limit', '512M');
+
 use Omeka\Job\AbstractJob;
 use SimpleXMLElement;
 
@@ -87,7 +90,7 @@ class Harvest extends AbstractJob
             'resource_template' => $args['resource_template'],
             'o-module-oai-pmh-harvester:metadata_prefix' => $args['metadata_prefix'],
             'o-module-oai-pmh-harvester:set_spec' => $args['set_spec'],
-            'o-module-oai-pmh-harvester:set_name' => $args['set_name']. ' - from ' . $args['from']. ' - until ' . $args['until'],
+            'o-module-oai-pmh-harvester:set_name' => $args['set_name'] . ' - from ' . $args['from'] . ' - until ' . $args['until'],
             'o-module-oai-pmh-harvester:set_description' => @$args['set_description'],
             'o-module-oai-pmh-harvester:has_err' => false,
             'o-module-oai-pmh-harvester:stats' => $stats,
@@ -129,7 +132,11 @@ class Harvest extends AbstractJob
             if ($this->shouldStop()) {
                 $this->logger->notice(sprintf(
                     'Results: total records = %1$s, harvested = %2$d, whitelisted = %3$d, blacklisted = %4$d, imported = %5$d.', // @translate
-                    $stats['records'], $stats['harvested'], $stats['whitelisted'], $stats['blacklisted'], $stats['imported']
+                    $stats['records'],
+                    $stats['harvested'],
+                    $stats['whitelisted'],
+                    $stats['blacklisted'],
+                    $stats['imported']
                 ));
                 $this->logger->warn(
                     'The job was stopped.' // @translate
@@ -182,7 +189,7 @@ class Harvest extends AbstractJob
                 break;
             }
 
-            $records = $response->ListRecords;           
+            $records = $response->ListRecords;
 
             if (is_null($stats['records'])) {
                 $stats['records'] = isset($response->ListRecords->resumptionToken)
@@ -190,7 +197,11 @@ class Harvest extends AbstractJob
                     : count($response->ListRecords->record);
             }
 
-            $toInsert = [];$ids= []; $update_id='';$icount = 0;$ucount = 0;
+            $toInsert = [];
+            $ids = [];
+            $update_id = '';
+            $icount = 0;
+            $ucount = 0;
             /** @var \SimpleXMLElement $record */
             foreach ($records->record as $record) {
                 ++$stats['harvested'];
@@ -211,27 +222,26 @@ class Harvest extends AbstractJob
                         }
                     }
                 }
-                $pre_record = $this->{$method}($record, $args['item_set_id'],$args);
-                if(!$pre_record['dcterms:isVersionOf'][0]['@value'] && !$pre_record['dcterms:title'][0]['@value']):
+                $pre_record = $this->{$method}($record, $args['item_set_id'], $args);
+                if (!$pre_record['dcterms:isVersionOf'][0]['@value'] && !$pre_record['dcterms:title'][0]['@value']):
                     continue;
-                endif;    
-                if($args['endpoint'] != "https://repository.teneo.libis.be/oaiprovider/request"):
-                    $id_exists = $this->itemExists($pre_record, $pre_record['dcterms:isVersionOf'][0]['@value'],$args);    
+                endif;
+                if ($args['endpoint'] != "https://repository.teneo.libis.be/oaiprovider/request"):
+                    $id_exists = $this->itemExists($pre_record, $pre_record['dcterms:isVersionOf'][0]['@value'], $args);
                 else:
-                    $id_exists = $this->itemExists($pre_record, $pre_record['dcterms:title'][0]['@value'],$args);
-                endif;    
-                if(!$id_exists){
-                    try{
+                    $id_exists = $this->itemExists($pre_record, $pre_record['dcterms:title'][0]['@value'], $args);
+                endif;
+                if (!$id_exists) {
+                    try {
                         $response_c = $this->api->create($args['resource_type'], $pre_record, [], []);
                         $response_c = null;
                         ++$stats['imported'];
-                        }catch(\Throwable $t){
-                        $this->logger->info($pre_record['dcterms:isVersionOf'][0]['@value']." error");
+                    } catch (\Throwable $t) {
+                        $this->logger->info($pre_record['dcterms:isVersionOf'][0]['@value'] . " error");
                     }
-                }else{
+                } else {
                     ++$stats['updated'];
                 }
-                
             }
 
             /*if ($toInsert) {
@@ -259,7 +269,6 @@ class Harvest extends AbstractJob
                 'o-module-oai-pmh-harvester:stats' => $stats,
             ];
             $this->api->update('oaipmhharvester_harvests', $harvestId, $harvestData);
-
         } while ($resumptionToken);
 
         // Update job.
@@ -275,25 +284,30 @@ class Harvest extends AbstractJob
 
         $this->logger->notice(sprintf(
             'Results: total records = %1$s, harvested = %2$d, whitelisted = %3$d, blacklisted = %4$d, imported = %5$d.', // @translate
-            $stats['records'], $stats['harvested'], $stats['whitelisted'], $stats['blacklisted'], $stats['imported']
+            $stats['records'],
+            $stats['harvested'],
+            $stats['whitelisted'],
+            $stats['blacklisted'],
+            $stats['imported']
         ));
     }
 
-    protected function itemExists($item, $id_version, $args){
-        
+    protected function itemExists($item, $id_version, $args)
+    {
+
         $query = [];
         $endpoint = $args['endpoint'];
         $resource_type = $args['resource_type'];
 
 
-        if($endpoint != "https://repository.teneo.libis.be/oaiprovider/request"):
+        if ($endpoint != "https://repository.teneo.libis.be/oaiprovider/request"):
             $query['property'][0] = array(
                 'property' => 27,
                 'text' => $id_version,
                 'type' => 'eq',
                 'joiner' => 'and'
             );
-        else:            
+        else:
             //$this->logger->info("id: ".$id_version);
             $query['property'][0] = array(
                 'property' => 1,
@@ -301,24 +315,24 @@ class Harvest extends AbstractJob
                 'type' => 'eq',
                 'joiner' => 'and'
             );
-        endif; 
+        endif;
 
         $results = '';
-        $response = $this->api->search('items',$query);
-        $results = $response->getContent();      
+        $response = $this->api->search('items', $query);
+        $results = $response->getContent();
 
-        foreach($results as $result):
-            if($result):                
-                try{
+        foreach ($results as $result):
+            if ($result):
+                try {
                     //don't update files for now to avoid redownload
-                    if($result->media()):
+                    if ($result->media()):
                         unset($item['o:media']);
                     endif;
-                    
-                    $response = $this->api->update($resource_type, $result->id() ,$item, [], ['isPartial' => true, 'flushEntityManager' => true]);
+
+                    $response = $this->api->update($resource_type, $result->id(), $item, [], ['isPartial' => true, 'flushEntityManager' => true]);
                     $response = null;
-                }catch(\Throwable $t){
-                    $this->logger->info($result->id()." update error");
+                } catch (\Throwable $t) {
+                    $this->logger->info($result->id() . " update error");
                 }
                 return true;
             endif;
@@ -373,10 +387,10 @@ class Harvest extends AbstractJob
     private function _oaidcToJson(SimpleXMLElement $record, $itemSetId, $args)
     {
         $dcMetadata = $record->metadata;
-        if(!$dcMetadata):
+        if (!$dcMetadata):
             return false;
-          endif;
-        
+        endif;
+
         $elementTexts = [];
         $dcMetadata = $record
             ->metadata
@@ -387,66 +401,66 @@ class Harvest extends AbstractJob
             if (isset($dcMetadata->$localName)) {
                 $elementTexts["dcterms:$localName"] = $this->extractValues($dcMetadata, $propertyId);
             }
-
-        }  
+        }
 
         $dcMetadata = $record
             ->metadata
             ->children(self::OAI_DC_NAMESPACE)
             ->children(self::DUBLIN_CORE_NAMESPACE);
-       
-        $org_title = ""; $date="";
+
+        $org_title = "";
+        $date = "";
         foreach ($this->dcProperties as $propertyId => $localName) {
-            if (isset($dcMetadata->$localName)) {                
+            if (isset($dcMetadata->$localName)) {
                 $elementTexts["dcterms:$localName"] = $this->extractValues($dcMetadata, $propertyId);
             }
-            
-            if($localName == 'title'){
-                foreach ($dcMetadata->$localName as $title) {                    
-                    $org_title = $title.'';
-                    $org_title = explode(", ",$org_title);
+
+            if ($localName == 'title') {
+                foreach ($dcMetadata->$localName as $title) {
+                    $org_title = $title . '';
+                    $org_title = explode(", ", $org_title);
                     $date = $org_title[1];
-                    $org_title = explode(":",$org_title[2]);
+                    $org_title = explode(":", $org_title[2]);
                     $org_title = $org_title[1];
-                }    
+                }
             }
-            if($args['endpoint'] == "https://repository.teneo.libis.be/oaiprovider/request"):
-                
+            if ($args['endpoint'] == "https://repository.teneo.libis.be/oaiprovider/request"):
+
                 //use identifier to limit to one
-                if($localName == 'identifier'){
+                if ($localName == 'identifier') {
                     //put manifest link in the hasFormat field
                     $dcHeader = $record->header->identifier;
-                    $ie = explode(":",$dcHeader);
+                    $ie = explode(":", $dcHeader);
                     $ie = $ie[2];
-                    $manifest= "https://lib.is/".$ie."/manifest";
-                    
+                    $manifest = "https://lib.is/" . $ie . "/manifest";
+
                     $elementTexts['dcterms:hasFormat'][] = [
-                            'property_id' => 38,
-                            'type' => 'literal',
-                            '@language' => '',
-                            '@value' => $manifest.''
-                    ];                         
+                        'property_id' => 38,
+                        'type' => 'literal',
+                        '@language' => '',
+                        '@value' => $manifest . ''
+                    ];
                 }
             endif;
         }
 
         $meta = $elementTexts;
 
-       
-        
+
+
         //$meta['o:item_set'] = ["o:id" => $setId];
 
-        if($args['endpoint'] == "https://repository.teneo.libis.be/oaiprovider/request"):
+        if ($args['endpoint'] == "https://repository.teneo.libis.be/oaiprovider/request"):
             $dcHeader = $record->header->identifier;
-            $ie = explode(":",$dcHeader);
+            $ie = explode(":", $dcHeader);
             $ie = $ie[2];
 
             //$this->logger->info($dcHeader);
 
-            $media['https://lib.is/'.$ie.'/thumbnail']= [
+            $media['https://lib.is/' . $ie . '/thumbnail'] = [
                 'o:ingester' => 'url',
-                'o:source' => 'https://lib.is/'.$ie.'/thumbnail',
-                'ingest_url' => 'https://lib.is/'.$ie.'/thumbnail',
+                'o:source' => 'https://lib.is/' . $ie . '/thumbnail',
+                'ingest_url' => 'https://lib.is/' . $ie . '/thumbnail',
                 'dcterms:title' => [
                     [
                         'type' => 'literal',
@@ -458,40 +472,40 @@ class Harvest extends AbstractJob
             ];
 
             //$this->logger->info($ie);
-            $html = file_get_contents("https://lib.is/".$ie."/stream?file_label=ocr-full-text");
+            $html = file_get_contents("https://lib.is/" . $ie . "/stream?file_label=ocr-full-text");
             //$html = utf8_encode($html);
 
-            $html = mb_convert_encoding($html, 'UTF-8', 'Windows-1252');  
+            $html = mb_convert_encoding($html, 'UTF-8', 'Windows-1252');
 
-            $media[$ie.'-ocr']= [
+            $media[$ie . '-ocr'] = [
                 'o:ingester' => 'html',
-                'html' => $html."",
+                'html' => $html . "",
                 'dcterms:title' => [
                     [
                         'type' => 'literal',
                         '@language' => '',
-                        '@value' => $ie." OCR",
+                        '@value' => $ie . " OCR",
                         'property_id' => 1,
                     ],
                 ],
             ];
 
-            foreach($media as $img):
+            foreach ($media as $img):
                 $imgs[] = $img;
             endforeach;
 
             $meta['o:media'] = $imgs;
 
-            if(isset($meta['dcterms:replaces']) && $org_title){   
+            if (isset($meta['dcterms:replaces']) && $org_title) {
                 $i = 0;
-                foreach ($meta['dcterms:replaces'] as $replace) {  
-                    $replace = $replace['@value'];  
+                foreach ($meta['dcterms:replaces'] as $replace) {
+                    $replace = $replace['@value'];
                     //analyse title and determine correct title based on date, save this title in atlernative    
-                    preg_match('#\((.*?)\)#', $replace.'', $match);
-                    $dates = explode("-",$match[1]);
+                    preg_match('#\((.*?)\)#', $replace . '', $match);
+                    $dates = explode("-", $match[1]);
                     //if the date of org_title is in the range of the replace dates, use this title
-                    if($date >= $dates[0] && $date <= $dates[1]):
-                        $title = explode("(",$replace.'');
+                    if ($date >= $dates[0] && $date <= $dates[1]):
+                        $title = explode("(", $replace . '');
                         $title = trim($title[0]);
                         //$this->logger->info($org_title ." -> ".$title);
                         //$this->logger->info($i.' '.$org_title ." -> ".$title);
@@ -499,54 +513,54 @@ class Harvest extends AbstractJob
                             'property_id' => 17,
                             'type' => 'literal',
                             '@language' => '',
-                            '@value' => $title.''
-                        ];                        
+                            '@value' => $title . ''
+                        ];
                     endif;
                     //$this->logger->info($i);
                     $i++;
-                }                    
+                }
             }
 
-            if(isset($meta['dcterms:title'])) {  
-                $title_parts = $meta['dcterms:title'][0]['@value'];  
+            if (isset($meta['dcterms:title'])) {
+                $title_parts = $meta['dcterms:title'][0]['@value'];
                 //get year and number from string type KYE001403, 1959, nr. 03-07: De Boer : weekblad van de Belgische Boerenbond
-                $title_parts = explode(", ",$title_parts);
+                $title_parts = explode(", ", $title_parts);
                 $year = trim($title_parts[1]);
                 $number = trim($title_parts[2]);
-                $number = str_replace("nr. ","",$number);
-                $number = explode(":",$number);
+                $number = str_replace("nr. ", "", $number);
+                $number = explode(":", $number);
                 $number = trim($number[0]);
-                $number = explode("-",$number);
-                $sortkey = $year.trim($number[0]);                 
+                $number = explode("-", $number);
+                $sortkey = $year . trim($number[0]);
 
                 $meta['dcterms:hasVersion'][0] = [
                     'property_id' => 28,
                     'type' => 'literal',
                     '@language' => '',
-                    '@value' => $sortkey.''
-                ];               
-            }  
+                    '@value' => $sortkey . ''
+                ];
+            }
 
-            if(isset($meta['dcterms:date'])) {  
-                $date_val = $meta['dcterms:date'][0]['@value'];  
+            if (isset($meta['dcterms:date'])) {
+                $date_val = $meta['dcterms:date'][0]['@value'];
                 //get year from date string
-                $date_val = explode("-",$date_val);
-                $year = trim($date_val[0]);               
+                $date_val = explode("-", $date_val);
+                $year = trim($date_val[0]);
 
                 //dupicalte date to dateIssued for better filtering
                 $meta['dcterms:issued'][0] = [
                     'property_id' => 23,
                     'type' => 'literal',
                     '@language' => '',
-                    '@value' => $year.''
-                ];               
+                    '@value' => $year . ''
+                ];
             }
-        endif;    
+        endif;
 
 
         //resource template?
-        if($args['resource_template']):
-          $meta['o:resource_template'] = ["o:id" => $args['resource_template']];
+        if ($args['resource_template']):
+            $meta['o:resource_template'] = ["o:id" => $args['resource_template']];
         endif;
 
         return $meta;
@@ -556,29 +570,29 @@ class Harvest extends AbstractJob
     {
         $elementTexts = [];
         $media = [];
-        
+
         $dcMetadata = $record
             ->metadata
-            ->children('oai_dcterms',true)
-            ->children('dcterms',true);
+            ->children('oai_dcterms', true)
+            ->children('dcterms', true);
 
-        if(!$dcMetadata):
-          return false;
+        if (!$dcMetadata):
+            return false;
         endif;
 
         foreach ($this->dcProperties as $propertyId => $localName) {
             if (isset($dcMetadata->$localName)) {
                 $elementTexts["dcterms:$localName"] = $this->extractValues($dcMetadata, $propertyId);
-            }   
-            
-            
+            }
+
+
             //add media if Beeld or Collectie
-            if($localName == 'relation' && ($args['resource_template'] == 7 || $args['resource_template'] == 6)){
+            if ($localName == 'relation' && ($args['resource_template'] == 7 || $args['resource_template'] == 6)) {
                 foreach ($dcMetadata->$localName as $imageUrl) {
-                    $media['https://lib.is/'.$imageUrl.'/stream']= [
+                    $media['https://lib.is/' . $imageUrl . '/stream'] = [
                         'o:ingester' => 'url',
-                        'o:source' => 'https://lib.is/'.$imageUrl.'/stream',
-                        'ingest_url' => 'https://lib.is/'.$imageUrl.'/stream',
+                        'o:source' => 'https://lib.is/' . $imageUrl . '/stream',
+                        'ingest_url' => 'https://lib.is/' . $imageUrl . '/stream',
                         'dcterms:title' => [
                             [
                                 'type' => 'literal',
@@ -592,48 +606,53 @@ class Harvest extends AbstractJob
             }
 
             //add media if Beeld or Collectie
-            if(($localName == 'temporal' && $args['resource_template'] == 6) || ($localName == 'date' && $args['resource_template'] == 10)){
+            if (($localName == 'temporal' && $args['resource_template'] == 6) || ($localName == 'date' && $args['resource_template'] == 10)) {
                 foreach ($dcMetadata->$localName as $date) {
-                    //date looks like 1900 - 2000, or 1900-2000, or 1900, or 1900-2000, 2001-2010, 2011-2020                
-                    //get first part of date if it is a range
-                    $date = explode("-",$date);
-                    $first_date = trim($date[0]);
-                    if(sizeof($date) > 1){
-                        $last_date = trim($date[1]);
-                    }else{
-                        $last_date = $first_date;
-                    }
+                    $dateStr = (string) $date; // force plain string, escape SimpleXMLElement quirks
+                    $parts = array_map(function ($d) {
+                        return trim(preg_replace('/\x{00A0}/u', '', $d));
+                    }, explode('-', $dateStr, 2));
 
-                    $elementTexts["dcterms:issued"][] = 
-                        [
-                            'property_id' => 23,
-                            'type' => 'literal',
-                            '@language' => '',
-                            '@value' => $first_date == 'heden' ? 3000 : $first_date,
-                        ];
-                    $elementTexts["dcterms:valid"][] = 
-                        [
-                            'property_id' => 21,
-                            'type' => 'literal',
-                            '@language' => '',
-                            '@value' => $last_date == 'heden' ? 3000 : $last_date,
-                        ];
+                    $first_date = $parts[0];
+                    $last_date  = $parts[1] ?? $first_date;
+
+                    $toValue = function ($val) {
+                        return (int) (mb_strtolower($val) === 'heden' ? 3000 : $val);
+                    };
+
+                    $first_date = $toValue($first_date);
+                    $last_date  = $toValue($last_date);
+
+                    //$this->logger->info("first_date => $first_date, last_date => $last_date");
+
+                    $elementTexts["dcterms:issued"][] = [
+                        'property_id' => 23,
+                        'type' => 'literal',
+                        '@language' => '',
+                        '@value' => $first_date,
+                    ];
+                    $elementTexts["dcterms:valid"][] = [
+                        'property_id' => 21,
+                        'type' => 'literal',
+                        '@language' => '',
+                        '@value' => $last_date,
+                    ];
                 }
             }
-        }    
-          
+        }
+
         $meta = $elementTexts;
 
         //media
         $imgs = array();
-        foreach($media as $img):
+        foreach ($media as $img):
             $imgs[] = $img;
         endforeach;
 
         $meta['o:media'] = $imgs;
 
         //resource template?
-        if($args['resource_template']):
+        if ($args['resource_template']):
             $meta['o:resource_template'] = ["o:id" => $args['resource_template']];
         endif;
 
@@ -648,40 +667,40 @@ class Harvest extends AbstractJob
             $text = trim($value);
             //$texts = explode('||',$texts);
 
-           
-              if (!mb_strlen($text)) {
-                  continue;
-              }
 
-              // Extract xsi type if any.
-              $attributes = iterator_to_array($value->attributes('xsi', true));
-              $type = empty($attributes['type']) ? null : trim($attributes['type']);
-              $type = in_array(strtolower($type), ['dcterms:uri', 'uri']) ? 'uri' : 'literal';
+            if (!mb_strlen($text)) {
+                continue;
+            }
 
-              $val = [
-                  'property_id' => $propertyId,
-                  'type' => $type,
-                  'is_public' => true,
-              ];
+            // Extract xsi type if any.
+            $attributes = iterator_to_array($value->attributes('xsi', true));
+            $type = empty($attributes['type']) ? null : trim($attributes['type']);
+            $type = in_array(strtolower($type), ['dcterms:uri', 'uri']) ? 'uri' : 'literal';
 
-              switch ($type) {
-                  case 'uri':
-                      $val['o:label'] = null;
-                      $val['@id'] = $text;
-                      break;
+            $val = [
+                'property_id' => $propertyId,
+                'type' => $type,
+                'is_public' => true,
+            ];
 
-                  case 'literal':
-                  default:
-                      // Extract xml language if any.
-                      $attributes = iterator_to_array($value->attributes('xml', true));
-                      $language = empty($attributes['lang']) ? null : trim($attributes['lang']);
-                      
-                      $val['@value'] = $text;
-                      $val['@language'] = $language;
-                      break;
-              }
+            switch ($type) {
+                case 'uri':
+                    $val['o:label'] = null;
+                    $val['@id'] = $text;
+                    break;
 
-              $data[] = $val;
+                case 'literal':
+                default:
+                    // Extract xml language if any.
+                    $attributes = iterator_to_array($value->attributes('xml', true));
+                    $language = empty($attributes['lang']) ? null : trim($attributes['lang']);
+
+                    $val['@value'] = $text;
+                    $val['@language'] = $language;
+                    break;
+            }
+
+            $data[] = $val;
         }
         return $data;
     }
