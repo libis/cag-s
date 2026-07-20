@@ -212,125 +212,136 @@ if ($showMapView) {
             <?php endif; ?>
         </div>
     </div>
-    
-        <div class="section section--default">
 
-            <div class="container">
-            <?php endif; // End NOT partial.
-            ?>
-            <?php
-            if ($query->isBrowse()) {
-                // No search query.
-                $mainTitle = $translate($searchConfig->subSetting('results', 'label_default') ?: 'Search');
-            } else {
-                $mainTitle = $response->getTotalResults()
-                    ? $translate($searchConfig->subSetting('results', 'label_results') ?: 'Search results')
-                    : $translate($searchConfig->subSetting('results', 'label_no_results') ?: 'No results');
-            }
+    <div class="section section--default">
 
-            $this->htmlElement('body')->appendAttribute('class', 'search-page resource browse');
-            ?>
-            <!--<?= $this->pageTitle($mainTitle, 2) ?>-->
+        <div class="container">
+        <?php endif; // End NOT partial.
+        ?>
+        <?php
+        if ($query->isBrowse()) {
+            // No search query.
+            $mainTitle = $translate($searchConfig->subSetting('results', 'label_default') ?: 'Search');
+        } else {
+            $mainTitle = $response->getTotalResults()
+                ? $translate($searchConfig->subSetting('results', 'label_results') ?: 'Search results')
+                : $translate($searchConfig->subSetting('results', 'label_no_results') ?: 'No results');
+        }
 
-            <?php $not_adv_pages= ["Verhalen"];?>
-            <?php $adv_pages= ["Beeldbank","Tijdschriften","Cinema Rural Filmdatabank"];?>    
-            <?php if(!in_array($page->name(),$not_adv_pages)):?>
-                <?php if(in_array($page->name(),$adv_pages)):?>
-                    <div class="panel panel--light libis-search-advanced">
-                        <?= $searchConfig->renderForm(['template' => null, 'skip_form_action' => $skipFormAction, 'form_action' => $formAction ?? null]) ?>
-                        <span class="search-loop"><i class="fas fa-search"></i></span>
-                        <button class="add_field_button" type="button"><i class='fas fa-plus'></i> Een extra veld toevoegen</button>
+        $this->htmlElement('body')->appendAttribute('class', 'search-page resource browse');
+        ?>
+        <!--<?= $this->pageTitle($mainTitle, 2) ?>-->
 
-                        <a id="advanced-toggle" class="active">Uitgebreid zoeken <i class="fas fa-chevron-down"></i></a>
-                    </div>
-                <?php else: ?>
-                     <div class="panel panel--light libis-search-advanced">
-                        <?= $searchConfig->renderForm(['template' => null, 'skip_form_action' => $skipFormAction, 'form_action' => $formAction ?? null]) ?>
-                        <span class="search-loop"><i class="fas fa-search"></i></span>                      
-                    </div>   
-                <?php endif;?>    
-            <?php endif;?>    
-            <?php if ($displayPartsHeader): ?>
-                <div class="search-results-part search-results-header">
-                    <?= $partial('search/results-header-footer', $variables + ['resultPart' => 'header']) ?>
+        <?php $not_adv_pages = ["Verhalen"]; ?>
+        <?php $adv_pages = ["Beeldbank", "Tijdschriften", "Cinema Rural Filmdatabank"]; ?>
+        <?php if (!in_array($page->name(), $not_adv_pages)): ?>
+            <?php if (in_array($page->name(), $adv_pages)): ?>
+                <div class="panel panel--light libis-search-advanced">
+                    <?= $searchConfig->renderForm(['template' => null, 'skip_form_action' => $skipFormAction, 'form_action' => $formAction ?? null]) ?>
+                    <span class="search-loop"><i class="fas fa-search"></i></span>
+                    <button class="add_field_button" type="button"><i class='fas fa-plus'></i> Een extra veld toevoegen</button>
+
+                    <a id="advanced-toggle" class="active">Uitgebreid zoeken <i class="fas fa-chevron-down"></i></a>
                 </div>
-            <?php endif; ?>
-
-            <?php $this->trigger('view.browse.before'); ?>
-
-            <?php if ($documentCount): ?>
-                <div class="grid">
-                    <?php if ($displayFacets === 'before'): ?>
-                        <?= $partial('search/facets-list') ?>
-                    <?php endif; ?>
-                    <?php foreach (array_filter($response->getResourceTotalResults()) as $resourceType => $count): ?>
-                        <?= $partial('search/results', $variables + ['resourceType' => $resourceType]) ?>
-                    <?php endforeach; ?>
-                    <?php if ($displayFacets === 'after'): ?>
-                        <?= $partial('search/facets-list') ?>
-                    <?php endif; ?>
-                </div>
-
-                <?php // Map view container (hidden by default, shown when map view is selected). 
-                ?>
-                <?php if (!empty($showMapView)): ?>
-                    <?php
-                    // For map view, determine if we should pass item IDs or let Mapping show all.
-                    // - If browse (no query): don't pass IDs, show all features
-                    // - If filtered search with reasonable count: pass IDs
-                    // - If filtered search with too many results: don't pass IDs (would be excessive)
-                    $isBrowse = $query->isBrowse();
-                    $totalItems = $response->getResourceTotalResults('items') ?: 0;
-                    $maxItemsForMap = 10000; // Reasonable limit for passing IDs
-                    // Use comma-separated format (Omeka supports "id=x,y,z").
-                    $itemIdsString = (!$isBrowse && $totalItems > 0 && $totalItems <= $maxItemsForMap)
-                        ? implode(',', $response->getAllResourceIds('items'))
-                        : '';
-                    ?>
-                    <div class="search-results-part search-results-map" style="display: none;">
-                        <div id="search-map"
-                            data-basemap-provider="<?= $escape($mappingBasemapProvider) ?>"
-                            data-disable-clustering="<?= $mappingDisableClustering ?>"
-                            data-features-url="<?= $escape($mappingFeaturesUrl) ?>"
-                            data-feature-popup-content-url="<?= $escape($mappingPopupUrl) ?>"
-                            data-item-ids="<?= $escape($itemIdsString) ?>">
-                        </div>
-                    </div>
-                <?php endif; ?>
-
             <?php else: ?>
+                <div class="panel panel--light libis-search-advanced">
+                    <?= $searchConfig->renderForm(['template' => null, 'skip_form_action' => $skipFormAction, 'form_action' => $formAction ?? null]) ?>
+                    <span class="search-loop"><i class="fas fa-search"></i></span>
+                </div>
+            <?php endif; ?>
+        <?php endif; ?>
+        <?php if ($displayPartsHeader): ?>
+            <div class="search-results-part search-results-header">
+                <?= $partial('search/results-header-footer', $variables + ['resultPart' => 'header']) ?>
+            </div>
+        <?php endif; ?>
 
-                <div class="noresults">
-                    <?php if (empty($query) && !$itemSet): ?>
-                        <?= $translate('Fill a query and get results.') ?>
-                    <?php elseif (empty($query) && $itemSet): ?>
-                        <?= $translate('This item set has no items.') ?>
-                    <?php else: ?>
-                        <?php if (in_array($searchConfig->subSetting('results', 'search_filters', 'header'), ['header', 'both'])): ?>
-                            <div class="search-results-part search-results-header">
-                                <?= $searchConfig->renderSearchFilters($query, ['template' => 'common/search-filters-links']) ?>
-                            </div>
-                        <?php endif; ?>
-                        <?= $translate('The query returned no results') ?>
+        <?php $this->trigger('view.browse.before'); ?>
+
+        <?php if ($documentCount): ?>
+            <div class="grid">
+                <?php if ($displayFacets === 'before'): ?>
+                    <div class="facet-filter-nav">
+                        <div class="filter-icon">
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+                                <path d="M3.9 54.9C10.5 40.9 24.5 32 40 32l432 0c15.5 0 29.5 8.9 36.1 22.9s4.6 30.5-5.2 42.5L320 320.9 320 448c0 12.1-6.8 23.2-17.7 28.6s-23.8 4.3-33.5-3l-64-48c-8.1-6-12.8-15.5-12.8-25.6l0-79.1L9 97.3C-.7 85.4-2.8 68.8 3.9 54.9z" fill="none" stroke="black" transform="scale(0.9) translate(25,25)" />
+                            </svg>
+                        </div>
+                        <a role="button" class="close-icon">
+                            <span></span>
+                            <span></span>
+                        </a>
+                    </div>
+                    <?= $partial('search/facets-list') ?>
+                <?php endif; ?>
+                <?php foreach (array_filter($response->getResourceTotalResults()) as $resourceType => $count): ?>
+                    <?= $partial('search/results', $variables + ['resourceType' => $resourceType]) ?>
+                <?php endforeach; ?>
+                <?php if ($displayFacets === 'after'): ?>
+                    <?= $partial('search/facets-list') ?>
+                <?php endif; ?>
+            </div>
+
+            <?php // Map view container (hidden by default, shown when map view is selected). 
+            ?>
+            <?php if (!empty($showMapView)): ?>
+                <?php
+                // For map view, determine if we should pass item IDs or let Mapping show all.
+                // - If browse (no query): don't pass IDs, show all features
+                // - If filtered search with reasonable count: pass IDs
+                // - If filtered search with too many results: don't pass IDs (would be excessive)
+                $isBrowse = $query->isBrowse();
+                $totalItems = $response->getResourceTotalResults('items') ?: 0;
+                $maxItemsForMap = 10000; // Reasonable limit for passing IDs
+                // Use comma-separated format (Omeka supports "id=x,y,z").
+                $itemIdsString = (!$isBrowse && $totalItems > 0 && $totalItems <= $maxItemsForMap)
+                    ? implode(',', $response->getAllResourceIds('items'))
+                    : '';
+                ?>
+                <div class="search-results-part search-results-map" style="display: none;">
+                    <div id="search-map"
+                        data-basemap-provider="<?= $escape($mappingBasemapProvider) ?>"
+                        data-disable-clustering="<?= $mappingDisableClustering ?>"
+                        data-features-url="<?= $escape($mappingFeaturesUrl) ?>"
+                        data-feature-popup-content-url="<?= $escape($mappingPopupUrl) ?>"
+                        data-item-ids="<?= $escape($itemIdsString) ?>">
+                    </div>
+                </div>
+            <?php endif; ?>
+
+        <?php else: ?>
+
+            <div class="noresults">
+                <?php if (empty($query) && !$itemSet): ?>
+                    <?= $translate('Fill a query and get results.') ?>
+                <?php elseif (empty($query) && $itemSet): ?>
+                    <?= $translate('This item set has no items.') ?>
+                <?php else: ?>
+                    <?php if (in_array($searchConfig->subSetting('results', 'search_filters', 'header'), ['header', 'both'])): ?>
+                        <div class="search-results-part search-results-header">
+                            <?= $searchConfig->renderSearchFilters($query, ['template' => 'common/search-filters-links']) ?>
+                        </div>
                     <?php endif; ?>
-                </div>
-
-            <?php endif; ?>
-
-            <?php $this->trigger('view.browse.after'); ?>
-
-            <?php if ($displayPartsFooter): ?>
-                <div class="search-results-part search-results-footer">
-                    <?= $partial('search/results-header-footer', $variables + ['resultPart' => 'footer']) ?>
-                </div>
-            <?php endif; ?>
-
+                    <?= $translate('The query returned no results') ?>
+                <?php endif; ?>
             </div>
 
+        <?php endif; ?>
 
+        <?php $this->trigger('view.browse.after'); ?>
+
+        <?php if ($displayPartsFooter): ?>
+            <div class="search-results-part search-results-footer">
+                <?= $partial('search/results-header-footer', $variables + ['resultPart' => 'footer']) ?>
             </div>
+        <?php endif; ?>
 
-            <?php if (empty($isPartial)): ?>
+        </div>
+
+
+    </div>
+
+    <?php if (empty($isPartial)): ?>
         </div>
     <?php endif; ?>
     </div>
