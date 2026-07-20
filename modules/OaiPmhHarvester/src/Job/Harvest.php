@@ -599,9 +599,9 @@ class Harvest extends AbstractJob
                     $date = explode("-",$date);
                     $first_date = trim($date[0]);
                     if(sizeof($date) > 1){
-                        $last_date = trim($date[1]) == 'heden' ? 3000 : trim($date[1]);
+                        $last_date = trim($date[1]);
                     }else{
-                        $last_date = $first_date == 'heden' ? 3000 : $first_date;
+                        $last_date = $first_date;
                     }
 
                     $elementTexts["dcterms:issued"][] = 
@@ -609,14 +609,14 @@ class Harvest extends AbstractJob
                             'property_id' => 23,
                             'type' => 'literal',
                             '@language' => '',
-                            '@value' => $first_date.'',
+                            '@value' => $first_date == 'heden' ? 3000 : $first_date,
                         ];
                     $elementTexts["dcterms:valid"][] = 
                         [
                             'property_id' => 21,
                             'type' => 'literal',
                             '@language' => '',
-                            '@value' => $last_date.'',
+                            '@value' => $last_date == 'heden' ? 3000 : $last_date,
                         ];
                 }
             }
