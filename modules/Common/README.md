@@ -44,6 +44,7 @@ copy-paste common code between modules.
   - Media Ingester Select
   - Media Renderer Select
   - Media Type Select
+  - Secret
   - Sites Page Select
   - Optional Checkbox
   - Optional Date
@@ -119,10 +120,10 @@ Installation
 
 See general end user documentation for [installing a module].
 
-**IMPORTANT**: As long as [PR #2412] is not merged, use the Zip method or use
+**IMPORTANT**: As long as [PR #2432] is not merged, use the Zip method or use
 version 3.4.76.
 
-* With composer (recommended, requires Omeka S with [PR #2412])
+* With composer (recommended, requires Omeka S with [PR #2432])
 
 From the root of Omeka S, install the module:
 
@@ -289,7 +290,8 @@ For improved checks, install module [Bot Guard].
 #### SendFile
 
 Send a file for download, without limit of size or memory, via a stream.
-The content disposition can be set via the parameters of via the query (download=1 for attachment, else inline).
+The content disposition can be set via the parameters of via the query (download=1
+for attachment, else inline).
 
 #### PrepareMessage
 
@@ -580,7 +582,13 @@ with this class with the trait:
 namespace MyModule;
 
 if (!trait_exists(\Common\TraitModule::class, false)) {
-    require_once dirname(__DIR__) . '/Common/src/TraitModule.php';
+    if (file_exists(OMEKA_PATH . '/modules/Common/src/TraitModule.php')) {
+        require_once OMEKA_PATH . '/modules/Common/src/TraitModule.php';
+    } elseif (file_exists(OMEKA_PATH . '/composer-addons/modules/Common/src/TraitModule.php')) {
+        require_once OMEKA_PATH . '/composer-addons/modules/Common/src/TraitModule.php';
+    } elseif (file_exists(dirname(__DIR__) . '/Common/src/TraitModule.php')) {
+        require_once dirname(__DIR__) . '/Common/src/TraitModule.php';
+    }
 }
 
 use Common\TraitModule;
@@ -598,7 +606,13 @@ The class AbstractModule is still provided, but deprecated. You may extend it:
 
 ```php
 if (!class_exists(\Common\AbstractModule::class, false)) {
-    require_once dirname(__DIR__) . '/Common/src/AbstractModule.php';
+    if (file_exists(OMEKA_PATH . '/modules/Common/src/AbstractModule.php')) {
+        require_once OMEKA_PATH . '/modules/Common/src/AbstractModule.php';
+    } elseif (file_exists(OMEKA_PATH . '/composer-addons/modules/Common/src/AbstractModule.php')) {
+        require_once OMEKA_PATH . '/composer-addons/modules/Common/src/AbstractModule.php';
+    } elseif (file_exists(dirname(__DIR__) . '/Common/src/AbstractModule.php')) {
+        require_once dirname(__DIR__) . '/Common/src/AbstractModule.php';
+    }
 }
 
 use Common\AbstractModule;
@@ -608,13 +622,6 @@ class Module extends AbstractModule
     const NAMESPACE = __NAMESPACE__;
 }
 ```
-
-**Note**: When Common is installed via composer, classes and traits are
-autoloaded via PSR-4 (`Common\TraitModule`, `Common\AbstractModule`, etc.). The
-`require_once` with `class_exists()`/`trait_exists()` check ensures backward
-compatibility with manual (zip) installations in the directory modules/ and is
-needed during upgrades of module Common. This check will be useless for the next
-major upgrade of Omeka.
 
 **WARNING**: with an abstract class, `parent::method()` in the module calls the
 method of the abstract class (`Common\AbstractModule`), but with a trait,
@@ -639,6 +646,90 @@ The button can also be enabled globally for every module config form (even
 modules that do not use the trait) with an option provided by module
 [Easy Admin].
 
+### Secret settings (encrypted at rest in database)
+
+To store a sensitive setting (API key, password, token), use the form element
+`Common\Form\Element\Secret` instead of a text or password element:
+
+```php
+use Common\Form\Element as CommonElement;
+
+$this->add([
+    'name' => 'mymodule_api_key',
+    'type' => CommonElement\Secret::class,
+    'options' => [
+        'label' => 'API key', // @translate
+    ],
+    'attributes' => [
+        'id' => 'mymodule_api_key',
+    ],
+]);
+```
+
+The element and its view helper `formSecret` handle only the presentation:
+
+- the input is a plain text field by default (clearer when typing a value) and
+  excluded from autofill; set the element option `masked` to true to render a
+  password input instead;
+- a lock icon always marks the field as a secret, and turns green when a value is
+  already saved;
+- the stored value is never echoed back to the browser;
+- when a value is already set, a checkbox "remove the saved value" (`{name}_remove`)
+  is appended and the placeholder is replaced by "leave empty to keep the current value".
+
+A form element cannot handle persistence, because that happens at submit time
+and the value is not resent. Where that logic lives depends on how the form is
+saved:
+
+- Module config form: nothing to do. The trait `handleConfigForm()` detects the
+  Secret elements, encrypts them with the service `Omeka\Cipher` on save, keeps
+  the current value on empty submission, and clears it when the companion
+  `{name}_remove` checkbox is checked. Display is handled by `blankSecretFields()`.
+- Entity or resource form  (saved through an api adapter, not the trait): apply
+  the same three rules in the adapter `hydrate()`: encrypt the non-empty value
+  with `Omeka\Cipher`, keep the existing stored value when the submission is
+  empty (and no `{name}_remove`), and clear it when `{name}_remove` is checked.
+  Decrypt in the representation when the value is read. The trait cannot reach
+  an entity adapter, so this cannot be shared with it yet.
+
+**Important**: the `{name}_remove` checkbox is raw markup injected by the view
+helper at render time, not a Laminas form element. So it is present in the raw
+HTTP post but absent from `$form->getData()`, which only returns the declared
+elements. The trait works because it reads the raw post (`$controller->getRequest()->getPost()->toArray()`).
+A controller that persists through `$form->getData()`, typical for an entity or
+an adapter form, must therefore carry the remove flags over from the raw post
+itself before saving, otherwise removing a secret silently does nothing:
+
+```php
+$data = $form->getData();
+$postClient = $this->params()->fromPost('o:settings')['client'] ?? [];
+foreach (['password_remove', 'admin_password_remove'] as $key) {
+    if (!empty($postClient[$key])) {
+        $data['o:settings']['client'][$key] = $postClient[$key];
+    }
+}
+// ... then hydrate/save $data; the adapter reads the *_remove flags.
+```
+
+Secrets are only encrypted when a key is configured (auto-generated in `config/secret_key.php`
+on install, or the environment variable `OMEKA_SECRET_KEY`); otherwise they are
+stored clear.
+
+**Scope / current limitation.** The trait wires the Secret handling
+(`blankSecretFields` on display, `applySecretFields` on save) only in the module
+**config form** (`getConfigForm()` / `handleConfigForm()`). It is **not** applied
+to the main settings, site settings, user settings, or theme settings pages:
+`handleAnySettings()` builds the fieldset but calls neither, and there is no
+theme-settings handler at all. A Secret element placed in a `SettingsFieldset`,
+`SiteSettingsFieldset`, `UserSettingsFieldset`, or a theme's settings would
+therefore be rendered with its stored value in the HTML (no blanking) and saved
+as-is (no encryption) — worse than a plain text field. Until this is wired,
+
+- use `Secret` only in a module **config form**, or
+- handle encryption, blanking, keep-on-empty and the raw-post `{name}_remove`
+  flag yourself in whatever code builds and saves that particular form (see the
+  entity/adapter case above).
+
 ### Installing resources
 
 To install resources, the class `ManageModuleAndResources` can be used. It is
@@ -648,7 +739,13 @@ located inside `data/`, that will be automatically imported.
 
 ```php
 if (!class_exists(\Common\ManageModuleAndResources::class, false)) {
-    require_once dirname(__DIR__) . '/Common/src/ManageModuleAndResources.php';
+    if (file_exists(OMEKA_PATH . '/modules/Common/src/ManageModuleAndResources.php')) {
+        require_once OMEKA_PATH . '/modules/Common/src/ManageModuleAndResources.php';
+    } elseif (file_exists(OMEKA_PATH . '/composer-addons/modules/Common/src/ManageModuleAndResources.php')) {
+        require_once OMEKA_PATH . '/composer-addons/modules/Common/src/ManageModuleAndResources.php';
+    } elseif (file_exists(dirname(__DIR__) . '/Common/src/ManageModuleAndResources.php')) {
+        require_once dirname(__DIR__) . '/Common/src/ManageModuleAndResources.php';
+    }
 }
 ```
 
@@ -658,6 +755,7 @@ TODO
 
 - [ ] Use key "psr_log" instead of "log" (see https://docs.laminas.dev/laminas-log/service-manager/#psrloggerabstractadapterfactory).
 - [ ] Use materialized views for EasyMeta?
+- [ ] Wire the Secret handling (blank/encrypt/keep/remove) into main/site/user/theme settings pages, not only module config forms (see [pull request #2529](https://github.com/omeka/omeka-s/pull/2529)).
 
 
 Warning

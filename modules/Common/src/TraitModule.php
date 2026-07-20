@@ -283,15 +283,28 @@ trait TraitModule
             $form->init();
             $form->setData($data);
         }
+
+        // Never render a stored secret back to the browser: blank the field and
+        // hint that a value is set. The value is restored on save when left
+        // empty (@see handleConfigFormAuto()).
+        $this->blankSecretFields($form, $settings);
+
         $form->prepare();
+
+        $helpers = $renderer->getHelperPluginManager();
+
+        // A form may declare a tabbed layout via the option "element_tabs"
+        // (each element/fieldset carries a "tab" option). This is independent
+        // from "element_groups", which render as sections (possibly nested
+        // inside a tab). No custom getConfigForm() is needed.
+        if ($form->getOption('element_tabs') && $helpers->has('formTabs')) {
+            return $renderer->formTabs($form);
+        }
 
         // When the form declares element groups, render them as sections via
         // the dedicated helper, since the default formCollection() ignores the
-        // "element_groups" option. Fieldset-based (tabbed) layouts remain the
-        // responsibility of each module's own getConfigForm().
-        if ($form->getOption('element_groups')
-            && $renderer->getHelperPluginManager()->has('formCollectionElementGroups')
-        ) {
+        // "element_groups" option.
+        if ($form->getOption('element_groups') && $helpers->has('formCollectionElementGroups')) {
             return $renderer->formCollectionElementGroups($form);
         }
 
@@ -382,10 +395,87 @@ trait TraitModule
 
         $settings = $services->get('Omeka\Settings');
         $params = array_intersect_key($params, $defaultSettings);
+        // Encrypt secret fields, keep the current value on empty submission, or
+        // clear it when the companion "{name}_remove" checkbox is checked.
+        $params = $this->applySecretFields($form, $params, $controller->getRequest()->getPost()->toArray());
         foreach ($params as $name => $value) {
             $settings->set($name, $value);
         }
         return true;
+    }
+
+    /**
+     * Names of the Secret form elements (top-level), matching setting keys.
+     *
+     * @param \Laminas\Form\Form $form
+     */
+    protected function secretElementNames($form): array
+    {
+        $names = [];
+        foreach ($form->getElements() as $element) {
+            if ($element instanceof \Common\Form\Element\Secret) {
+                $names[] = $element->getName();
+            }
+        }
+        return $names;
+    }
+
+    /**
+     * Blank Secret fields before rendering, so the ciphertext stored at rest is
+     * never echoed; add a placeholder when a value is already set.
+     *
+     * @param \Laminas\Form\Form $form
+     * @param \Omeka\Settings\Settings $settings
+     */
+    protected function blankSecretFields($form, $settings): void
+    {
+        $names = $this->secretElementNames($form);
+        if (!$names) {
+            return;
+        }
+        $translator = $this->getServiceLocator()->get('MvcTranslator');
+        foreach ($names as $name) {
+            $element = $form->get($name);
+            $element->setValue('');
+            if ((string) $settings->get($name, '') !== '') {
+                // Drives the inline "remove" control of the Secret view helper.
+                $element->setOption('has_value', true);
+                if (!$element->getAttribute('placeholder')) {
+                    $element->setAttribute('placeholder', $translator->translate('Leave empty to keep the current value')); // @translate
+                }
+            }
+        }
+    }
+
+    /**
+     * Apply the secret fields rules before saving:
+     * - the companion checkbox "{name}_remove" is checked: clear the value;
+     * - the submission is empty: keep the current stored value;
+     * - otherwise: encrypt the submitted value.
+     *
+     * An empty field is ambiguous (untouched vs. cleared), so an explicit
+     * checkbox carries the "clear" intent; without it, an empty field never
+     * wipes the stored secret when the config form is saved.
+     *
+     * @param \Laminas\Form\Form $form
+     */
+    protected function applySecretFields($form, array $params, array $post): array
+    {
+        $names = $this->secretElementNames($form);
+        if (!$names) {
+            return $params;
+        }
+        $cipher = $this->getServiceLocator()->get('Omeka\Cipher');
+        foreach ($names as $name) {
+            if (!empty($post[$name . '_remove'])) {
+                $params[$name] = '';
+            } elseif (!array_key_exists($name, $params) || (string) $params[$name] === '') {
+                unset($params[$name]);
+            } else {
+                $params[$name] = $cipher->encrypt((string) $params[$name]);
+            }
+        }
+        return $params;
     }
 
     public function handleMainSettings(Event $event): void

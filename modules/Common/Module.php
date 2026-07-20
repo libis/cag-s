@@ -43,17 +43,55 @@ class Module extends AbstractModule
     public function install(ServiceLocatorInterface $services): void
     {
         $this->setServiceLocator($services);
+        $this->registerModuleNamespace();
         $this->preparePsrMessage();
         $this->checkExtensionIntl();
         $this->fixIndexes();
         $this->checkGeneric();
+        $this->ensureSecretKey();
     }
 
     public function upgrade($oldVersion, $newVersion, ServiceLocatorInterface $services): void
     {
         $this->setServiceLocator($services);
+        $this->registerModuleNamespace();
         $filepath = __DIR__ . '/data/scripts/upgrade.php';
         require_once $filepath;
+    }
+
+    /**
+     * Register the module psr-4 namespace during install/upgrade: the module is
+     * not active yet, so the Omeka module manager has not registered it and the
+     * module's own classes used by install()/upgrade() would not be found.
+     */
+    protected function registerModuleNamespace(): void
+    {
+        $loader = new \Composer\Autoload\ClassLoader();
+        $loader->addPsr4(__NAMESPACE__ . '\\', __DIR__ . '/src/');
+        $loader->register();
+    }
+
+    /**
+     * Generate the application secret key when none is configured and the
+     * config directory is writable, so secrets are encrypted at rest out of the
+     * box. Backfill of the core feature; a no-op once a key is set.
+     */
+    protected function ensureSecretKey(): void
+    {
+        $services = $this->getServiceLocator();
+        if (\Common\Stdlib\SecretKey::resolve()) {
+            return;
+        }
+        $logger = $services->get('Omeka\Logger');
+        if (\Common\Stdlib\SecretKey::store(\Common\Stdlib\SecretKey::generate())) {
+            $logger->info('A secret key was generated in config/secret_key.php to encrypt secrets.'); // @translate
+        } else {
+            $message = new \Common\Stdlib\PsrMessage(
+                'The secret key could not be created: set it manually in config/secret_key.php or set the environment variable "OMEKA_SECRET_KEY" to encrypt secrets (module api keys, etc.).' // @translate
+            );
+            $logger->warn($message->getMessage());
+            $services->get('ControllerPluginManager')->get('messenger')->addWarning($message);
+        }
     }
 
     /**
@@ -62,15 +100,15 @@ class Module extends AbstractModule
     protected function preparePsrMessage(): void
     {
         // Polyfill core PsrMessage classes for Omeka S < 4.2.
+        // The module psr-4 classes (Common\Stdlib\PsrMessage, etc.) are
+        // autoloaded, since the namespace is registered by registerModuleNamespace()
+        // during install.
         if (version_compare(\Omeka\Module::VERSION, '4.2', '<')) {
             require_once __DIR__ . '/data/compat/MessageInterface.php';
             require_once __DIR__ . '/data/compat/PsrInterpolateInterface.php';
             require_once __DIR__ . '/data/compat/PsrInterpolateTrait.php';
             require_once __DIR__ . '/data/compat/PsrMessage.php';
         }
-        require_once __DIR__ . '/src/Stdlib/PsrInterpolateInterface.php';
-        require_once __DIR__ . '/src/Stdlib/PsrInterpolateTrait.php';
-        require_once __DIR__ . '/src/Stdlib/PsrMessage.php';
     }
 
     protected function checkExtensionIntl(): void

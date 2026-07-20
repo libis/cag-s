@@ -4,9 +4,11 @@ namespace Common;
 
 return [
     'service_manager' => [
-        'factories' => [
+        'factories' => array_filter([
+            'Common\Cipher' => Service\Stdlib\CipherFactory::class,
             'Common\DeferredJobDispatch' => Service\Stdlib\DeferredJobDispatchFactory::class,
             'Common\EasyMeta' => Service\Stdlib\EasyMetaFactory::class,
+            'Common\UpgradeJobDispatch' => Service\Stdlib\UpgradeJobDispatchFactory::class,
             // TODO Use a delegator for file, dispatcher and logger factories? A direct factory is simpler for the same result for these services.
             'Omeka\File\TempFileFactory' => Service\File\TempFileFactoryFactory::class,
             'Omeka\File\Validator' => Service\File\ValidatorFactory::class,
@@ -14,7 +16,13 @@ return [
             'Omeka\Job\Dispatcher' => Service\Job\DispatcherFactory::class,
             // Allow to add the PSR-3 formatter to default logger.
             'Omeka\Logger' => Service\LoggerFactory::class,
-        ],
+            // Backfill of the core secret-key cipher: defer to the core service
+            // as soon as it provides the class, otherwise provide the backfill.
+            // During preload, the class may be available but not loaded yet.
+            'Omeka\Cipher' => class_exists(\Omeka\Stdlib\Cipher::class)
+                ? null
+                : Service\Stdlib\CipherFactory::class,
+        ]),
         'aliases' => [
             // @deprecated Use "Common\EasyMeta". Will be removed in a future version.
             'EasyMeta' => 'Common\EasyMeta',
@@ -40,9 +48,12 @@ return [
     ],
     'view_helpers' => [
         'invokables' => [
-            'configFormTabs' => View\Helper\ConfigFormTabs::class,
+            'formTabs' => View\Helper\FormTabs::class,
+            // Deprecated alias.
+            'configFormTabs' => View\Helper\FormTabs::class,
             'formCollection' => Form\View\Helper\FormCollection::class,
             'formNote' => Form\View\Helper\FormNote::class,
+            'formSecret' => Form\View\Helper\FormSecret::class,
             'isHomePage' => View\Helper\IsHomePage::class,
             'isHtml' => View\Helper\IsHtml::class,
             'isXml' => View\Helper\IsXml::class,
@@ -54,7 +65,7 @@ return [
                 Service\Delegator\FormElementDelegatorFactory::class,
             ],
         ],
-        'factories' => [
+        'factories' => array_filter([
             'assetUrl' => Service\ViewHelper\AssetUrlFactory::class,
             'dataType' => Service\ViewHelper\DataTypeFactory::class,
             'defaultSite' => Service\ViewHelper\DefaultSiteFactory::class,
@@ -62,8 +73,14 @@ return [
             'matchedRouteName' => Service\ViewHelper\MatchedRouteNameFactory::class,
             'mediaTypeSelect' => Service\ViewHelper\MediaTypeSelectFactory::class,
             'moduleConfigNav' => Service\View\Helper\ModuleConfigNavFactory::class,
+            'prepareMessage' => Service\ViewHelper\PrepareMessageFactory::class,
             'translator' => Service\ViewHelper\TranslatorFactory::class,
-        ],
+            // Override of core "trigger" view helper to also fire on error pages (no route match).
+            // Drop once the upstream fix ships in Omeka S 4.3.
+            'trigger' => version_compare(\Omeka\Module::VERSION, '4.3', '<')
+                ? Service\ViewHelper\TriggerFactory::class
+                : null,
+        ]),
     ],
     // Add some common elements and make standard elements and some omeka ones optional.
     // The elements of the module Advanced Search that add features are not included.
@@ -84,6 +101,7 @@ return [
             Form\Element\OptionalRadio::class => Form\Element\OptionalRadio::class,
             Form\Element\OptionalSelect::class => Form\Element\OptionalSelect::class,
             Form\Element\OptionalUrl::class => Form\Element\OptionalUrl::class,
+            Form\Element\Secret::class => Form\Element\Secret::class,
             Form\Element\UrlQuery::class => Form\Element\UrlQuery::class,
             Form\SendMessageForm::class => Form\SendMessageForm::class,
         ],

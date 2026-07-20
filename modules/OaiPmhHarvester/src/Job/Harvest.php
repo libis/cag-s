@@ -146,7 +146,7 @@ class Harvest extends AbstractJob
 
             if ($resumptionToken) {
                 $url = $args['endpoint'] . "?resumptionToken=$resumptionToken&verb=ListRecords";
-                $this->logger->info($resumptionToken);
+                //$this->logger->info($resumptionToken);
             } else {
                 $url = $args['endpoint'] . "?metadataPrefix=" . $args['metadata_prefix'] . '&verb=ListRecords';
                 if (strlen($args['set_spec'])) {
@@ -248,15 +248,7 @@ class Harvest extends AbstractJob
                 $this->createItems($toInsert);
             }*/
             gc_collect_cycles();
-            //$this->logger->info("mem: ".memory_get_usage());
-            $identityMap = $entityManager->getUnitOfWork()->getIdentityMap();
-            foreach ($identityMap as $entityClass => $entities) {
-                foreach ($entities as $idHash => $entity) {
-                    if (!isset($originalIdentityMap[$entityClass][$idHash])) {
-                        $entityManager->detach($entity);
-                    }
-                }
-            }
+            $entityManager->clear();
 
             $resumptionToken = isset($response->ListRecords->resumptionToken) && $response->ListRecords->resumptionToken <> ''
                 ? $response->ListRecords->resumptionToken
@@ -325,9 +317,9 @@ class Harvest extends AbstractJob
             if ($result):
                 try {
                     //don't update files for now to avoid redownload
-                    if ($result->media()):
+                    //if ($result->media()):
                         unset($item['o:media']);
-                    endif;
+                    //endif;
 
                     $response = $this->api->update($resource_type, $result->id(), $item, [], ['isPartial' => true, 'flushEntityManager' => true]);
                     $response = null;
