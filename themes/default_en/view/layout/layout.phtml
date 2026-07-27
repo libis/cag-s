@@ -7,7 +7,7 @@ $this->headMeta()->appendName('viewport', 'width=device-width, initial-scale=1')
 $this->headTitle()->setSeparator(' · ');
 
 $this->headLink()->prependStylesheet($this->assetUrl('css/main.css'));
-$this->headLink()->prependStylesheet($this->assetUrl('css/style.css'));
+$this->headLink()->prependStylesheet($this->assetUrl('css/style.min.css'));
 $this->headLink()->prependStylesheet($this->assetUrl('css/slick.css'));
 $this->headLink()->prependStylesheet($this->assetUrl('css/iconfonts.css', 'Omeka'));
 
@@ -15,7 +15,6 @@ $this->headScript()->prependFile($this->assetUrl('js/default.js'));
 $this->headScript()->prependFile($this->assetUrl('js/slick.js'));
 $this->headScript()->prependFile($this->assetUrl('js/global.js', 'Omeka'));
 $this->headScript()->prependFile($this->assetUrl('vendor/jquery/jquery.min.js', 'Omeka'));
-//$this->headScript()->prependFile($this->assetUrl('js/docs.js'));
 
 $this->trigger('view.layout');
 $title = $this->pageTitle($site->title());
@@ -31,6 +30,15 @@ $userBar = $this->userBar();
         <?php echo $this->headScript(); ?>
         <meta name="google-site-verification" content="0urVxQDyV7rQ_QQOvZU_u05j_EArGzakWxqD1ykAm4U" />
         <link rel="icon" href="<?php echo $this->assetUrl('img/icon.png');?>"/>
+        <script
+        src="https://cdn.jsdelivr.net/gh/orestbida/cookieconsent@3.1.0/dist/cookieconsent.umd.js"
+        defer
+        init></script>        
+    <script
+        src="<?php echo $this->assetUrl('js/cookieconsent-config.js'); ?>"
+        defer
+        init></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orestbida/cookieconsent@3.1.0/dist/cookieconsent.css">    
     </head>
 
     <?php echo $this->htmlElement('body'); ?>
@@ -356,15 +364,17 @@ $userBar = $this->userBar();
       <script src="<?php echo $this->assetUrl('js/main.js');?>"></script>
       <script src="<?php echo $this->assetUrl('js/docs.js');?>"></script>
       <!-- Global site tag (gtag.js) - Google Analytics -->
-      <!-- Global site tag (gtag.js) - Google Analytics -->
-      <script async src="https://www.googletagmanager.com/gtag/js?id=UA-16899634-1"></script>
-      <script>
-      window.dataLayer = window.dataLayer || [];
-      function gtag(){dataLayer.push(arguments);}
-      gtag('js', new Date());
+      <script type="text/plain" data-category="analytics" async src="https://www.googletagmanager.com/gtag/js?id=UA-16899634-1"></script>
+        <script type="text/plain" data-category="analytics">
+            window.dataLayer = window.dataLayer || [];
 
-      gtag('config', 'UA-16899634-1');
-      </script>
+            function gtag() {
+                dataLayer.push(arguments);
+            }
+            gtag('js', new Date());
+
+            gtag('config', 'UA-16899634-1');
+        </script>
      
     </body>
 </html>

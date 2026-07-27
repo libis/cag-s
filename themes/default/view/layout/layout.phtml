@@ -19,6 +19,7 @@ $this->headLink()->prependStylesheet($this->assetUrl('css/iconfonts.css', 'Omeka
 
 $this->headScript()->prependFile($this->assetUrl('js/default.js'));
 $this->headScript()->prependFile($this->assetUrl('js/slick.js'));
+
 $this->headScript()->prependFile($this->assetUrl('js/global.js', 'Omeka'));
 $this->headScript()->prependFile($this->assetUrl('vendor/jquery/jquery.min.js', 'Omeka'));
 //$this->headScript()->prependFile($this->assetUrl('js/docs.js'));
@@ -45,6 +46,15 @@ $userBar = $this->userBar();
         src="https://cdn.jsdelivr.net/npm/shareon@2/dist/shareon.iife.js"
         defer
         init></script>
+     <script
+        src="https://cdn.jsdelivr.net/gh/orestbida/cookieconsent@3.1.0/dist/cookieconsent.umd.js"
+        defer
+        init></script>        
+    <script
+        src="<?php echo $this->assetUrl('js/cookieconsent-config.js'); ?>"
+        defer
+        init></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orestbida/cookieconsent@3.1.0/dist/cookieconsent.css">    
 </head>
 
 <?php echo $this->htmlElement('body'); ?>
@@ -388,8 +398,8 @@ $userBar = $this->userBar();
 <script src="<?php echo $this->assetUrl('js/main.js'); ?>"></script>
 <script src="<?php echo $this->assetUrl('js/docs.js'); ?>"></script>
 <!-- Global site tag (gtag.js) - Google Analytics -->
-<script async src="https://www.googletagmanager.com/gtag/js?id=UA-16899634-1"></script>
-<script>
+<script type="text/plain" data-category="analytics" async src="https://www.googletagmanager.com/gtag/js?id=UA-16899634-1"></script>
+<script type="text/plain" data-category="analytics">
     window.dataLayer = window.dataLayer || [];
 
     function gtag() {

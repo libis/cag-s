@@ -1,4 +1,7 @@
 /* compileCompressed: "../css/$1.min.css", compileExpanded: "../css/$1.css" */
+
+@import "cookie-banner";
+
 img{
   pointer-events: none;
 }
@@ -8,7 +11,7 @@ img{
 
     ul{
       display: none;
-    }
+    } 
 
     &:nth-last-of-type(-n+2) {
         display:none;

@@ -1,6 +1,8 @@
 /* compileCompressed: "../css/$1.min.css", compileExpanded: "../css/$1.css" */
 //same as cag but #935619 instead of #935619
 
+@import "cookie-banner";
+
 //nav__main
 .nav--main li {
     margin: 0 26px;
