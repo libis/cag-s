@@ -3,6 +3,7 @@
 @import "cookie-banner";
 @import "search-custom";
 
+
 $primary: #006b65;
 $yellow: #e8ae11;
 
@@ -750,3 +751,5 @@ video {
     font-size: 1.1rem;
   }
 }
+
+@import "print";

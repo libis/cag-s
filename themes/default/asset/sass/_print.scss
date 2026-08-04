@@ -1,0 +1,215 @@
+// =============================================================================
+// PRINT STYLES
+// =============================================================================
+
+@media print {
+
+  // ---------------------------------------------------------------------
+  // Base reset (kept from the existing normalize-based print rules, plus
+  // sensible defaults for a components-heavy layout)
+  // ---------------------------------------------------------------------
+  * ,
+  *:before,
+  *:after {
+    background: transparent !important;
+    color: #000 !important;
+    box-shadow: none !important;
+    text-shadow: none !important;
+  }
+
+  html,
+  body {
+    font-size: 12pt;
+    line-height: 1.4;
+    background: red;
+  }
+
+  a,
+  a:visited {
+    color: #000 !important;
+    text-decoration: underline;
+  }
+
+  // Don't print raw hrefs for internal/anchor/JS links
+  a[href^="javascript:"]:after,
+  a[href^="#"]:after {
+    content: "" !important;
+  }
+
+  // Expand external-link href so it's usable on paper, but strip the icon
+  a.link--ext[href]:after,
+  a.btn--ext[href]:after {
+    content: " (" attr(href) ")";
+    font-size: 90%;
+    font-weight: 400;
+  }
+
+  img {
+    max-width: 100% !important;
+  }
+
+  pre,
+  blockquote {
+    border: 1px solid #999;
+    page-break-inside: avoid;
+  }
+
+  thead {
+    display: table-header-group;
+  }
+
+  tr,
+  img {
+    page-break-inside: avoid;
+  }
+
+  h1, h2, h3 {
+    page-break-after: avoid;
+  }
+
+  p, h2, h3 {
+    orphans: 3;
+    widows: 3;
+  }
+
+  @page {
+    margin: 1.5cm;
+  }
+
+  // ---------------------------------------------------------------------
+  // Icon font: hides on screen it's a webfont glyph, on paper it's either
+  // a missing box or noise. Suppress every icon glyph wholesale.
+  // ---------------------------------------------------------------------
+  .icon:before,
+  .btn__icon:before,
+  .link__icon,
+  [class*="icon--"]:before {
+    display: none !important;
+  }
+
+  // ---------------------------------------------------------------------
+  // Chrome: nothing here helps a reader on paper
+  // ---------------------------------------------------------------------
+  .flyout,
+  .flyout__link,
+  .flyout__overlay,
+  .search,
+  .search__link,
+  .search__close,
+  .nav--social,
+  .nav--social-share,
+  .nav--service,
+  .nav--doormat,
+  .nav--footer,
+  .nav--copyright,
+  .breadcrumb,
+  .pagination,
+  .skip-to-main,
+  .btn,
+  .btn--link,
+  .label,
+  form,
+  .form__actions,
+  video,
+  audio,
+  iframe,
+  .embed-container,
+  .js-search-container,
+  .nav--serivce,
+  .nav--main,
+  .scrollToTop,
+  #user-bar,
+  .np
+   {
+    background: red;
+    display: none !important;
+  }
+
+  // Primary nav is chrome too — it's a set of same-page links with no
+  // meaning once the page is on paper
+  .nav--main {
+    display: none !important;
+  }
+
+  // ---------------------------------------------------------------------
+  // Header / logo — drop the fixed/absolute positioning trickery used for
+  // the sticky screen header, and shrink the mark so it reads as a small
+  // letterhead instead of a hero image
+  // ---------------------------------------------------------------------
+  .page-header-wrapper {
+    position: static !important;
+  }
+
+  .page-header,
+  .page-header__logo,
+  .page-footer__logo {
+    position: static !important;
+    transform: none !important;
+    padding: 0 0 12pt !important;
+    display: block !important;
+  }
+
+  .page-header__logo img,
+  .page-footer__logo img {
+    height: 32pt !important;
+    width: auto !important;
+  }
+
+  .page-header__logo .text--logo,
+  .page-footer__logo .text--logo {
+    font-size: 11pt !important;
+  }
+
+  // ---------------------------------------------------------------------
+  // Hero / section backgrounds — these rely on background images or dark
+  // panels for effect; on paper we just want the text content, unstyled
+  // and unclipped
+  // ---------------------------------------------------------------------
+  .hero__img,
+  .grid--text-image .grid__img,
+  .image--bg,
+  .card__aside,
+  .card__img,
+  .image--secondary:before,
+  .grid--text-image .grid__img:before {
+    display: none !important;
+  }
+
+  .hero__content,
+  .grid--text-image .grid__content {
+    padding: 0 !important;
+    border: 0 !important;
+  }
+
+  .section,
+  .section--bg,
+  .section--dark,
+  .section--light,
+  .panel,
+  .panel--primary,
+  .panel--light,
+  .panel--border {
+    padding: 0 0 12pt !important;
+    border: 0 !important;
+  }
+
+  // ---------------------------------------------------------------------
+  // Force full-width, single-column flow — multi-column grids exist for
+  // screen layout and just fragment content awkwardly across pages
+  // ---------------------------------------------------------------------
+  .grid,
+  .grid__item,
+  [class^="grid__"] {
+    display: block !important;
+    width: 100% !important;
+    margin: 0 0 12pt !important;
+    padding: 0 !important;
+  }
+
+  .container,
+  .container--fluid,
+  .page-wrap {
+    max-width: 100% !important;
+    padding: 0 !important;
+  }
+}

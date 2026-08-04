@@ -1,4 +1,5 @@
 <?php
+
 use Laminas\Session\Container;
 // Check if the current URL has a search query
 if (isset($_GET['q'])) {
@@ -12,10 +13,10 @@ $this->headMeta()->setCharset('utf-8');
 $this->headMeta()->appendName('viewport', 'width=device-width, initial-scale=1');
 $this->headTitle()->setSeparator(' · ');
 
-$this->headLink()->appendStylesheet($this->assetUrl('css/main.css?v=0.1'));
-$this->headLink()->appendStylesheet($this->assetUrl('css/style.min.css?v=0.1'));
+$this->headLink()->appendStylesheet($this->assetUrl('css/main.css?v=0.1'), ['media' => 'all']);
+$this->headLink()->appendStylesheet($this->assetUrl('css/style.min.css?v=0.1'), ['media' => 'all']);
 $this->headLink()->prependStylesheet($this->assetUrl('css/slick.css'));
-$this->headLink()->prependStylesheet($this->assetUrl('css/iconfonts.css', 'Omeka'));
+$this->headLink()->prependStylesheet($this->assetUrl('css/iconfonts.css', 'Omeka'), ['media' => 'all']);
 
 $this->headScript()->prependFile($this->assetUrl('js/default.js'));
 $this->headScript()->prependFile($this->assetUrl('js/slick.js'));
@@ -46,15 +47,15 @@ $userBar = $this->userBar();
         src="https://cdn.jsdelivr.net/npm/shareon@2/dist/shareon.iife.js"
         defer
         init></script>
-     <script
+    <script
         src="https://cdn.jsdelivr.net/gh/orestbida/cookieconsent@3.1.0/dist/cookieconsent.umd.js"
         defer
-        init></script>        
+        init></script>
     <script
         src="<?php echo $this->assetUrl('js/cookieconsent-config.js'); ?>"
         defer
         init></script>
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orestbida/cookieconsent@3.1.0/dist/cookieconsent.css">    
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orestbida/cookieconsent@3.1.0/dist/cookieconsent.css">
 </head>
 
 <?php echo $this->htmlElement('body'); ?>
@@ -88,7 +89,7 @@ $userBar = $this->userBar();
                 </a>
             </div>
             <!-- service nav -->
-            <div class="section section--no-padding section--gradient">
+            <div class="section section--no-padding section--gradient np">
                 <div class="container container--relative">
                     <nav class="nav--service">
                         <ul class="nav__menu">
@@ -112,7 +113,7 @@ $userBar = $this->userBar();
             </div>
 
             <!-- main nav -->
-            <div class="section section--no-padding">
+            <div class="section section--no-padding np">
                 <div class="container">
                     <nav class="nav--main">
                         <?php
@@ -151,18 +152,23 @@ $userBar = $this->userBar();
 
 
     <?php echo $this->content; ?>
-    <a href="#" class="scrollToTop">Terug naar boven</a>
+    <a href="#" class="scrollToTop np">Terug naar boven</a>
 
-    <div class="section section--default" style="padding:1rem 0;">
+    <div class="section section--default np" style="padding:1rem 0;">
         <div class="container">
-            <div class="shareon" style="text-align:right;">
-                <a class="facebook"></a>
-                <a class="linkedin"></a>
-                <a class="mastodon"></a>
-                <a class="pinterest"></a>
-                <a class="twitter"></a>
-                <a class="whatsapp"></a>
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <button class="btn btn--primary" onclick="window.print();" style="padding:0.3em 0.5em;font-size:0.9rem;">&#128438; Print</button>
+                <div class="shareon" style="text-align:right; margin: 0;">
+                    <a class="facebook"></a>
+                    <a class="linkedin"></a>
+                    <a class="mastodon"></a>
+                    <a class="pinterest"></a>
+                    <a class="twitter"></a>
+                    <a class="whatsapp"></a>
+                </div>
             </div>
+
+
         </div>
     </div>
 
@@ -228,8 +234,8 @@ $userBar = $this->userBar();
 
                         </div>
 
-                        <div class="grid__12 grid__4@lrg">
-                            <div class="panel h-100 flex flex-column text--left flex-justify-center fullwidth">
+                        <div class="grid__12 grid__4@lrg np">
+                            <div class="panel h-100 flex flex-column text--left flex-justify-center fullwidth np">
                                 <h3>Blijf op de hoogte</h3>
                                 <p>Abonneer je op de nieuwsbrief om op de hoogte te blijven van alle laatste nieuwtjes</p>
                                 <!-- Begin Mailchimp Signup Form -->
@@ -282,7 +288,7 @@ $userBar = $this->userBar();
         </div>
 
         <!-- social media links -->
-        <div class="section section--med">
+        <div class="section section--med np">
             <div class="container">
                 <div class="grid grid--2-col@sml">
                     <div class="grid__item">
@@ -314,7 +320,7 @@ $userBar = $this->userBar();
 
 
         <!-- footer legal links -->
-        <div class="section section--med section--footer">
+        <div class="section section--med section--footer np">
             <div class="container">
                 <div class="section__content">
                     <div class="grid">
@@ -343,7 +349,7 @@ $userBar = $this->userBar();
 </div>
 
 <!-- flyout overlay -->
-<div class="flyout" id="flyout">
+<div class="flyout np" id="flyout">
     <div class="container">
         <div class="nav--flyout">
             <div class="flyout__content">
