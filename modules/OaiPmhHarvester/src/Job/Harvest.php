@@ -600,41 +600,45 @@ class Harvest extends AbstractJob
             //add media if Beeld or Collectie
             if (($localName == 'temporal' && $args['resource_template'] == 6) || ($localName == 'date' && $args['resource_template'] == 10)) {
                 foreach ($dcMetadata->$localName as $date) {
-                    $dateStr = (string) $date; // force plain string, escape SimpleXMLElement quirks
+                    $dateStr = (string) $date.''; // force plain string, escape SimpleXMLElement quirks
+                    
                     $parts = array_map(function ($d) {
                         return trim(preg_replace('/\x{00A0}/u', '', $d));
                     }, explode('-', $dateStr, 2));
 
                     $first_date = $parts[0];
                     $last_date  = $parts[1] ?? $first_date;
-
+                    //$this->logger->info("first_date => $first_date, last_date => $last_date");
                     $toValue = function ($val) {
                         return (int) (mb_strtolower($val) === 'heden' ? 3000 : $val);
                     };
 
                     $first_date = $toValue($first_date);
                     $last_date  = $toValue($last_date);
-
+                    //$this->logger->info("first_date 2 => $first_date, last_date 2 => $last_date");
                     //$this->logger->info("first_date => $first_date, last_date => $last_date");
 
                     $elementTexts["dcterms:issued"][] = [
                         'property_id' => 23,
                         'type' => 'literal',
-                        '@language' => '',
-                        '@value' => $first_date,
+                        "is_public" => true,
+                        '@language' => null,
+                        '@value' => $first_date.'',
                     ];
                     $elementTexts["dcterms:valid"][] = [
                         'property_id' => 21,
                         'type' => 'literal',
-                        '@language' => '',
-                        '@value' => $last_date,
+                        "is_public" => true,
+                        '@language' => null,
+                        '@value' => $last_date.'',
                     ];
                 }
             }
         }
 
         $meta = $elementTexts;
-
+        //$this->logger->info("meta => " . json_encode($meta));
+        
         //media
         $imgs = array();
         foreach ($media as $img):
