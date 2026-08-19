@@ -237,3 +237,21 @@ module.exports = __webpack_require__(/*! /Users/mac/Sites/cagweb/takeoff/sass/ma
 /***/ })
 
 /******/ });
+
+window.addEventListener('beforeprint', () => {
+  document.querySelectorAll('[class*="print__img"]').forEach(el => {
+    const bg = el.style.background || el.style.backgroundImage;
+    const match = bg.match(/url\(["']?([^"')]+)["']?\)/);
+    if (match) {
+      const img = document.createElement('img');
+      img.src = match[1];
+      img.style.cssText = 'width:100%;height:100%;object-fit:cover;position:absolute;inset:0;';
+      el.style.position = 'relative';
+      el.appendChild(img);
+    }
+  });
+});
+
+window.addEventListener('afterprint', () => {
+  document.querySelectorAll('[class*="print__img"] img[style]').forEach(img => img.remove());
+});

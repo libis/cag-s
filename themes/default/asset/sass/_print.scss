@@ -11,17 +11,20 @@
   * ,
   *:before,
   *:after {
-    background: transparent !important;
-    color: #000 !important;
-    box-shadow: none !important;
-    text-shadow: none !important;
+    //background: transparent !important;
+    //color: #000 !important;
+    //box-shadow: none !important;
+    //text-shadow: none !important;
   }
 
   html,
   body {
     font-size: 12pt;
     line-height: 1.4;
-    background: red;
+    /* Force browsers to print background images */
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+    color-adjust: exact;
   }
 
   a,
@@ -121,7 +124,6 @@
   #user-bar,
   .np
    {
-    background: red;
     display: none !important;
   }
 
@@ -160,56 +162,75 @@
     font-size: 11pt !important;
   }
 
-  // ---------------------------------------------------------------------
-  // Hero / section backgrounds — these rely on background images or dark
-  // panels for effect; on paper we just want the text content, unstyled
-  // and unclipped
-  // ---------------------------------------------------------------------
+  // -----------------------------------------------------------------
+  // Restore multi-column grid layout
+  // Undo the negative-margin trick that confuses print renderers,
+  // and force flex items back to their intended widths.
+  // -----------------------------------------------------------------
+  .grid,
+  .grrid {
+    display: flex !important;
+    flex-wrap: nowrap !important;   // prevent all columns collapsing to 100 %
+    margin: 0 !important;
+  }
+
+  .grid > *,
+  .grrid > * {
+    margin-top: 0 !important;
+    padding-left: 6pt !important;
+    padding-right: 6pt !important;
+  }
+
+  // Named column variants — mirror your screen breakpoint rules
+  .grid--2-col > .grid__item   { width: 50%      !important; }
+  .grid--3-col > .grid__item   { width: 33.333%  !important; }
+  .grid--4-col > .grid__item   { width: 25%      !important; }
+
+  // Breakpoint-suffixed variants that you want to survive in print
+  // (list only the ones used in your templates)
+  .grid--2-col\@med > .grid__item,
+  .grid--2-col\@lrg > .grid__item,
+  .grid--2-col\@xlr > .grid__item  { width: 50%     !important; }
+
+  .grid--3-col\@med > .grid__item,
+  .grid--3-col\@lrg > .grid__item,
+  .grid--3-col\@xlr > .grid__item  { width: 33.333% !important; }
+
+  .grid--4-col\@med > .grid__item,
+  .grid--4-col\@lrg > .grid__item,
+  .grid--4-col\@xlr > .grid__item  { width: 25%     !important; }
+
+  // Fractional utility columns
+  .grid__4  { width: 33.333% !important; }
+  .grid__6  { width: 50%     !important; }
+  .grid__8  { width: 66.667% !important; }
+
+  // Text-image layout: hero img is 150 % wide on screen — rein it in
   .hero__img,
+  .grid--text-image .grid__img {
+    width: 100% !important;
+  }
+
+  // -----------------------------------------------------------------
+  // Prevent images (and their wrappers) from splitting across pages
+  // -----------------------------------------------------------------
+  img,
+  figure,
+  .card__img,
+  .card,
+  .card--aside,
+  .hero__img,
+  .grid__img,
   .grid--text-image .grid__img,
   .image--bg,
-  .card__aside,
-  .card__img,
-  .image--secondary:before,
-  .grid--text-image .grid__img:before {
-    display: none !important;
+  .embed-container {
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;  // legacy alias, keep for older Chrome/Firefox
   }
 
-  .hero__content,
-  .grid--text-image .grid__content {
-    padding: 0 !important;
-    border: 0 !important;
-  }
-
-  .section,
-  .section--bg,
-  .section--dark,
-  .section--light,
-  .panel,
-  .panel--primary,
-  .panel--light,
-  .panel--border {
-    padding: 0 0 12pt !important;
-    border: 0 !important;
-  }
-
-  // ---------------------------------------------------------------------
-  // Force full-width, single-column flow — multi-column grids exist for
-  // screen layout and just fragment content awkwardly across pages
-  // ---------------------------------------------------------------------
-  .grid,
-  .grid__item,
-  [class^="grid__"] {
-    display: block !important;
-    width: 100% !important;
-    margin: 0 0 12pt !important;
-    padding: 0 !important;
-  }
-
-  .container,
-  .container--fluid,
-  .page-wrap {
-    max-width: 100% !important;
-    padding: 0 !important;
+  // Cards as a whole shouldn't split either
+  .card {
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
   }
 }
