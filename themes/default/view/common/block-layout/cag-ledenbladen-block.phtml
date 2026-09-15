@@ -1,6 +1,6 @@
 <div class="section section--default ledenbladen" style="padding:52px 0 0 0">
   <div class="container">
-      <?php $searchConfig = $this->api()->searchOne('search_configs', ['id' =>2])->getContent(); ?>
+      <?php $searchConfig = $this->api()->searchOne('search_configs', ['id' =>49])->getContent(); ?>
       <?php $not_adv_pages= ["Verhalen"];?>
             <?php $adv_pages= ["Beeldbank","Tijdschriften","Cinema Rural Filmdatabank"];?>    
             <?php if(!in_array($searchConfig->name(),$not_adv_pages)):?>
@@ -31,13 +31,13 @@
                 }
             });
 
-            $('#form-search').on('submit', function(e) {
+            /*$('#form-search').on('submit', function(e) {
                 e.preventDefault();
                 const params = new URLSearchParams(window.location.search)
 
                 params.set('q', '' + $('[name="q"]').val() + '');
                 window.location.href = location.protocol + '//' + location.host + '/s/start/ledenbladen' + '?' + params.toString();
-            });
+            });*/
 
             var wrapper = $("#search-filters span");
             var filter = $(".filter").first();
