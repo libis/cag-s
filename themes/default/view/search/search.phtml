@@ -387,13 +387,13 @@ if ($showMapView) {
                 }
             });
 
-            $('#form-search').on('submit', function(e) {
+            /*$('#form-search').on('submit', function(e) {
                 e.preventDefault();
                 const params = new URLSearchParams(window.location.search)
 
                 params.set('q', '' + $('[name="q"]').val() + '');
                 window.location.href = location.protocol + '//' + location.host + location.pathname + '?' + params.toString();
-            });
+            });*/
 
             var wrapper = $("#search-filters span");
             var filter = $(".filter").first();

@@ -13,7 +13,7 @@ $escapeAttr = $this->plugin('escapeHtmlAttr');
 
 <div class="search-filters">
     <?php foreach ($filters as $filterLabel => $filterValues): ?>
-    <div class="filterx">
+    <div class="filterx" style="margin-right:10px">
         <?php 
         $filterLabel = str_replace('Inhoud','',$filterLabel);
         $filterLabel = str_replace('EXCEPT','NIET',$filterLabel);
