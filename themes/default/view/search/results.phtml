@@ -112,7 +112,7 @@ $displayFacets = $displayParts ? $displayParts['facets'] ?? 'before' : 'none';
         if(!$q && !empty($_GET["filter"])):
           foreach ($_GET["filter"] as $key => $value):
             if ($value["join"] != "not"):
-              $q = $q . " " . htmlspecialchars(strip_tags($value["value"]));
+              $q = $q . " " . htmlspecialchars(strip_tags($value["val"]));
             endif;
           endforeach;
         endif;
@@ -203,7 +203,7 @@ $displayFacets = $displayParts ? $displayParts['facets'] ?? 'before' : 'none';
                             foreach ($_GET["filter"] as $value) {
 
                                 $valueJoin = $value["join"] ?? null;
-                                $valueText = $value["value"] ?? null;
+                                $valueText = $value["val"] ?? null;
 
                                 if ($valueJoin !== "not" && !empty($valueText)) {
 
