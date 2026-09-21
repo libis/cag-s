@@ -4,10 +4,11 @@ RUN a2enmod rewrite
 
 ENV DEBIAN_FRONTEND noninteractive
 
-# Bullseye hit EOL (2026-08-31); repoint apt at the archive since
-# deb.debian.org no longer serves bullseye-security packages
-RUN sed -i 's|deb.debian.org/debian-security|archive.debian.org/debian-security|g; s|deb.debian.org/debian|archive.debian.org/debian|g' /etc/apt/sources.list \
- && echo 'Acquire::Check-Valid-Until "false";' > /etc/apt/apt.conf.d/99no-check-valid-until
+# Bullseye hit EOL (2026-08-31): deb.debian.org no longer serves bullseye at
+# all, and bullseye-security hasn't been archived yet, so drop it and pull
+# main/updates from the archive instead.
+RUN sed -i -e '/bullseye-security/d' -e 's|deb.debian.org|archive.debian.org|g' /etc/apt/sources.list \
+    && echo 'Acquire::Check-Valid-Until "false";' > /etc/apt/apt.conf.d/99no-check-valid-until
 
 RUN apt-get -qq update && apt-get -qq -y upgrade
 RUN apt-get -qq update && apt-get -qq -y --no-install-recommends install \
