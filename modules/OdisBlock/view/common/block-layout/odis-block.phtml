@@ -5,33 +5,57 @@
       <div class="grid__12 grid__8@med">
         <span> <!-- content text must be in a wrapper if it's directly in a grid__item -->
           <p><strong>Tip</strong>: Gebruik het trefwoord ‘CAG’ bij ‘zoeken in de tekst’ om alle titels te zien.</p>
-          <p>
-            <script type="text/javascript">
-              function Search()
-              {
-                document.getElementById('search_form').action = 'https://www.odis.be/hercules/search2.php';
-                document.getElementById('search_form').submit();
-              };
-            </script>
-          </p>
 
-          <form id="search_form" method="get" target="_blank">
+
+          <form
+            id="search_form"
+            method="get"
+            action="https://www.odis.be/hercules/search2.php"
+            target="_blank">
             <table>
               <tbody>
                 <tr>
-                  <td><input id="searchMethod1" type="radio" name="searchMethod" value="simple" checked="checked"><label for="searchMethod1">Zoeken op titel</label> &nbsp; <input id="searchMethod2" type="radio" name="searchMethod" value="full"><label for="searchMethod2">Zoeken in de tekst</label></td>
+                  <td>
+                    <input
+                      id="searchMethod1"
+                      type="radio"
+                      name="searchMethod"
+                      value="simple"
+                      checked>
+                    <label for="searchMethod1">Zoeken op titel</label>
 
+                    &nbsp;
+
+                    <input
+                      id="searchMethod2"
+                      type="radio"
+                      name="searchMethod"
+                      value="full">
+                    <label for="searchMethod2">Zoeken in de tekst</label>
+                  </td>
                 </tr>
                 <tr>
-                  <td><textarea id="search" onkeydown="if (event.keyCode == 13) {Search(); return false; }" name="search" rows="2" cols="50"></textarea></td>
-
+                  <td>
+                    <textarea
+                      id="search"
+                      name="search"
+                      rows="2"
+                      cols="50"></textarea>
+                  </td>
                 </tr>
                 <tr>
-                  <td><button onclick="Search();" type="button"><strong>Zoek</strong></button></td>
+                  <td>
+                    <button type="submit">
+                      <strong>Zoek</strong>
+                    </button>
+                  </td>
                 </tr>
               </tbody>
             </table>
-            <input type="hidden" name="controlid" value="263"> <input type="hidden" name="entity" value="PUB"><input type="hidden" name="lng" value="nl">
+
+            <input type="hidden" name="controlid" value="263">
+            <input type="hidden" name="entity" value="PUB">
+            <input type="hidden" name="lng" value="nl">
           </form>
         </span>
       </div>
