@@ -1,0 +1,80 @@
+#, fuzzy
+msgid ""
+msgstr ""
+"Content-Transfer-Encoding: 8bit\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Language: fr\n"
+"Language-Team: \n"
+"Last-Translator: Daniel Berthereau <Daniel.fr@Berthereau.net>\n"
+"MIME-Version: 1.0\n"
+"PO-Revision-Date: 2026-07-13 00:00+0000\n"
+"POT-Creation-Date: 2026-07-13 00:00+0000\n"
+"Project-Id-Version: \n"
+"Report-Msgid-Bugs-To: \n"
+"X-Generator: Poedit 3.6\n"
+
+#: data/scripts/upgrade.php:32
+#: Module.php:47
+#, php-format
+msgid "The module %1$s should be upgraded to version %2$s or later."
+msgstr "Le module %1$s doit être mis à niveau à la version %2$s ou supérieure."
+
+#: data/scripts/upgrade.php:36
+msgid "Missing requirement. Unable to upgrade."
+msgstr "Pré-requis absent. Impossible de mettre à jour."
+
+#: data/scripts/upgrade.php:42
+msgid "A new option allows to append the snippet to head or to body."
+msgstr "Une nouvelle option permet d’ajouter le fragment en <head> ou en <body>."
+
+#: data/scripts/upgrade.php:46
+#: Module.php:62
+msgid "To get statistics about keywords used by visitors in search engines, see {link}Matomo/Piwik help{link_end}."
+msgstr "Pour obtenir des statistiques sur les mots-clés par les visiteurs dans les moteurs de recherche, voir {link}l’aide Matomo/Piwik{link_end}."
+
+#: Module.php:58
+msgid "Fill the snippet in the main settings."
+msgstr "Remplir le fragment dans les paramètres généraux."
+
+#: src/Tracker/AbstractTracker.php:113
+#, php-format
+msgid "Error in content \"%s\" from url %s (referrer: %s; user agent: %s; user #%d; ip %s)."
+msgstr "Erreur dans le contenu \"%s\" depuis l’url %s (référent : %s ; agent utilisateur : %s ; utilisateur #%d ; ip %s)."
+
+#: src/Form/SiteSettingsFieldset.php:11
+#: src/Form/SettingsFieldset.php:11
+msgid "Analytics Snippet"
+msgstr "Analytics Snippet"
+
+#: src/Form/SiteSettingsFieldset.php:14
+#: src/Form/SettingsFieldset.php:14
+msgid "Analytics"
+msgstr "Analytics"
+
+#: src/Form/SiteSettingsFieldset.php:27
+msgid "Code to append to public pages"
+msgstr "Cote à ajouter aux pages publiques"
+
+#: src/Form/SiteSettingsFieldset.php:28
+#: src/Form/SettingsFieldset.php:28
+#: src/Form/SettingsFieldset.php:44
+msgid "Don’t forget to add the tags <script> and </script> for javascript."
+msgstr "Ne pas oublier d’ajouter les balises <script> et </script> pour le javascript."
+
+#: src/Form/SiteSettingsFieldset.php:45
+#: src/Form/SettingsFieldset.php:61
+msgid "Before \"</head>\" (recommended)"
+msgstr "Avant \"</head>\" (recommandé)"
+
+#: src/Form/SiteSettingsFieldset.php:46
+#: src/Form/SettingsFieldset.php:62
+msgid "Before \"</body>\""
+msgstr "Avant \"</body>\""
+
+#: src/Form/SettingsFieldset.php:27
+msgid "Code to append to all public pages (overridable in site settings)"
+msgstr "Code à ajouter aux pages publiques (modifiable dans les paramètres du site)"
+
+#: src/Form/SettingsFieldset.php:43
+msgid "Code to append to admin pages"
+msgstr "Code à ajouter aux pages admin"

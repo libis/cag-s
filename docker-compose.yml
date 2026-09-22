@@ -8,7 +8,6 @@ services:
       - "9016:80"
     volumes:
       - ./modules/SearchSolr:/var/www/html/modules/SearchSolr
-      - ./modules/OdisBlock:/var/www/html/modules/OdisBlock
       - ./themes/:/var/www/html/themes/
       - ./files/:/var/www/html/files/
       - ./config/:/var/www/html/config/

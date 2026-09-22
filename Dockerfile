@@ -36,7 +36,7 @@ RUN docker-php-ext-configure gd --with-freetype --with-jpeg \
   && docker-php-ext-install -j "$(nproc)" gd
 
 RUN usermod -u 1000 www-data
-RUN wget --no-verbose "https://github.com/omeka/omeka-s/releases/download/v4.2.0/omeka-s-4.2.0.zip" -O /var/www/omeka-s.zip
+RUN wget --no-verbose "https://github.com/omeka/omeka-s/releases/download/v4.2.1/omeka-s-4.2.1.zip" -O /var/www/omeka-s.zip
 RUN unzip -q /var/www/omeka-s.zip -d /var/www/ \
 &&  rm /var/www/omeka-s.zip \
 &&  rm -rf /var/www/html/ \

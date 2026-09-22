@@ -135,9 +135,7 @@ if ($showMapView) {
                             <?php // It may be a span or a link + search. 
                             ?>
                             <li><span aria-current="page"><?= $escape($itemSet->displayTitle(null, $langValue)) ?></span></li>
-                            <?php /*
-            <li><?= $hyperlink($itemSet->displayTitle(null, $langValue), $isAdmin ? $itemSet->adminUrl() : $itemSet->siteUrl($site->slug())) ?></li>
-            */ ?>
+                         
                         <?php else: ?>
                             <li><span aria-current="page"><?= $escape($translate('Search')) ?></span></li>
                         <?php endif; ?>
@@ -361,24 +359,7 @@ if ($showMapView) {
             $('#q').change(function(e) {
                 $('input[type=submit].search-submit').focus();
             });
-        });
-    </script>
-    <script>
-        $(document).ready(function() {
-            <?php if ($searchPage->name() == "Beeldbank"): ?>
-                var dateFrom = $('#psl-search-form input[name="dcterms_temporal_drm[from]"]');
-                var dateTo = $('#psl-search-form input[name="dcterms_temporal_drm[to]"]');
-                var dateMin = 1500;
-                var dateMax = 2023;
-            <?php endif; ?>
-            <?php
-            //if ($searchPage->name() == "Tijdschriften"): 
-            ?>
-            var dateFrom = $('#psl-search-form input[name="dcterms_date_drm[from]"]');
-            var dateTo = $('#psl-search-form input[name="dcterms_date_drm[to]"]');
-            var dateMin = 1890;
-            var dateMax = 2025;
-
+        
             var filter_i = 0;
             $('#search-filters').find('.filter').each(function(index) {
                 if (index > 1) {
@@ -387,13 +368,28 @@ if ($showMapView) {
                 }
             });
 
-            /*$('#form-search').on('submit', function(e) {
-                e.preventDefault();
-                const params = new URLSearchParams(window.location.search)
+            $('#form-search').on('submit', function() {
+                var $form = $(this);
+                var $q = $form.find('[name="q"]');
+                var value = $q.val().trim();
 
-                params.set('q', '' + $('[name="q"]').val() + '');
-                window.location.href = location.protocol + '//' + location.host + location.pathname + '?' + params.toString();
-            });*/
+                if (value !== '') {
+                    // Strip existing outer quotes
+                    if (value.length >= 2 && value[0] === '"' && value[value.length - 1] === '"') {
+                        value = value.slice(1, -1);
+                    }
+
+                    var quoted = '"' + value + '"';
+
+                    // Only intercept if not already set correctly
+                    if ($q.val() !== quoted) {
+                        console.log('Intercepting form submission to quote query:', value);
+                        e.preventDefault();
+                        $q.val(quoted);
+                        $form.submit();
+                    }
+                }
+            });
 
             var wrapper = $("#search-filters span");
             var filter = $(".filter").first();

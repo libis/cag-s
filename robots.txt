@@ -1,2 +1,8 @@
 User-Agent: *
 Disallow: /
+Disallow: /api/
+Disallow: /api/*
+Disallow: /*?facet=
+Disallow: /*?filter=
+Disallow: /*?*&facet=
+Disallow: /*?*&filter=

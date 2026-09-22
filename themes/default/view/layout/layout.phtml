@@ -14,7 +14,7 @@ $this->headMeta()->appendName('viewport', 'width=device-width, initial-scale=1')
 $this->headTitle()->setSeparator(' · ');
 
 $this->headLink()->appendStylesheet($this->assetUrl('css/main.css?v=0.1'), ['media' => 'all']);
-$this->headLink()->appendStylesheet($this->assetUrl('css/style.min.css?v=0.3'), ['media' => 'all']);
+$this->headLink()->appendStylesheet($this->assetUrl('css/style.min.css?v=0.31'), ['media' => 'all']);
 $this->headLink()->prependStylesheet($this->assetUrl('css/slick.css'));
 $this->headLink()->prependStylesheet($this->assetUrl('css/iconfonts.css', 'Omeka'), ['media' => 'all']);
 
@@ -403,18 +403,7 @@ $userBar = $this->userBar();
 
 <script src="<?php echo $this->assetUrl('js/main.js'); ?>"></script>
 <script src="<?php echo $this->assetUrl('js/docs.js'); ?>"></script>
-<!-- Global site tag (gtag.js) - Google Analytics -->
-<script type="text/plain" data-category="analytics" async src="https://www.googletagmanager.com/gtag/js?id=UA-16899634-1"></script>
-<script type="text/plain" data-category="analytics">
-    window.dataLayer = window.dataLayer || [];
 
-    function gtag() {
-        dataLayer.push(arguments);
-    }
-    gtag('js', new Date());
-
-    gtag('config', 'UA-16899634-1');
-</script>
 </body>
 
 </html>
