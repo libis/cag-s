@@ -368,26 +368,22 @@ if ($showMapView) {
                 }
             });
 
-            $('#form-search').on('submit', function() {
-                var $form = $(this);
-                var $q = $form.find('[name="q"]');
+           $('#form-search').on('submit', function(e) {
+                var $q = $(this).find('[name="q"]');
                 var value = $q.val().trim();
 
                 if (value !== '') {
-                    // Strip existing outer quotes
-                    if (value.length >= 2 && value[0] === '"' && value[value.length - 1] === '"') {
-                        value = value.slice(1, -1);
-                    }
+                    value = value.replace(/^"|"$/g, ''); // strip any existing outer quotes
+                    $q.val('"' + value + '"');
+                }
+            });
 
-                    var quoted = '"' + value + '"';
-
-                    // Only intercept if not already set correctly
-                    if ($q.val() !== quoted) {
-                        console.log('Intercepting form submission to quote query:', value);
-                        e.preventDefault();
-                        $q.val(quoted);
-                        $form.submit();
-                    }
+            // Restore display value on page load (strip quotes from URL param)
+            $(document).ready(function() {
+                var $q = $('#form-search').find('[name="q"]');
+                var value = $q.val();
+                if (value.length >= 2 && value[0] === '"' && value[value.length - 1] === '"') {
+                    $q.val(value.slice(1, -1));
                 }
             });
 
