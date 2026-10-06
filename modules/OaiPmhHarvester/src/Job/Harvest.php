@@ -569,8 +569,7 @@ class Harvest extends AbstractJob
         foreach ($this->dcProperties as $propertyId => $localName) {
             if (isset($dcMetadata->$localName)) {
                 $elementTexts["dcterms:$localName"] = $this->extractValues($dcMetadata, $propertyId);
-            }   
-            
+            }            
             
             //add media if Beeld or Collectie
             if($localName == 'relation' && ($args['resource_template'] == 7 || $args['resource_template'] == 6)){
