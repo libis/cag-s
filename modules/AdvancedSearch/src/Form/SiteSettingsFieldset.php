@@ -17,6 +17,28 @@ class SiteSettingsFieldset extends Fieldset
     protected $searchConfigs = [];
 
     /**
+     * @var array
+     */
+    protected $itemSets = [];
+
+    public function setItemSets(array $itemSets): self
+    {
+        $this->itemSets = $itemSets;
+        return $this;
+    }
+
+    /**
+     * @var array
+     */
+    protected $sitePages = [];
+
+    public function setSitePages(array $sitePages): self
+    {
+        $this->sitePages = $sitePages;
+        return $this;
+    }
+
+    /**
      * Warning: there is a core fieldset "Search" (before Omeka v4).
      *
      * @var string
@@ -24,7 +46,7 @@ class SiteSettingsFieldset extends Fieldset
     protected $label = 'Advanced Search (module)'; // @translate
 
     protected $elementGroups = [
-        'search' => 'Search', // @translate
+        'search_general' => 'Search', // @translate
         'advanced_search' => 'Advanced Search (module)', // @translate
     ];
 
@@ -62,77 +84,84 @@ class SiteSettingsFieldset extends Fieldset
                     'id' => 'advancedsearch_main_config',
                 ],
             ])
+            ->add([
+                'name' => 'advancedsearch_main_config_replace_quick',
+                'type' => Element\Checkbox::class,
+                'options' => [
+                    'element_group' => 'advanced_search',
+                    'label' => 'Replace the search form of the theme by this search page', // @translate
+                    'info' => 'The theme displays the standard search form of Omeka, that searches the full text. When replaced, the form of the search page is displayed instead, with its filters and its autosuggestion. A theme that renders its own form is not impacted.', // @translate
+                ],
+                'attributes' => [
+                    'id' => 'advancedsearch_main_config_replace_quick',
+                ],
+            ])
+            ->add([
+                'name' => 'advancedsearch_main_config_advanced_link',
+                'type' => CommonElement\OptionalRadio::class,
+                'options' => [
+                    'element_group' => 'advanced_search',
+                    'label' => 'Link to the advanced search below the search form', // @translate
+                    'info' => 'The dialog loads the form only at the first click, so it does not slow down the pages. A theme that displays its own panel in the header can keep "no" and fetch the url of the form itself.', // @translate
+                    'value_options' => [
+                        'dialog' => 'Yes, in a dialog', // @translate
+                        'page' => 'Yes, to the search page', // @translate
+                        '' => 'No', // @translate
+                    ],
+                ],
+                'attributes' => [
+                    'id' => 'advancedsearch_main_config_advanced_link',
+                    'value' => 'dialog',
+                ],
+            ])
 
-            // TODO Move these options to redirect item set to search page or a search page setting?
             ->add([
-                'name' => 'advancedsearch_item_sets_redirect_browse',
-                'type' => CommonElement\OptionalItemSetSelect::class,
+                'name' => 'advancedsearch_hidden_query_filters_per_config',
+                'type' => CommonElement\ArrayQueriesTextarea::class,
                 'options' => [
                     'element_group' => 'advanced_search',
-                    'label' => 'Item sets to redirect to item/browse', // @translate
-                    'empty_option' => '',
-                    'disable_inarray_validator' => true,
-                    'prepend_value_options' => [
-                        'all' => 'All item sets', // @translate
-                    ],
-                ],
-                'attributes' => [
-                    'id' => 'advancedsearch_item_sets_redirect_browse',
-                    'multiple' => true,
-                    'class' => 'chosen-select',
-                    'data-placeholder' => 'Select item sets…', // @translate
-                ],
-            ])
-            ->add([
-                'name' => 'advancedsearch_item_sets_redirect_search',
-                'type' => CommonElement\OptionalItemSetSelect::class,
-                'options' => [
-                    'element_group' => 'advanced_search',
-                    'label' => 'Item sets to redirect to search', // @translate
-                    'empty_option' => '',
-                    'disable_inarray_validator' => true,
-                    'prepend_value_options' => [
-                        'all' => 'All item sets', // @translate
-                    ],
-                ],
-                'attributes' => [
-                    'id' => 'advancedsearch_item_sets_redirect_search',
-                    'multiple' => true,
-                    'class' => 'chosen-select',
-                    'data-placeholder' => 'Select item sets…', // @translate
-                ],
-            ])
-            ->add([
-                'name' => 'advancedsearch_item_sets_redirect_search_first',
-                'type' => CommonElement\OptionalItemSetSelect::class,
-                'options' => [
-                    'element_group' => 'advanced_search',
-                    'label' => 'Item sets to redirect to search (display record only on first page, old default Omeka)', // @translate
-                    'empty_option' => '',
-                    'disable_inarray_validator' => true,
-                    'prepend_value_options' => [
-                        'all' => 'All item sets', // @translate
-                    ],
-                ],
-                'attributes' => [
-                    'id' => 'advancedsearch_item_sets_redirect_search_first',
-                    'multiple' => true,
-                    'class' => 'chosen-select',
-                    'data-placeholder' => 'Select item sets…', // @translate
-                ],
-            ])
-            ->add([
-                'name' => 'advancedsearch_item_sets_redirect_page_url',
-                'type' => OmekaElement\ArrayTextarea::class,
-                'options' => [
-                    'element_group' => 'advanced_search',
-                    'label' => 'Item sets to redirect to a page or a url', // @translate
-                    'info' => 'Set the item set id, then the sign "=", then a page slug or a url, relative or absolute.', // @translate
+                    'label' => 'Hidden query filters per search page', // @translate
+                    'info' => 'One filter per line, formatted as "search_config_slug = query_args" (e.g. "recherche = item_set_id[]=151"). Filters are merged with the search config "Hidden query filter" only on this site, so other sites sharing the same search page are unaffected.', // @translate
                     'as_key_value' => true,
+                    'default_view' => 'querier',
                 ],
                 'attributes' => [
-                    'id' => 'advancedsearch_item_sets_redirect_page_url',
-                    'placeholder' => '151 = events', // @translate
+                    'id' => 'advancedsearch_hidden_query_filters_per_config',
+                    'rows' => 4,
+                    'placeholder' => <<<'TXT'
+                        find = item_set_id[]=151
+                        bibliography = item_set_id[]=152
+                        TXT,
+                ],
+            ])
+
+            ->add([
+                'name' => 'advancedsearch_item_sets_redirects',
+                'type' => CommonElement\ArrayTextarea::class,
+                'options' => [
+                    'element_group' => 'advanced_search',
+                    'label' => 'Redirection of the page of an item set', // @translate
+                    'info' => 'One row by item set, and the row "default" for all the other ones. The redirection is "browse" (standard Omeka page), "search" (search page of the site), "first" (search page, but the item set is displayed on the first page only), or the slug of a site page or a url, relative or absolute.', // @translate
+                    'as_key_value' => true,
+                    'pairs_editor' => [
+                        'key_label' => 'Item set', // @translate
+                        'value_label' => 'Redirection', // @translate
+                        // The picker displays "label (key)", so the item sets
+                        // are listed by title, and the redirection is set by
+                        // the user, since it is not a default value.
+                        'keys' => ['default' => 'All other item sets'] + $this->itemSets, // @translate
+                        'key_fill' => false,
+                        'key_select' => true,
+                    ],
+                ],
+                'attributes' => [
+                    'id' => 'advancedsearch_item_sets_redirects',
+                    'placeholder' => <<<'TEXT'
+                        default = browse
+                        151 = search
+                        152 = events
+                        TEXT, // @translate
+                    'rows' => 5,
                 ],
             ])
 
@@ -142,14 +171,24 @@ class SiteSettingsFieldset extends Fieldset
                 'type' => CommonElement\OptionalSelect::class,
                 'options' => [
                     'element_group' => 'advanced_search',
-                    'label' => 'Redirect page "browse item sets" to a search page', // @translate
+                    'label' => 'Redirect page "browse item sets"', // @translate
+                    'info' => 'The page that lists the item sets may be replaced by a search page or by any page of the site. Use the setting below for an external url.', // @translate
                     'value_options' => [
                         '' => 'No redirect', // @translate
                         'default' => 'Default search page', // @translate
-                    ] + $this->searchConfigs,
+                        'Search pages' => [ // @translate
+                            'label' => 'Search pages', // @translate
+                            'options' => $this->searchConfigs,
+                        ],
+                        'Pages of the site' => [ // @translate
+                            'label' => 'Pages of the site', // @translate
+                            'options' => $this->sitePages,
+                        ],
+                    ],
                 ],
                 'attributes' => [
                     'id' => 'advancedsearch_item_sets_browse_config',
+                    'class' => 'chosen-select',
                 ],
             ])
             ->add([
@@ -157,10 +196,12 @@ class SiteSettingsFieldset extends Fieldset
                 'type' => Element\Text::class,
                 'options' => [
                     'element_group' => 'advanced_search',
-                    'label' => 'Redirect page "browse item sets" to a site page or a url', // @translate
+                    'label' => 'Redirect page "browse item sets" to an external url', // @translate
+                    'info' => 'An absolute url, that takes precedence on the setting above.', // @translate
                 ],
                 'attributes' => [
                     'id' => 'advancedsearch_item_sets_browse_page',
+                    'placeholder' => 'https://example.org/collections',
                 ],
             ])
             ->add([
@@ -168,14 +209,19 @@ class SiteSettingsFieldset extends Fieldset
                 'type' => CommonElement\OptionalSelect::class,
                 'options' => [
                     'element_group' => 'advanced_search',
-                    'label' => 'Redirect page "browse items" to a search page', // @translate
+                    'label' => 'Redirect page "browse items"', // @translate
                     'value_options' => [
                         '' => 'No redirect', // @translate
                         'default' => 'Default search page', // @translate
-                    ] + $this->searchConfigs,
+                        'Search pages' => [ // @translate
+                            'label' => 'Search pages', // @translate
+                            'options' => $this->searchConfigs,
+                        ],
+                    ],
                 ],
                 'attributes' => [
                     'id' => 'advancedsearch_items_browse_config',
+                    'class' => 'chosen-select',
                 ],
             ])
 
@@ -286,6 +332,7 @@ class SiteSettingsFieldset extends Fieldset
                         'collection' => 'Item set', // @translate
                         'selection' => 'User selection', // @translate
                         'series' => 'Series in page blocks', // @translate
+                        'featured' => 'Featured (browse preview page block)', // @translate
                     ],
                 ],
                 'attributes' => [

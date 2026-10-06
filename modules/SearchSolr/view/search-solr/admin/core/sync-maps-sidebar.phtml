@@ -1,0 +1,139 @@
+<?php
+/**
+ * @var \Laminas\View\Renderer\PhpRenderer $this
+ * @var \SearchSolr\Stdlib\SolrCore $solrCore
+ * @var \SearchSolr\Form\Admin\SolrCoreSyncForm $form
+ *
+ * Lean version of the maps alignment form, loaded into the core page sidebar.
+ * The options are laid out like the backup sidebar of module Easy Admin: one
+ * fieldset by option, the legend as its label and the description inside it, so
+ * the title carries no description.
+ */
+
+$plugins = $this->getHelperPluginManager();
+$escape = $plugins->get('escapeHtml');
+$escapeAttr = $plugins->get('escapeHtmlAttr');
+$translate = $plugins->get('translate');
+
+$form->setAttribute('action', $solrCore->adminUrl('sync-maps'));
+$form->prepare();
+
+$sources = $form->get('sync_sources');
+$sourcesChecked = array_map('strval', (array) $sources->getValue());
+$clean = $form->get('clean');
+$mode = $form->get('mode');
+$multilingual = $form->get('multilingual');
+$maxCardinality = $form->get('max_cardinality');
+?>
+
+<div id="sidebar-confirm">
+    <h3><?= $escape($translate('Align the maps')) ?></h3>
+    <?= $this->form()->openTag($form) ?>
+
+    <fieldset>
+        <legend><?= $escape($translate('Mode')) ?></legend>
+        <p class="explanation"><?= $escape($translate('The audit reports the maps that would be created or removed, and the fields used by a config that cannot be mapped, for example a name that is neither a property nor an index.')) ?></p>
+        <div class="inputs">
+            <?php foreach ($mode->getValueOptions() as $value => $label): ?>
+            <label>
+                <input type="radio" name="mode" value="<?= $escapeAttr($value) ?>"<?= $mode->getValue() === $value ? ' checked="checked"' : '' ?>>
+                <?= $escape($translate($label)) ?>
+            </label>
+            <?php endforeach; ?>
+        </div>
+    </fieldset>
+
+    <fieldset>
+        <legend><?= $escape($translate('Sources of the properties to map')) ?></legend>
+        <p class="explanation"><?= $escape($translate('The maps are created for the union of the checked sources. System maps are always kept and a snapshot is taken before each alignment, so the previous configuration can be restored.')) ?></p>
+        <div class="inputs">
+            <?php foreach ($sources->getValueOptions() as $value => $label): ?>
+            <label>
+                <input type="checkbox" name="sync_sources[]" value="<?= $escapeAttr($value) ?>"<?= in_array((string) $value, $sourcesChecked, true) ? ' checked="checked"' : '' ?>>
+                <?= $escape($translate($label)) ?>
+            </label>
+            <?php endforeach; ?>
+        </div>
+    </fieldset>
+
+    <fieldset>
+        <legend><?= $escape($translate('Exact indexes')) ?></legend>
+        <p class="explanation"><?= $escape($translate('A property with more distinct values than this limit gets no exact index (_ss): such a facet or filter is unusable. A property used by a facet or a filter of a search page keeps its index anyway. Set 0 to skip this check.')) ?></p>
+        <div class="inputs">
+            <label>
+                <?= $escape($translate('Maximum number of distinct values')) ?>
+                <input type="number" name="max_cardinality" min="0" step="1" value="<?= $escapeAttr($maxCardinality->getValue()) ?>">
+            </label>
+        </div>
+    </fieldset>
+
+    <fieldset>
+        <legend><?= $escape($translate('Multilingual values')) ?></legend>
+        <p class="explanation"><?= $escape($translate('Add a language index by property and language, for example dcterms_subject_fr_ss and dcterms_subject_en_ss. Used only when the sites have at least two distinct locales and the property has values in at least two of these languages. The values without language are included in each language index.')) ?></p>
+        <div class="inputs">
+            <input type="hidden" name="multilingual" value="0">
+            <label>
+                <input type="checkbox" name="multilingual" value="1"<?= $multilingual->getValue() ? ' checked="checked"' : '' ?>>
+                <?= $escape($translate('Support of multilingual values')) ?>
+            </label>
+        </div>
+    </fieldset>
+
+    <fieldset>
+        <legend><?= $escape($translate('Unused maps')) ?></legend>
+        <p class="explanation"><?= $escape($translate('Remove the property maps not referenced by the checked sources. Customized maps are kept.')) ?></p>
+        <div class="inputs">
+            <input type="hidden" name="clean" value="0">
+            <label>
+                <input type="checkbox" name="clean" value="1"<?= $clean->getValue() ? ' checked="checked"' : '' ?>>
+                <?= $escape($translate('Remove unused maps automatically')) ?>
+            </label>
+        </div>
+    </fieldset>
+
+    <?= $this->formRow($form->get('csrf')) ?>
+    <button type="submit" class="button"><?= $escape($translate('Align the maps')) ?></button>
+    <?= $this->form()->closeTag() ?>
+
+    <?php
+    $backups = $solrCore->backupMaps();
+    $snapshots = $backups['snapshots'] ?? [];
+    ?>
+    <?php if ($snapshots): ?>
+    <?php $i18n = $plugins->get('i18n'); ?>
+    <h4 class="map-snapshots-heading"><?= $escape(sprintf($translate('Map snapshots (%d)'), count($snapshots))) ?></h4>
+    <p class="explanation"><?= $escape($translate('A snapshot is taken before each maps alignment. Only the 20 most recent snapshots are kept on this core.')) ?></p>
+    <ul class="map-snapshots">
+        <?php foreach ($snapshots as $i => $snap): ?>
+        <?php
+        $date = null;
+        if (!empty($snap['datetime'])) {
+            try {
+                $date = $i18n->dateFormat(new \DateTime($snap['datetime']), 'medium', 'short');
+            } catch (\Exception $e) {
+                $date = (string) $snap['datetime'];
+            }
+        }
+        ?>
+        <li>
+            <span class="map-snapshot-date"><?= $escape((string) $date) ?></span>
+            <span class="map-snapshot-meta"><?= $escape(sprintf($translate('%1$d maps · %2$s'), (int) ($snap['count'] ?? 0), (string) ($snap['user_name'] ?? ''))) ?></span>
+            <ul class="actions">
+                <li><?= $this->hyperlink('', $solrCore->adminUrl('restore-backup') . '?index=' . $i, [
+                    'class' => 'o-icon- fas fa-undo',
+                    'aria-label' => $translate('Restore'),
+                    'title' => $translate('Restore this snapshot: the current maps are replaced (the current state is snapshotted first).'),
+                    'onclick' => 'return confirm("' . $escapeAttr($translate('Restore this snapshot? Current maps will be replaced. The current state is itself snapshotted before restore.')) . '");',
+                ]) ?></li>
+                <li><?= $this->hyperlink('', $solrCore->adminUrl('delete-backup') . '?index=' . $i, [
+                    'class' => 'o-icon-delete',
+                    'aria-label' => $translate('Delete'),
+                    'title' => $translate('Delete this snapshot'),
+                    'onclick' => 'return confirm("' . $escapeAttr($translate('Delete this snapshot?')) . '");',
+                ]) ?></li>
+            </ul>
+        </li>
+        <?php endforeach; ?>
+    </ul>
+    <?php endif; ?>
+</div>

@@ -276,6 +276,8 @@ class InternalQuerier extends AbstractQuerier
             'media' => \Omeka\Entity\Media::class,
             'value_annotations' => \Omeka\Entity\ValueAnnotation::class,
             'annotations' => \Annotate\Entity\Annotation::class,
+            'digital_objects' => \DigitalObject\Entity\DigitalObject::class,
+            'concepts' => \Thesaurus\Entity\Concept::class,
         ];
 
         /** @var \Doctrine\DBAL\Connection $connection */
@@ -490,27 +492,68 @@ class InternalQuerier extends AbstractQuerier
             && isset($fieldQueryArgs[$fieldQueryArgs['type']])
             && in_array($fieldQueryArgs[$fieldQueryArgs['type']], SearchResources::FIELD_QUERY['main_type']['resource']);
 
+        // The alias "v" cannot be reused in the "where" clause: it is a select
+        // alias, unknown to the database there, so the full expression is kept
+        // apart. It remains used in "group by" and "order by", where dql
+        // accepts only a result variable.
+        $valueExpression = $isResourceQuery
+            ? 'valueResource.title'
+            : "COALESCE(value.value, valueResource.title, value.uri, '')";
+
         if ($isResourceQuery) {
             $qb
-                ->select('valueResource.title AS v')
+                ->select($valueExpression . ' AS v')
                 ->from(\Omeka\Entity\Value::class, 'value')
-                // This join allow to check visibility automatically too.
-                ->innerJoin(\Omeka\Entity\Item::class, 'resource', Join::WITH, $expr->eq('value.resource', 'resource'))
-                ->innerJoin(\Omeka\Entity\Item::class, 'valueResource', Join::WITH, $expr->eq('value.valueResource', 'valueResource'))
+                // Join on Resource instead of Item so suggestions get titles of
+                // value resources. Join checks visibility automatically too.
+                ->innerJoin(\Omeka\Entity\Resource::class, 'resource', Join::WITH, $expr->eq('value.resource', 'resource'))
+                ->innerJoin(\Omeka\Entity\Resource::class, 'valueResource', Join::WITH, $expr->eq('value.valueResource', 'valueResource'))
                 // Always return a non-empty string, not null.
                 ->where('valueResource.title IS NOT NULL')
                 ->andWhere('valueResource.title != ""');
         } else {
             $qb
-                // Always return a string, not null.
-                // Doctrine rejects empty string withy double quote.
-                ->select("COALESCE(value.value, valueResource.title, value.uri, '') AS v")
+                // Always return a string, not null. Doctrine rejects empty
+                // string with double quote.
+                ->select($valueExpression . ' AS v')
                 ->from(\Omeka\Entity\Value::class, 'value')
-                // This join allow to check visibility automatically too.
-                ->innerJoin(\Omeka\Entity\Item::class, 'resource', Join::WITH, $expr->eq('value.resource', 'resource'))
+                // Join on Resource; see note above.
+                ->innerJoin(\Omeka\Entity\Resource::class, 'resource', Join::WITH, $expr->eq('value.resource', 'resource'))
                 // The values should be distinct for each type.
-                ->leftJoin(\Omeka\Entity\Item::class, 'valueResource', Join::WITH, $expr->eq('value.valueResource', 'valueResource'))
-                ->where("COALESCE(value.value, valueResource.title, value.uri, '') != ''");
+                ->leftJoin(\Omeka\Entity\Resource::class, 'valueResource', Join::WITH, $expr->eq('value.valueResource', 'valueResource'))
+                ->where($valueExpression . " != ''");
+        }
+
+        // Restrict the suggestion scope to the resource types declared by the
+        // current SearchEngine (or narrowed by the query). The Resource-root
+        // join above lets any subclass match; INSTANCE OF re-applies the
+        // engine-level policy via the discriminator.
+        if ($this->resourceTypes && !in_array('resources', $this->resourceTypes, true)) {
+            $resourceMap = [
+                'items' => \Omeka\Entity\Item::class,
+                'item_sets' => \Omeka\Entity\ItemSet::class,
+                'media' => \Omeka\Entity\Media::class,
+                'value_annotations' => \Omeka\Entity\ValueAnnotation::class,
+            ];
+            if (class_exists(\Annotate\Entity\Annotation::class)) {
+                $resourceMap['annotations'] = \Annotate\Entity\Annotation::class;
+            }
+            if (class_exists('DigitalObject\Module', false)) {
+                $resourceMap['digital_objects'] = \DigitalObject\Entity\DigitalObject::class;
+            }
+            if (class_exists('Thesaurus\Module', false)) {
+                $resourceMap['concepts'] = \Thesaurus\Entity\Concept::class;
+            }
+            $resourceClasses = array_values(array_intersect_key($resourceMap, array_flip($this->resourceTypes)));
+            if ($resourceClasses) {
+                $instanceOf = [];
+                foreach ($resourceClasses as $i => $class) {
+                    $param = 'resClass' . $i;
+                    $instanceOf[] = "resource INSTANCE OF :$param";
+                    $qb->setParameter($param, $class);
+                }
+                $qb->andWhere(implode(' OR ', $instanceOf));
+            }
         }
 
         if (!empty($fieldQueryArgs['lang'])) {
@@ -538,9 +581,13 @@ class InternalQuerier extends AbstractQuerier
 
         $siteId = $this->query->getSiteId();
         if ($siteId) {
-            $siteAlias = 'site';
+            // The STI root Resource has no "sites" association, so scope
+            // through Item, which carries the site attachment (item_site).
+            // Suggestions are thereby limited to values of items attached to
+            // the site.
             $qb
-                ->innerJoin('resource.sites', $siteAlias, 'WITH', $expr->eq("$siteAlias.id", ':site_id'))
+                ->innerJoin(\Omeka\Entity\Item::class, 'siteItem', Join::WITH, $expr->eq('siteItem.id', 'resource.id'))
+                ->innerJoin('siteItem.sites', 'site', Join::WITH, $expr->eq('site.id', ':site_id'))
                 ->setParameter('site_id', $siteId);
             // TODO Manage settings site_attachements_only. See ItemAdapter.
         }
@@ -548,12 +595,15 @@ class InternalQuerier extends AbstractQuerier
         $qb
             ->andWhere($expr->in('value.property', ':properties'))
             ->setParameter('properties', array_values($propertyIds), \Doctrine\DBAL\Connection::PARAM_INT_ARRAY)
-            ->groupBy('v')
+            // "distinct" is used instead of a "group by" on the alias: dql
+            // accepts only a result variable there, and such an alias is not
+            // supported in "group by" by all databases.
+            ->distinct()
             ->orderBy('v', 'asc');
 
         if ($prefix !== null && $prefix !== '') {
             $qb
-                ->andWhere($expr->like('v', ':prefix'))
+                ->andWhere($expr->like($valueExpression, ':prefix'))
                 ->setParameter('prefix', $prefix . '%');
         }
         if ($limit > 0) {
@@ -639,9 +689,17 @@ class InternalQuerier extends AbstractQuerier
             $this->mainQuery();
         }
 
-        // "is_public" is automatically managed by the api, but there may be an
-        // option in the form.
-        // TODO Manage an option "is_public".
+        // "is_public" is automatically managed by the api through the acl, so
+        // it follows the user rights by default (an admin sees private). The
+        // engine visibility caps that scope: a "public" engine only returns
+        // public resources (even for an admin, as a protection against private
+        // metadata leak), a "private" engine only private ones.
+        $visibility = $this->searchEngine->setting('visibility');
+        if ($visibility === 'public') {
+            $this->args['is_public'] = 1;
+        } elseif ($visibility === 'private') {
+            $this->args['is_public'] = 0;
+        }
 
         // The site is a specific filter that can be used as part of main query.
         $siteId = $this->query->getSiteId();
@@ -677,9 +735,21 @@ class InternalQuerier extends AbstractQuerier
 
         $sort = $this->query->getSort();
         if ($sort) {
-            [$sortField, $sortOrder] = explode(' ', $sort);
+            [$sortField, $sortOrder] = array_pad(explode(' ', $sort, 2), 2, 'asc');
+            // Convert a Solr-style field name (e.g. dcterms_title_s) back to
+            // the property term used by the internal engine, so a sort defined
+            // for another engine still works. Special sort keys (relevance,
+            // created...) are not terms and are kept as-is.
+            $sortField = $this->fieldToIndex($sortField) ?? $sortField;
+            if (is_array($sortField)) {
+                $sortField = (string) reset($sortField);
+            }
             $this->args['sort_by'] = $sortField;
             $this->args['sort_order'] = $sortOrder === 'desc' ? 'desc' : 'asc';
+        } else {
+            // Without an explicit sort, the most recent resources come first.
+            $this->args['sort_by'] = 'id';
+            $this->args['sort_order'] = 'desc';
         }
 
         // Limit is per page and offset is page x limit.
@@ -691,6 +761,10 @@ class InternalQuerier extends AbstractQuerier
         $offset = $this->query->getOffset();
         if ($offset) {
             $this->args['offset'] = $offset;
+        }
+
+        foreach ($this->query->getApiArgs() as $apiArgName => $apiArgValue) {
+            $this->args[$apiArgName] = $apiArgValue;
         }
 
         return $this->args;
@@ -842,8 +916,24 @@ class InternalQuerier extends AbstractQuerier
         $this->filterQueryAny($this->query->getFilters(), false, true);
         $this->filterQueryRanges($this->query->getFiltersRange());
         $this->filterQueryAny($this->query->getFiltersQuery());
+        // The counts of the facets are computed on the query without the
+        // active facets, so a value displays how many results it would add.
+        // But a facet joined with "and" narrows the results, so it stays in the
+        // base query: else the counts would promise results that the "and"
+        // cannot return.
+        $activeFacets = $this->query->getActiveFacets();
+        $facetsConfig = $this->query->getFacets();
+        $activeFacetsAnd = [];
+        $activeFacetsOr = [];
+        foreach ($activeFacets as $facetName => $facetValues) {
+            $facetData = $facetsConfig[$facetName] ?? [];
+            ($facetData['join'] ?? $facetData['options']['join'] ?? 'or') === 'and'
+                ? $activeFacetsAnd[$facetName] = $facetValues
+                : $activeFacetsOr[$facetName] = $facetValues;
+        }
+        $this->filterQueryAny($activeFacetsAnd, true, true);
         $this->argsWithoutActiveFacets = $this->args;
-        $this->filterQueryAny($this->query->getActiveFacets(), true, true);
+        $this->filterQueryAny($activeFacetsOr, true, true);
         $this->filterQueryRefine($this->query->getQueryRefine());
     }
 
@@ -879,7 +969,11 @@ class InternalQuerier extends AbstractQuerier
             // and "resource-type" by omeka main search engine in admin, with
             // the controller name, but it is a fake argument that redirect to
             // the controller.
-            // Anyway, "resource_name" is no more used.
+            // Anyway, "resource_name" is no more used. Solr field names are
+            // accepted too, so a config made for another engine still works
+            // after switching to the internal engine.
+            case 'resource_name':
+            case 'resource_name_s':
             case 'resource_type':
                 $values = $flatArray($values);
                 if (!$values) {
@@ -892,9 +986,12 @@ class InternalQuerier extends AbstractQuerier
 
             // "is_public" is automatically managed by this internal adapter
             // TODO Improve is_public to search public/private only.
+            case 'is_public_i':
+            case 'is_public_b':
             case 'is_public':
                 continue 2;
 
+            case 'id_i':
             case 'id':
                 $values = array_filter(array_map('intval', $flatArray($values)));
                 $this->args['id'] = empty($this->args['id'])
@@ -902,6 +999,7 @@ class InternalQuerier extends AbstractQuerier
                     : array_merge(is_array($this->args['id']) ? $this->args['id'] : [$this->args['id']], $values);
                 continue 2;
 
+            case 'owner_id_i':
             case 'owner_id':
                 $values = $flatArray($values);
                 $values = is_numeric(reset($values))
@@ -912,6 +1010,7 @@ class InternalQuerier extends AbstractQuerier
                     : array_merge(is_array($this->args['owner_id']) ? $this->args['owner_id'] : [$this->args['owner_id']], $values);
                 continue 2;
 
+            case 'site_id_is':
             case 'site_id':
                 $values = $flatArray($values);
                 $values = is_numeric(reset($values))
@@ -922,6 +1021,7 @@ class InternalQuerier extends AbstractQuerier
                     : array_merge(is_array($this->args['site_id']) ? $this->args['site_id'] : [$this->args['site_id']], $values);
                 continue 2;
 
+            case 'resource_class_s':
             case 'resource_class_id':
                 $values = $flatArray($values);
                 $values = is_numeric(reset($values))
@@ -932,6 +1032,7 @@ class InternalQuerier extends AbstractQuerier
                     : array_merge(is_array($this->args['resource_class_id']) ? $this->args['resource_class_id'] : [$this->args['resource_class_id']], $values);
                 continue 2;
 
+            case 'resource_template_s':
             case 'resource_template_id':
                 $values = $flatArray($values);
                 $values = is_numeric(reset($values))
@@ -942,6 +1043,7 @@ class InternalQuerier extends AbstractQuerier
                     : array_merge(is_array($this->args['resource_template_id']) ? $this->args['resource_template_id'] : [$this->args['resource_template_id']], $values);
                 continue 2;
 
+            case 'item_set_id_is':
             case 'item_set_id':
                 $values = array_filter(array_map('intval', $flatArray($values)));
                 $this->args['item_set_id'] = empty($this->args['item_set_id'])
@@ -1056,23 +1158,39 @@ class InternalQuerier extends AbstractQuerier
                         }
                     } else {
                         $fieldQueryArgs = $this->query->getFieldQueryArgs($fieldName);
+                        // With the joiner "and", a resource must match all the
+                        // selected values, so each value is a filter of its
+                        // own: a single filter with multiple values is an "in
+                        // list", so an "or".
+                        $isAnd = ($fieldData['join'] ?? $fieldData['options']['join'] ?? 'or') === 'and';
+                        $flatValues = $flatArray($values);
                         if ($fieldQueryArgs) {
-                            $this->args['filter'][] = [
+                            $baseFilter = [
                                 'join' => $fieldQueryArgs['join'] ?? 'and',
                                 'field' => $field,
                                 'except' => $fieldQueryArgs['except'] ?? null,
                                 'type' => $fieldQueryArgs['type'] ?? 'eq',
-                                'val' => $flatArray($values),
+                                'val' => $flatValues,
                                 'lang' => $fieldQueryArgs['lang'] ?? null,
                                 'datatype' => $fieldQueryArgs['datatype'] ?? null,
                             ];
                         } else {
-                            $this->args['filter'][] = [
+                            $baseFilter = [
                                 'join' => 'and',
                                 'field' => $field,
                                 'type' => 'eq',
-                                'val' => $flatArray($values),
+                                'val' => $flatValues,
                             ];
+                        }
+                        if ($isAnd && count($flatValues) > 1) {
+                            foreach ($flatValues as $flatValue) {
+                                $this->args['filter'][] = array_replace($baseFilter, [
+                                    'join' => 'and',
+                                    'val' => $flatValue,
+                                ]);
+                            }
+                        } else {
+                            $this->args['filter'][] = $baseFilter;
                         }
                     }
                 }
@@ -1496,6 +1614,17 @@ class InternalQuerier extends AbstractQuerier
             'item_set_id' => 'o:item_set',
             'access' => 'access',
             'item_sets_tree' => 'o:item_set',
+            // Solr field names of the system fields, so a facet defined for
+            // another engine still resolves after switching to the internal
+            // engine.
+            'resource_name_s' => 'resource_type',
+            'is_public_i' => 'is_public',
+            'is_public_b' => 'is_public',
+            'owner_id_i' => 'o:owner',
+            'site_id_is' => 'o:site',
+            'resource_class_s' => 'o:resource_class',
+            'resource_template_s' => 'o:resource_template',
+            'item_set_id_is' => 'o:item_set',
         ];
 
         $facetOrders = [

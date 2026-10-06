@@ -47,11 +47,26 @@ trait TraitFormAdapterClassic
             'skip_form_action' => false,
             'skip_partial_headers' => false,
             'variant' => null,
+            'skip_elements' => [],
         ];
 
         $form = $this->getForm($options);
         if (!$form) {
             return '';
+        }
+
+        // A theme may render the main field apart from the filters, for example
+        // a quick search in the header and the filters in a panel below it. So
+        // the same element is not output twice, that would duplicate ids.
+        // The form is shared between the renderings of a page, so it is cloned:
+        // removing an element would remove it for the next renderings too.
+        if ($options['skip_elements']) {
+            $form = clone $form;
+            foreach ($options['skip_elements'] as $skipElement) {
+                if ($form->has($skipElement)) {
+                    $form->remove($skipElement);
+                }
+            }
         }
 
         if (!$options['template']) {
@@ -206,6 +221,14 @@ trait TraitFormAdapterClassic
                     continue 2;
 
                     // Specific fields.
+
+                case 'has_media':
+                case 'has_original':
+                case 'has_thumbnails':
+                    if (is_string($value) && strlen($value)) {
+                        $query->setApiArg($name, (bool) $value);
+                    }
+                    continue 2;
 
                 case 'is_public':
                 case 'is_open':
@@ -596,6 +619,8 @@ trait TraitFormAdapterClassic
         // default value should be skipped.
         $searchFormSettings['facet'] = $searchConfigSettings['facet'] ?? [];
 
+        // The settings of the advanced filter are stored with the filter.
+        $searchFormSettings['advanced'] = $this->searchConfig->advancedFilterSettings();
         $searchFormSettings['aliases'] = $this->searchConfig->subSetting('index', 'aliases', []);
         $searchFormSettings['fields_query_args'] = $this->searchConfig->subSetting('index', 'query_args', []);
 
@@ -617,14 +642,40 @@ trait TraitFormAdapterClassic
 
         // Append hidden query if any (filter, date range filter, filter query).
         $hiddenFilters = $searchConfigSettings['request']['hidden_query_filters'] ?? [];
+
+        // Merge site-level hidden filters keyed by search config slug. This
+        // lets a site override or add filters to a search config shared with
+        // other sites without impacting them.
+        if ($site && $siteSettings) {
+            $perConfig = $siteSettings->get('advancedsearch_hidden_query_filters_per_config', [], $site->id());
+            $configSlug = $this->searchConfig->slug();
+            if (is_array($perConfig) && !empty($perConfig[$configSlug])) {
+                $extraFilters = $perConfig[$configSlug];
+                if (is_string($extraFilters)) {
+                    $parsed = [];
+                    parse_str(ltrim($extraFilters, "? \t\n\r\0\x0B"), $parsed);
+                    $extraFilters = $parsed;
+                }
+                if (is_array($extraFilters) && $extraFilters) {
+                    $hiddenFilters = $hiddenFilters
+                        ? array_merge_recursive($hiddenFilters, $extraFilters)
+                        : $extraFilters;
+                }
+            }
+        }
+
         if ($hiddenFilters) {
             // TODO Convert a generic hidden query filters into a specific one?
             // $hiddenFilters = $formAdapter->toQuery($hiddenFilters, $searchFormSettings);
             $query->setFiltersQueryHidden($hiddenFilters);
         }
 
-        $fieldBoosts = $this->searchConfig->subSetting('index', 'field_boosts', []);
+        // The section "engine" is filled by the module of the engine of the
+        // config (e.g. SearchSolr), through the event of the configure form.
+        $fieldBoosts = $this->searchConfig->subSetting('engine', 'field_boosts', []);
         $query->setFieldBoosts($fieldBoosts);
+        $query->setMinimumMatch(trim((string) $this->searchConfig->subSetting('engine', 'minimum_match', '')));
+        $query->setTieBreaker(trim((string) $this->searchConfig->subSetting('engine', 'tie_breaker', '')));
 
         // Set query default field if provided
         // $searchConfigSettings['request']['query_default_field'] = 'public_property_values_txt'; // Fake retrieval

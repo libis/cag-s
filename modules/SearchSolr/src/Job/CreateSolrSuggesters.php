@@ -55,7 +55,7 @@ class CreateSolrSuggesters extends AbstractJob
             return;
         }
 
-        /** @var \SearchSolr\Api\Representation\SolrCoreRepresentation $solrCore */
+        /** @var \SearchSolr\Stdlib\SolrCore $solrCore */
         $solrCore = $engineAdapter->getSolrCore();
         if (!$solrCore) {
             $this->logger->err('Solr core not found.'); // @translate
@@ -69,6 +69,10 @@ class CreateSolrSuggesters extends AbstractJob
         if (empty($solrFields) && !empty($settings['solr_field'])) {
             $solrFields = [$settings['solr_field']];
         }
+
+        // When a catchall is explicitly selected, build a single suggester on
+        // it. Kept consistent with SolariumQuerier::getSuggesterNames().
+        $solrFields = \SearchSolr\Stdlib\SuggesterFields::reduceToCatchall($solrFields);
 
         // Auto-create suggest_txt field if selected but missing.
         if (in_array('suggest_txt', $solrFields)) {
@@ -202,7 +206,7 @@ class CreateSolrSuggesters extends AbstractJob
      * @return array Field names as keys, labels as values.
      */
     protected function getSolrFieldsForSuggester(
-        \SearchSolr\Api\Representation\SolrCoreRepresentation $solrCore
+        \SearchSolr\Stdlib\SolrCore $solrCore
     ): array {
         $allowedSuffixes = ['_txt', '_ss', '_s'];
         $schema = $solrCore->schema();

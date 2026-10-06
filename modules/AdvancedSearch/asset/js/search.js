@@ -35,7 +35,6 @@ if (typeof hasOmekaTranslate === 'undefined') {
     var hasOmekaTranslate = typeof Omeka !== 'undefined' && typeof Omeka.jsTranslate === 'function';
 }
 
-const $searchFiltersAdvanced = $('#search-filters');
 const $searchFacets = $('#search-facets');
 
 /**
@@ -233,9 +232,9 @@ var Search = (function() {
             transformResult: transformResult,
             onSearchError: function(query, jqXHR, textStatus, errorThrown) {
                 if (jqXHR.responseJSON && jqXHR.responseJSON.message) {
-                    console.log(jqXHR.responseJSON.message);
+                    console.error(jqXHR.responseJSON.message);
                 } else if (errorThrown.length) {
-                    console.log(errorThrown)
+                    console.error(errorThrown);
                 }
             },
             onSelect: function (suggestion) {
@@ -250,7 +249,11 @@ var Search = (function() {
      * Advanced filters.
      */
 
-    self.filtersAdvanced = (function() {
+    // Factory: one controller per advanced filters fieldset, so the same form
+    // can be duplicated on a page (e.g. a sticky header search) without relying
+    // on a unique id. Each instance is scoped to its own
+    // ".search-filters-advanced" fieldset, passed as $searchFiltersAdvanced.
+    self.createFiltersAdvanced = function($searchFiltersAdvanced) {
         var self = {};
 
         // At least one default.
@@ -335,7 +338,7 @@ var Search = (function() {
         };
 
         return self;
-    })();
+    };
 
     /* Results */
 
@@ -484,15 +487,63 @@ var Search = (function() {
         self.expandOrCollapse = function(button) {
             button = $(button);
             if (button.hasClass('expand')) {
-                button.attr('aria-label', button.attr('data-label-expand') ? button.attr('data-label-expand') : (hasOmekaTranslate ? Omeka.jsTranslate('Expand') : 'Expand'));
+                button.attr('aria-expanded', 'false');
                 button.closest('.facet').find('.facet-elements').attr('hidden', 'hidden');
             } else {
-                button.attr('aria-label', button.attr('data-label-collapse') ? button.attr('data-label-collapse') : (hasOmekaTranslate ? Omeka.jsTranslate('Collapse') : 'Collapse'));
+                button.attr('aria-expanded', 'true');
                 button.closest('.facet').find('.facet-elements').removeAttr('hidden');
             }
             $searchFacets.trigger('o:advanced-search.facet.expand-or-collapse');
             return self;
         };
+
+        /**
+         * Expand or collapse all facets at once.
+         *
+         * @param {boolean} expand True to expand all, false to collapse all.
+         */
+        self.expandOrCollapseAll = function(expand) {
+            $searchFacets.find('.facet > .facet-button').each(function() {
+                const button = $(this);
+                const isExpanded = button.hasClass('collapse');
+                if (expand && !isExpanded) {
+                    button.removeClass('expand').addClass('collapse');
+                    self.expandOrCollapse(button);
+                } else if (!expand && isExpanded) {
+                    button.removeClass('collapse').addClass('expand');
+                    self.expandOrCollapse(button);
+                }
+            });
+            self.updateExpandAllButton();
+            return self;
+        };
+
+        /**
+         * Update the global expand/collapse toggle state from the current
+         * state of facet buttons.
+         */
+        self.updateExpandAllButton = function() {
+            const toggle = $searchFacets.find('.facets-expand-all');
+            if (!toggle.length) {
+                return self;
+            }
+            const buttons = $searchFacets.find('.facet > .facet-button');
+            if (!buttons.length) {
+                return self;
+            }
+            const allExpanded = buttons.filter('.collapse').length === buttons.length;
+            if (allExpanded) {
+                toggle.removeClass('expand').addClass('collapse');
+                toggle.attr('aria-expanded', 'true');
+                toggle.text(toggle.attr('data-label-collapse-all') || (hasOmekaTranslate ? Omeka.jsTranslate('Collapse all') : 'Collapse all'));
+            } else {
+                toggle.removeClass('collapse').addClass('expand');
+                toggle.attr('aria-expanded', 'false');
+                toggle.text(toggle.attr('data-label-expand-all') || (hasOmekaTranslate ? Omeka.jsTranslate('Expand all') : 'Expand all'));
+            }
+            return self;
+        };
+
 
         self.seeMoreOrLess = function(button) {
             button = $(button);
@@ -500,18 +551,15 @@ var Search = (function() {
                 // Collapsing: remove pagination and show only default items.
                 self.removePagination(button);
                 button.text(button.attr('data-label-see-more') ? button.attr('data-label-see-more') : (hasOmekaTranslate ? Omeka.jsTranslate('See more') : 'See more'));
+                button.attr('aria-expanded', 'false');
                 const defaultCount = Number(button.attr('data-default-count')) + 1;
                 button.closest('.facet').find('.facet-items .facet-item:nth-child(n+' + defaultCount + ')').css('display', '').attr('hidden', 'hidden');
             } else {
-                // Expanding: check if pagination is enabled.
-                const perPage = Number(button.attr('data-per-page')) || 0;
-                if (perPage > 0) {
-                    button.text(button.attr('data-label-see-less') ? button.attr('data-label-see-less') : (hasOmekaTranslate ? Omeka.jsTranslate('See less') : 'See less'));
-                    self.initPagination(button, perPage);
-                } else {
-                    button.text(button.attr('data-label-see-less') ? button.attr('data-label-see-less') : (hasOmekaTranslate ? Omeka.jsTranslate('See less') : 'See less'));
-                    button.closest('.facet').find('.facet-items .facet-item').removeAttr('hidden');
-                }
+                // Expanding: show all items. Pagination is a separate mode,
+                // handled by ".facet-paginate-onload", not by "see more".
+                button.text(button.attr('data-label-see-less') ? button.attr('data-label-see-less') : (hasOmekaTranslate ? Omeka.jsTranslate('See less') : 'See less'));
+                button.closest('.facet').find('.facet-items .facet-item').removeAttr('hidden');
+                button.attr('aria-expanded', 'true');
             }
             $searchFacets.trigger('o:advanced-search.facet.see-more-or-less');
             return self;
@@ -546,16 +594,20 @@ var Search = (function() {
             }
 
             var labelPage = button.attr('data-label-page') || 'Page';
+            var labelPagePrev = button.attr('data-label-page-prev') || 'Previous page';
+            var labelPageNext = button.attr('data-label-page-next') || 'Next page';
+            var labelFirst = labelPage + ' 1';
+            var labelLast = labelPage + ' ' + totalPages;
             var indicatorHtml = totalPages > 4
-                ? '<span class="facet-page-indicator"><input type="number" class="facet-page-input" value="1" min="1" max="' + totalPages + '" title="' + labelPage + '"> / ' + totalPages + '</span>'
-                : '<span class="facet-page-indicator">1 / ' + totalPages + '</span>';
-            var paginationHtml = '<div class="facet-pagination">'
-                + '<button type="button" class="facet-page-first" title="' + labelPage + ' 1">&laquo;</button>'
-                + '<button type="button" class="facet-page-prev" title="' + (button.attr('data-label-page-prev') || 'Previous page') + '">&lsaquo;</button>'
+                ? '<span class="facet-page-indicator"><input type="number" class="facet-page-input page-input-top" value="1" min="1" max="' + totalPages + '" aria-label="' + labelPage + '" title="' + labelPage + '"><span class="page-count"> / ' + totalPages + '</span></span>'
+                : '<span class="facet-page-indicator"><span class="facet-page-current">1</span><span class="page-count"> / ' + totalPages + '</span></span>';
+            var paginationHtml = '<nav class="facet-pagination" aria-label="' + labelPage + '">'
+                + '<button type="button" class="facet-page-first" aria-label="' + labelFirst + '" title="' + labelFirst + '">&laquo;</button>'
+                + '<button type="button" class="facet-page-prev" aria-label="' + labelPagePrev + '" title="' + labelPagePrev + '">&lsaquo;</button>'
                 + indicatorHtml
-                + '<button type="button" class="facet-page-next" title="' + (button.attr('data-label-page-next') || 'Next page') + '">&rsaquo;</button>'
-                + '<button type="button" class="facet-page-last" title="' + labelPage + ' ' + totalPages + '">&raquo;</button>'
-                + '</div>';
+                + '<button type="button" class="facet-page-next" aria-label="' + labelPageNext + '" title="' + labelPageNext + '">&rsaquo;</button>'
+                + '<button type="button" class="facet-page-last" aria-label="' + labelLast + '" title="' + labelLast + '">&raquo;</button>'
+                + '</nav>';
             button.closest('.facet-see-more').before(paginationHtml);
 
             // Store pagination state on the facet element.
@@ -614,26 +666,12 @@ var Search = (function() {
                 }
             });
 
-            // Stabilize the container height so pagination buttons
-            // don't jump: fix max-height from the first page, then
-            // use overflow for pages with more content.
-            var facetItems = facet.find('.facet-items');
-            var fixedHeight = facet.data('facet-fixed-height');
-            if (!fixedHeight) {
-                fixedHeight = facetItems.outerHeight();
-                facet.data('facet-fixed-height', fixedHeight);
-            }
-            facetItems.css({
-                'height': fixedHeight + 'px',
-                'overflow-y': 'auto',
-            });
-
             // Update indicator.
             var pageInput = facet.find('.facet-page-input');
             if (pageInput.length) {
                 pageInput.val(page);
             } else {
-                facet.find('.facet-page-indicator').text(page + ' / ' + totalPages);
+                facet.find('.facet-page-indicator .facet-page-current').text(page);
             }
 
             // Update button states.
@@ -834,7 +872,7 @@ var Search = (function() {
      * ?q=pont&submit=&filter[0][join]=and&filter[0][field]=...&filter[0][val]=
      *
      * Generic solution for any form structure:
-     * - Groups with empty value field (val, text) AND type requiring value → remove group
+     * - Groups with empty value field (val, text) AND type requiring value => remove group
      * - Types without value (ex, nex, etc.) are kept even if val is empty
      * - Empty simple inputs are removed directly
      * - "0" is kept as a valid value
@@ -1326,11 +1364,14 @@ $(document).ready(function() {
     $('.advanced-search-form-toggle a').on('click', function(e) {
         e.preventDefault();
         $('.advanced-search-form, .advanced-search-form-toggle').toggleClass('open');
-        if ($('.advanced-search-form').hasClass('open')) {
-            $('.advanced-search-form-toggle a').text($('.advanced-search-form-toggle').data('msgOpen'));
+        const isOpen = $('.advanced-search-form').hasClass('open');
+        const toggleLink = $('.advanced-search-form-toggle a');
+        if (isOpen) {
+            toggleLink.text($('.advanced-search-form-toggle').data('msgOpen'));
         } else {
-            $('.advanced-search-form-toggle a').text($('.advanced-search-form-toggle').data('msgClosed'));
+            toggleLink.text($('.advanced-search-form-toggle').data('msgClosed'));
         }
+        toggleLink.attr('aria-expanded', isOpen ? 'true' : 'false');
         // TODO Don't open autosuggestion when toggle.
         // $('#search-form [name=q]').focus();
     });
@@ -1362,18 +1403,46 @@ $(document).ready(function() {
      * Init advanced search filters.
      */
 
-    Search.filtersAdvanced.init();
+    // Init one controller per advanced filters fieldset (there may be more than
+    // one on a page, e.g. a duplicated sticky header search). Each controller
+    // is stored on its fieldset so delegated handlers can reach the right
+    // instance.
+    Search.initFiltersAdvanced = function(context) {
+        var $context = context ? $(context) : $(document);
+        $context.find('.search-filters-advanced')
+            .addBack('.search-filters-advanced')
+            .each(function() {
+                var $fieldset = $(this);
+                // The fieldset may have been initialized in a previous call.
+                if ($fieldset.data('filtersAdvanced')) {
+                    return;
+                }
+                var controller = Search.createFiltersAdvanced($fieldset);
+                $fieldset.data('filtersAdvanced', controller);
+                controller.init();
+            });
+        return Search;
+    };
 
-    $searchFiltersAdvanced.on('click', '.search-filter-minus', function (ev) {
+    Search.initFiltersAdvanced(document);
+
+    var getFiltersAdvanced = function(ev) {
+        return $(ev.target).closest('.search-filters-advanced').data('filtersAdvanced');
+    };
+
+    $(document).on('click', '.search-filters-advanced .search-filter-minus', function (ev) {
+        var controller = getFiltersAdvanced(ev);
+        if (!controller) return;
         const filter = $(ev.target).closest('fieldset.filter');
-        Search.filtersAdvanced
+        controller
             .removeFilter(filter)
             .updatePlus();
     });
 
-    $searchFiltersAdvanced.on('click', '.search-filter-plus', function (ev) {
-        // const index = fieldset.index('fieldset.filter');
-        Search.filtersAdvanced
+    $(document).on('click', '.search-filters-advanced .search-filter-plus', function (ev) {
+        var controller = getFiltersAdvanced(ev);
+        if (!controller) return;
+        controller
             .appendFilter()
             .updatePlus();
     });
@@ -1383,9 +1452,11 @@ $(document).ready(function() {
      *
      * Use search engine values endpoint to get field values with prefix filtering.
      */
-    var advFilterAutosuggestUrl = $searchFiltersAdvanced.data('autosuggest-url');
-    if (advFilterAutosuggestUrl && typeof $.fn.autocomplete === 'function') {
+    if (typeof $.fn.autocomplete === 'function') {
         var initAdvFilterAutosuggest = function(filterFieldset) {
+            var advFilterAutosuggestUrl = filterFieldset
+                .closest('.search-filters-advanced').data('autosuggest-url');
+            if (!advFilterAutosuggestUrl) return;
             var input = filterFieldset.find('input[name$="[val]"]');
             if (!input.length) return;
             if (input.data('autocomplete')) {
@@ -1408,48 +1479,51 @@ $(document).ready(function() {
             input.attr('autocomplete', 'off');
         };
 
-        $searchFiltersAdvanced.on('change', 'select[name$="[field]"]', function() {
+        $(document).on('change', '.search-filters-advanced select[name$="[field]"]', function() {
             initAdvFilterAutosuggest($(this).closest('fieldset.filter'));
         });
 
-        $searchFiltersAdvanced.on('o:advanced-search.filter.append', function() {
+        $(document).on('o:advanced-search.filter.append', '.search-filters-advanced', function() {
             $(this).find('> fieldset.filter').each(function() {
                 initAdvFilterAutosuggest($(this));
             });
         });
 
-        $searchFiltersAdvanced.find('> fieldset.filter').each(function() {
+        $('.search-filters-advanced > fieldset.filter').each(function() {
             initAdvFilterAutosuggest($(this));
         });
+
+        Search.initFilterAutosuggest = initAdvFilterAutosuggest;
     }
 
     /**
      * Results tools (sort, pagination, per-page).
      */
 
+    var setActiveViewType = function(activeClass) {
+        $('.search-view-type').removeClass('active').attr('aria-pressed', 'false');
+        $('.' + activeClass).addClass('active').attr('aria-pressed', 'true');
+    };
+
     $('.search-view-type-list').on('click', function(e) {
         e.preventDefault();
         Search.setViewType('list');
-        $('.search-view-type').removeClass('active');
-        $('.search-view-type-list').addClass('active');
+        setActiveViewType('search-view-type-list');
     });
 
     $('.search-view-type-grid').on('click', function(e) {
         e.preventDefault();
         Search.setViewType('grid');
-        $('.search-view-type').removeClass('active');
-        $('.search-view-type-grid').addClass('active');
+        setActiveViewType('search-view-type-grid');
     });
 
     /**
-     * Map view handler.
-     * Requires the Mapping module to be installed.
+     * Map view handler. Requires the Mapping module to be installed.
      */
     $('.search-view-type-map').on('click', function(e) {
         e.preventDefault();
         Search.setViewType('map');
-        $('.search-view-type').removeClass('active');
-        $('.search-view-type-map').addClass('active');
+        setActiveViewType('search-view-type-map');
     });
 
     $('.as-url select, select.as-url').on('change', function(e) {
@@ -1480,10 +1554,23 @@ $(document).ready(function() {
                 Search.facets.seeMoreOrLess(button);
             } else {
                 Search.facets.expandOrCollapse(button);
+                Search.facets.updateExpandAllButton();
             }
         });
 
-        $searchFacets.find('.facet-see-more-or-less').each((index, button) => Search.facets.seeMoreOrLess(button));
+        $searchFacets.on('click', '.facets-expand-all', function() {
+            const button = $(this);
+            Search.facets.expandOrCollapseAll(button.hasClass('expand'));
+        });
+
+        $searchFacets.find('.facet-see-more-or-less:not(.facet-paginate-onload)').each((index, button) => Search.facets.seeMoreOrLess(button));
+
+        // Facets configured to paginate from load (more empty + per_page > 0):
+        // show the pagination immediately, without any "see more" button.
+        $searchFacets.find('.facet-paginate-onload').each(function() {
+            const button = $(this);
+            Search.facets.initPagination(button, Number(button.attr('data-per-page')) || 0);
+        });
 
         // Pagination navigation buttons.
         $searchFacets.on('click', '.facet-page-first', function() {
@@ -1678,28 +1765,64 @@ $(document).ready(function() {
      */
     var view_type = localStorage.getItem('search_view_type');
     if (!view_type) {
-        view_type = 'list';
+        // No stored preference: honour the server default view, i.e. the
+        // view-type button rendered active from the "grid_list_mode" setting,
+        // and only fall back to list when none is marked active.
+        var $activeViewType = $('.search-view-type.active').first();
+        view_type = $activeViewType.hasClass('search-view-type-grid') ? 'grid'
+            : ($activeViewType.hasClass('search-view-type-map') ? 'map' : 'list');
     }
     $('.search-view-type-' + view_type).click();
 
     /**
      * Init chosen select.
      */
+    Search.initChosen = function(context) {
+        if (!$.fn.chosen) {
+            return Search;
+        }
+        var $context = context ? $(context) : $(document);
+        $context.find('select.chosen-select')
+            .addBack('select.chosen-select')
+            .chosen(Search.chosenOptions);
+        return Search;
+    };
+
     if (hasChosenSelect) {
-        $('select.chosen-select').chosen(Search.chosenOptions);
+        Search.initChosen(document);
     }
 
     /**
      * Init autocompletion/autosuggestion of all specified input fields.
      */
-    if (hasAutocomplete) {
-        $('input[type=search].autosuggest, input[type=text].autosuggest').each(function(index, element) {
+    Search.initAutosuggest = function(context) {
+        if (typeof $.fn.autocomplete !== 'function') {
+            return Search;
+        }
+        var $context = context ? $(context) : $(document);
+        var selector = 'input[type=search].autosuggest, input[type=text].autosuggest';
+        $context.find(selector).addBack(selector).each(function(index, element) {
             element = $(element);
+            // The input may have been initialized in a previous call.
+            if (element.data('autocomplete')) {
+                return;
+            }
             let autosuggestOptions = Search.autosuggestOptions(element);
             if (autosuggestOptions) {
                 element.autocomplete(autosuggestOptions);
             }
         });
+        // The values of the advanced filters have their own endpoint.
+        if (Search.initFilterAutosuggest) {
+            $context.find('.search-filters-advanced > fieldset.filter').each(function() {
+                Search.initFilterAutosuggest($(this));
+            });
+        }
+        return Search;
+    };
+
+    if (hasAutocomplete) {
+        Search.initAutosuggest(document);
     }
 
 });

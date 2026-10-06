@@ -73,6 +73,16 @@ class Query implements JsonSerializable
     protected $fieldBoosts = [];
 
     /**
+     * @var string
+     */
+    protected $minimumMatch = '';
+
+    /**
+     * @var string
+     */
+    protected $tieBreaker = '';
+
+    /**
      * @var array
      */
     protected $fieldsQueryArgs = [];
@@ -172,6 +182,56 @@ class Query implements JsonSerializable
      * @var array
      */
     protected $options = [];
+
+    /**
+     * Extra raw API arguments forwarded as-is by the querier (e.g. has_media,
+     * has_original, has_thumbnails). Bypass the property-filter pipeline for
+     * top-level resource adapter args.
+     *
+     * @var array
+     */
+    protected $apiArgs = [];
+
+    /**
+     * Build a query from a standard Omeka api query.
+     *
+     * The standard api query is the pivot of the search: the scalar args are
+     * carried as they are through the hidden filters and resolved natively by
+     * each querier; the property[] and filter[] rows are normalized once,
+     * without any config. The caller sets the resource types, the pagination
+     * and the specific options (aliases, boosts, visibility).
+     */
+    public static function fromApiQuery(array $apiQuery): self
+    {
+        $query = new self();
+        if (isset($apiQuery['fulltext_search'])
+            && trim((string) $apiQuery['fulltext_search']) !== ''
+        ) {
+            $query->setQuery((string) $apiQuery['fulltext_search']);
+        }
+        if (!empty($apiQuery['sort_by']) && is_string($apiQuery['sort_by'])) {
+            $sortOrder = strtolower((string) ($apiQuery['sort_order'] ?? ''));
+            $query->setSort($apiQuery['sort_by'] . ($sortOrder === 'desc' ? ' desc' : ' asc'));
+        }
+        unset(
+            $apiQuery['fulltext_search'],
+            $apiQuery['sort_by'],
+            $apiQuery['sort_order'],
+            $apiQuery['page'],
+            $apiQuery['per_page'],
+            $apiQuery['limit'],
+            $apiQuery['offset'],
+            $apiQuery['index'],
+            $apiQuery['submit'],
+            $apiQuery['csrf'],
+            $apiQuery['return_scalar'],
+            $apiQuery['__original_query']
+        );
+        $apiQuery = array_filter($apiQuery, fn ($v) => $v !== null && $v !== '' && $v !== []);
+        $apiQuery = \AdvancedSearch\Stdlib\SearchResources::normalizeHiddenQueryFilters($apiQuery);
+        $query->setFiltersQueryHidden($apiQuery);
+        return $query;
+    }
 
     /**
      * The querier allows to do some requests directly, lately or on demand.
@@ -331,6 +391,38 @@ class Query implements JsonSerializable
     public function getFieldBoosts(): array
     {
         return $this->fieldBoosts;
+    }
+
+    /**
+     * Set the eDisMax minimum match ("1" is "or", "100%" is "and"…).
+     *
+     * An empty value means the default of the engine (solrconfig.xml).
+     */
+    public function setMinimumMatch(string $minimumMatch): self
+    {
+        $this->minimumMatch = $minimumMatch;
+        return $this;
+    }
+
+    public function getMinimumMatch(): string
+    {
+        return $this->minimumMatch;
+    }
+
+    /**
+     * Set the eDisMax tie breaker, a float between 0 and 1.
+     *
+     * An empty value means the default of the engine (solrconfig.xml).
+     */
+    public function setTieBreaker(string $tieBreaker): self
+    {
+        $this->tieBreaker = $tieBreaker;
+        return $this;
+    }
+
+    public function getTieBreaker(): string
+    {
+        return $this->tieBreaker;
     }
 
     /**
@@ -639,10 +731,6 @@ class Query implements JsonSerializable
         return $this->activeFacets;
     }
 
-    public function getActiveFacet(string $facetName): ?array
-    {
-        return $this->activeFacets[$facetName] ?? null;
-    }
 
     /**
      * Available options for suggestions:
@@ -716,6 +804,17 @@ class Query implements JsonSerializable
         return $this->options[$key] ?? $default;
     }
 
+    public function setApiArg(string $key, $value): self
+    {
+        $this->apiArgs[$key] = $value;
+        return $this;
+    }
+
+    public function getApiArgs(): array
+    {
+        return $this->apiArgs;
+    }
+
     /**
      * Check for a simple browse: no query, no filters and no facets.
      *
@@ -725,6 +824,7 @@ class Query implements JsonSerializable
     public function isBrowse(): bool
     {
         return $this->getQuery() === ''
+            && trim((string) $this->getQueryRefine()) === ''
             && $this->getFilters() === []
             && $this->getFiltersRange() === []
             && $this->getFiltersQuery() === []
@@ -741,6 +841,7 @@ class Query implements JsonSerializable
     public function isSearchQuery(): bool
     {
         return $this->getQuery() !== ''
+            || trim((string) $this->getQueryRefine()) !== ''
             || $this->getFilters() !== []
             || $this->getFiltersRange() !== []
             || $this->getFiltersQuery() !== []

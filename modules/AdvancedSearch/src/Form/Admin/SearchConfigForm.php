@@ -112,7 +112,6 @@ class SearchConfigForm extends Form
                     'label' => 'Default search page for admin and sites', // @translate
                     'empty_option' => '',
                     'prepend_value_options' => [
-                        'none' => '[No site]', // @translate
                         'all' => '[All sites]', // @translate
                         'admin' => 'Admin', // @translate
                     ],
@@ -142,9 +141,12 @@ class SearchConfigForm extends Form
                     'class' => 'chosen-select',
                     'multiple' => true,
                     'data-placeholder' => 'Select sites…', // @translate
-                    'value' => [
-                        'enable',
-                    ],
+                    // A new search page is made available on all sites only
+                    // when there is a single site, else the choice of the sites
+                    // is an explicit decision.
+                    'value' => $this->apiManager->search('sites', ['limit' => 0])->getTotalResults() === 1
+                        ? ['enable']
+                        : [],
                 ],
             ])
         ;

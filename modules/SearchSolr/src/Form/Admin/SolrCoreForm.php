@@ -41,19 +41,23 @@ class SolrCoreForm extends Form
         $this
             ->setAttribute('id', 'solr-core-form');
 
-        $this
-            ->add([
-                'name' => 'o:name',
-                'type' => Element\Text::class,
-                'options' => [
-                    'label' => 'Name', // @translate
-                ],
-                'attributes' => [
-                    'id' => 'o-name',
-                    'required' => true,
-                    'placeholder' => 'omeka',
-                ],
-            ]);
+        // The name belongs to the engine: it is edited on the search engine
+        // form only, so it is asked only on creation.
+        if (empty($this->getOption('skip_name'))) {
+            $this
+                ->add([
+                    'name' => 'o:name',
+                    'type' => Element\Text::class,
+                    'options' => [
+                        'label' => 'Name', // @translate
+                    ],
+                    'attributes' => [
+                        'id' => 'o-name',
+                        'required' => true,
+                        'placeholder' => 'omeka',
+                    ],
+                ]);
+        }
 
         $settingsFieldset = new Fieldset('o:settings');
         $this
@@ -114,6 +118,19 @@ class SolrCoreForm extends Form
                 ],
             ])
             ->add([
+                'name' => 'config_set',
+                'type' => Element\Text::class,
+                'options' => [
+                    'label' => 'Config set (to create the core)', // @translate
+                    'info' => 'Used only when creating the core on the server. The config set must exist in SOLR_HOME/configsets on the Solr server ("_default" is shipped with Solr). Leave empty when the core is created manually on the server.', // @translate
+                ],
+                'attributes' => [
+                    'id' => 'config_set',
+                    'required' => false,
+                    'placeholder' => '_default',
+                ],
+            ])
+            ->add([
                 'name' => 'secure',
                 'type' => Element\Checkbox::class,
                 'options' => [
@@ -137,15 +154,38 @@ class SolrCoreForm extends Form
             ])
             ->add([
                 'name' => 'password',
-                'type' => Element\Text::class,
+                'type' => \Common\Form\Element\Secret::class,
                 'options' => [
                     'label' => 'Solr password', // @translate
-                    'info' => 'Note: the password is saved clear in the database, so it is recommended to create a specific user.', // @translate
+                    'info' => 'Note: the password is encrypted at rest when a secret key is set (auto-generated in config/secret_key.php on install, or the OMEKA_SECRET_KEY environment variable), otherwise it is stored clear. It is also recommended to use a specific user.', // @translate
                 ],
                 'attributes' => [
                     'id' => 'password',
                     'required' => false,
-                    'placeholder' => '******',
+                ],
+            ])
+            ->add([
+                'name' => 'admin_username',
+                'type' => Element\Text::class,
+                'options' => [
+                    'label' => 'Solr admin user (core operations)', // @translate
+                    'info' => 'Used only to create or delete cores on the server, which requires admin rights. Leave empty to reuse the Solr user above it it has admin rights.', // @translate
+                ],
+                'attributes' => [
+                    'id' => 'admin_username',
+                    'required' => false,
+                ],
+            ])
+            ->add([
+                'name' => 'admin_password',
+                'type' => \Common\Form\Element\Secret::class,
+                'options' => [
+                    'label' => 'Solr admin password (core operations)', // @translate
+                    'info' => 'Note: the password is encrypted at rest when a secret key is set (auto-generated in config/secret_key.php on install, or the OMEKA_SECRET_KEY environment variable), otherwise it is stored clear. It is also recommended to use a specific user.', // @translate
+                ],
+                'attributes' => [
+                    'id' => 'admin_password',
+                    'required' => false,
                 ],
             ])
             ->add([
@@ -164,11 +204,11 @@ class SolrCoreForm extends Form
                 'type' => Element\Radio::class,
                 'options' => [
                     'label' => 'Http request type', // @translate
-                    'info' => 'Choose if requests to Solr use "get" or "post".', // @translate
+                    'info' => 'With "get by default", only big queries use "post" (limit is 1024 bytes) and it avoids "414 URI too long" with many facets or filters, but post queries are not cached.With "get", requests always use "get" and fail when too long. So keep "post" unless an HTTP cache layer requires pure "get".', // @translate
                     'documentation' => 'https://solarium.readthedocs.io/en/latest/plugins/#postbigrequest-plugin',
                     'value_options' => [
-                        'post' => 'Post (allow big queries and numerous facets)', // @translate
-                        'get' => 'Get (cacheable)', // @translate
+                        'post' => '"Get" by default and "Post" for big queries (not cacheable)', // @translate
+                        'get' => '"Get" only (fail on big queries)', // @translate
                     ],
                 ],
                 'attributes' => [
@@ -224,6 +264,18 @@ class SolrCoreForm extends Form
                 ],
             ])
             ->add([
+                'name' => 'index_name',
+                'type' => Element\Text::class,
+                'options' => [
+                    'label' => 'Solr index name for shared core', // @translate
+                    'info' => 'May be empty, or may be or may not be the same index name than the third party, depending on its configuration.', // @translate
+                ],
+                'attributes' => [
+                    'id' => 'index_name',
+                    'required' => false,
+                ],
+            ])
+            ->add([
                 'name' => 'resource_languages',
                 // TODO The locale select is not working.
                 // 'type' => 'Omeka\Form\Element\LocaleSelect',
@@ -238,18 +290,7 @@ class SolrCoreForm extends Form
                     'placeholder' => 'fr de sp und',
                 ],
             ])
-            // TODO Replace the checkbox by a button.
-            ->add([
-                'name' => 'clear_full_index',
-                'type' => Element\Checkbox::class,
-                'options' => [
-                    'label' => 'Clear all indexes, included external ones', // @translate
-                    'info' => 'Warning: this button will clear all indexes on the core, included indexes externally managed if multi-index is set.', // @translate
-                ],
-                'attributes' => [
-                    'id' => 'clear_full_index',
-                ],
-            ]);
+        ;
 
         /*
         $settingsFieldset->get('resource_languages')
@@ -257,6 +298,8 @@ class SolrCoreForm extends Form
             ->setEmptyOption(null);
         */
 
+        // The query relevance settings (minimum match, tie breaker) are a facet
+        // of the query context: they are set by search page in its config.
         $querySettingsFieldset = new Fieldset('query');
         $querySettingsFieldset
             ->setLabel('Query settings'); // @translate
@@ -290,56 +333,11 @@ class SolrCoreForm extends Form
                 ]);
         }
 
-        $querySettingsFieldset
-            ->add([
-                'name' => 'minimum_match',
-                'type' => Element\Text::class,
-                'options' => [
-                    'label' => 'Minimum match (or/and)', // @translate
-                    'info' => <<<'TXT'
-                        Integer "1" means "OR", "100%" means "AND". Complex expressions are possible, like "3<80%".
-                        If empty, the config of the solr core (solrconfig.xml) will be used.
-                        TXT, // @translate
-                    'documentation' => 'https://solr.apache.org/guide/the-dismax-query-parser.html#mm-minimum-should-match-parameter',
-                ],
-                'attributes' => [
-                    'required' => false,
-                    'value' => '',
-                    'placeholder' => '3<80%',
-                ],
-            ])
-            ->add([
-                'name' => 'tie_breaker',
-                'type' => Element\Number::class,
-                'options' => [
-                    'label' => 'Tie breaker', // @translate
-                    'info' => <<<'TXT'
-                        Increase score according to the number of matched fields.
-                        If empty, the config of the solr core (solrconfig.xml) will be used.
-                        TXT, // @translate
-                    'documentation' => 'https://solr.apache.org/guide/the-dismax-query-parser.html#the-tie-tie-breaker-parameter',
-                ],
-                'attributes' => [
-                    'id' => 'tie_breaker',
-                    'required' => false,
-                    'value' => '',
-                    'placeholder' => '0.15',
-                    'inclusive' => true,
-                    'min' => '0.0',
-                    'max' => '1.0',
-                    'step' => '0.01',
-                ],
-            ]);
-
         // TODO Other fields (boost...) requires multiple fields. See https://secure.php.net/manual/en/class.solrdismaxquery.php.
 
         $inputFilter = $this->getInputFilter();
         $settingFilters = $inputFilter->get('o:settings');
         $settingFilters
-            ->add([
-                'name' => 'clear_full_index',
-                'required' => false,
-            ])
             ->add([
                 'name' => 'support',
                 'required' => false,
@@ -349,13 +347,13 @@ class SolrCoreForm extends Form
             ->add([
                 'name' => 'copy_field_info',
                 'required' => false,
-            ])
-            ->add([
-                'name' => 'tie_breaker',
-                'required' => false,
             ]);
         $settingFilters
             ->get('client')
+            ->add([
+                'name' => 'config_set',
+                'required' => false,
+            ])
             ->add([
                 'name' => 'secure',
                 'required' => false,

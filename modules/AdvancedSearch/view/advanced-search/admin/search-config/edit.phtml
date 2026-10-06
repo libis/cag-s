@@ -3,16 +3,24 @@
  * @var \Laminas\View\Renderer\PhpRenderer $this
  * @var \AdvancedSearch\Api\Representation\SearchConfigRepresentation $searchConfig
  * @var \AdvancedSearch\Form\Admin\SearchConfigConfigureForm $form
+ * @var \AdvancedSearch\Form\Admin\SearchConfigImportForm|null $importForm
  */
 
 $plugins = $this->getHelperPluginManager();
 $translate = $plugins->get('translate');
+$escape = $plugins->get('escapeHtml');
 $assetUrl = $plugins->get('assetUrl');
 
 $this->headLink()
+    ->appendStylesheet($assetUrl('css/common-dialog-admin.css', 'Common'));
+$this->headScript()
+    ->appendFile($assetUrl('js/common-dialog.js', 'Common'), 'text/javascript', ['defer' => 'defer']);
+$this->headLink()
     ->appendStylesheet($assetUrl('css/advanced-search-manager.css', 'AdvancedSearch'));
 $this->headScript()
-    ->appendFile($assetUrl('js/advanced-search-manager.js', 'AdvancedSearch'), 'text/javascript', ['defer' => 'defer']);
+    ->appendFile($assetUrl('js/advanced-search-manager.js', 'AdvancedSearch'), 'text/javascript', ['defer' => 'defer'])
+    ->appendFile($assetUrl('js/advanced-search-input-preview.js', 'AdvancedSearch'), 'text/javascript', ['defer' => 'defer'])
+    ->appendFile($assetUrl('js/advanced-search-collection.js', 'AdvancedSearch'), 'text/javascript', ['defer' => 'defer']);
 
 $this->htmlElement('body')->appendAttribute('class', 'search-admin search-config resource edit');
 
@@ -21,11 +29,109 @@ if (empty($form)) {
     return;
 }
 
+$this->headScript()->appendScript(sprintf(
+    'window.AdvancedSearch = window.AdvancedSearch || {}; window.AdvancedSearch.collection = %s;',
+    json_encode([
+        'empty' => $translate('No item yet: use the button + to add one.'),
+        'newItem' => $translate('New item'),
+        'advanced' => $translate('Advanced settings'),
+        'add' => $translate('Add'),
+        'suggest' => $translate('Suggestions'),
+        'suggestions' => $translate('Suggestions'),
+        'noSuggestion' => $translate('No suggestion: the used properties are already configured.'),
+        'addSelected' => $translate('Add the checked ones'),
+        'remove' => $translate('Remove'),
+        'up' => $translate('Move up'),
+        'down' => $translate('Move down'),
+        'drag' => $translate('Drag to reorder'),
+        'general' => $translate('General'),
+        'list' => $translate('List'),
+        'headerFooter' => $translate('Infos and actions'),
+        'resourceCard' => $translate('Display of a result'),
+        'technical' => $translate('Advanced'),
+        'previewResults' => $translate('Preview'),
+    ], JSON_UNESCAPED_UNICODE)
+));
+$this->headScript()->appendScript(sprintf(
+    'window.AdvancedSearch.preview = %s;',
+    json_encode([
+        'preview' => $translate('Preview'),
+        'label' => $translate('Label'),
+        'value1' => $translate('First value'),
+        'value2' => $translate('Second value'),
+        'value3' => $translate('Third value'),
+        'choose' => $translate('Choose…'),
+        'group' => $translate('Group'),
+        'anyField' => $translate('Any field'),
+        'title' => $translate('Title'),
+        'subject' => $translate('Subject'),
+        'opContains' => $translate('contains'),
+        'opIs' => $translate('is exactly'),
+        'queryText' => $translate('Text to search'),
+        'and' => $translate('and'),
+        'or' => $translate('or'),
+        'hidden' => $translate('Hidden field: nothing is displayed, the value is sent with the query.'),
+        'multiText' => $translate('first value, second value'),
+        'specific' => $translate('Specific type set in the options: no preview.'),
+        'accessFree' => $translate('Free'),
+        'accessReserved' => $translate('Reserved'),
+        'accessForbidden' => $translate('Forbidden'),
+        'filterValues' => $translate('Filter the values…'),
+        'from' => $translate('From'),
+        'to' => $translate('To'),
+        'not' => $translate('not'),
+        'typed' => $translate('Val'),
+        'seeMore' => $translate('See more'),
+        'results12' => $translate('12 results'),
+        'sortRelevance' => $translate('Relevance'),
+        'resultTitle' => $translate('Title of the resource'),
+        'resultDescription' => $translate('Description of the resource, on a few lines…'),
+        'applyFacets' => $translate('Apply facets'),
+        'resetFacets' => $translate('Reset facets'),
+        'facetsTitle' => $translate('Facets'),
+        'refineSearch' => $translate('Refine search'),
+        'resetFields' => $translate('Reset fields'),
+        'fullText' => $translate('Search full text'),
+        'fullTextShort' => $translate('Full text'),
+        'recordOnly' => $translate('Record only'),
+        'home' => $translate('Home'),
+        'searchTitle' => $translate('Search'),
+    ], JSON_UNESCAPED_UNICODE)
+));
+
 $form->prepare();
 
-$navTab = [];
+// The eight fieldsets are grouped in six tabs, ordered by frequency of use;
+// a group with several fieldsets gets sub tabs. Fieldsets added by modules
+// (like "engine" of SearchSolr) join the advanced group.
+$groups = [
+    'general-tab' => ['label' => $translate('General'), 'sections' => ['settings', 'sites']],
+    'simple-tab' => ['label' => $translate('Simple search'), 'sections' => ['q', 'request']],
+    'form' => ['label' => $translate('Advanced search'), 'sections' => ['form']],
+    'results' => ['label' => $translate('Results'), 'sections' => ['results']],
+    'facet' => ['label' => $translate('Facets'), 'sections' => ['facet']],
+    'advanced-tab' => ['label' => $translate('Advanced settings'), 'sections' => ['index']],
+];
+$grouped = array_merge(...array_column($groups, 'sections'));
 foreach ($form->getFieldsets() as $fieldset) {
-    $navTab[$fieldset->getName()] = $translate($fieldset->getLabel());
+    if (!in_array($fieldset->getName(), $grouped)) {
+        $groups['advanced-tab']['sections'][] = $fieldset->getName();
+    }
+}
+// The labels of the sub tabs of the groups.
+$subTabLabels = [
+    'settings' => $translate('Settings'),
+    'sites' => $translate('Sites'),
+    'q' => $translate('Search field'),
+    'request' => $translate('Default search'),
+];
+
+$navTab = [];
+foreach ($groups as $groupId => $group) {
+    $sections = array_filter($group['sections'], fn ($name) => $form->has($name));
+    if ($sections) {
+        $navTab[$groupId] = $group['label'];
+    }
 }
 ?>
 
@@ -34,6 +140,8 @@ foreach ($form->getFieldsets() as $fieldset) {
 <?= $this->form()->openTag($form) ?>
 
 <div id="page-actions">
+    <a class="button" href="<?= $escape($searchConfig->adminUrl('export')) ?>" download><?= $translate('Export') ?></a>
+    <button type="button" class="button" id="button-import-config"><?= $translate('Import') ?></button>
     <button type="submit" class="button"><?= $translate('Save') ?></button>
 </div>
 
@@ -42,8 +150,29 @@ foreach ($form->getFieldsets() as $fieldset) {
 </nav>
 
 <?php $next = -1; ?>
-<?php foreach ($form->getFieldsets() as $name => $fieldset): ?>
-<?= $this->formCollection($fieldset->setAttributes(['id' => $name, 'class' => 'section' . (++$next ? '' : ' active'), 'aria-labelledby' => $name . '-label'])) ?>
+<?php foreach ($groups as $groupId => $group):
+    $sections = array_values(array_filter($group['sections'], fn ($n) => $form->has($n)));
+    if (!$sections) continue;
+    $isGroup = count($sections) > 1;
+    ++$next;
+?>
+<?php if ($isGroup): ?>
+<div id="<?= $groupId ?>" class="section<?= $next ? '' : ' active' ?>" aria-labelledby="<?= $groupId ?>-label">
+    <?php foreach ($sections as $name):
+        $fieldset = $form->get($name);
+        $label = $subTabLabels[$name] ?? $translate($fieldset->getLabel());
+    ?>
+    <?= $this->formCollection($fieldset->setAttributes(['id' => $name, 'class' => 'group-section', 'data-group-label' => $label, 'aria-labelledby' => $name . '-label'])) ?>
+    <?php endforeach; ?>
+</div>
+<?php else:
+    $fieldset = $form->get($sections[0]);
+    if ($groupId !== $sections[0]) {
+        $fieldset->setAttribute('id', $groupId);
+    }
+?>
+<?= $this->formCollection($fieldset->setAttributes(['id' => $groupId, 'class' => 'section' . ($next ? '' : ' active'), 'aria-labelledby' => $groupId . '-label'])) ?>
+<?php endif; ?>
 <?php endforeach; ?>
 
 <?php foreach ($form->getElements() as $element): ?>
@@ -52,4 +181,44 @@ foreach ($form->getFieldsets() as $fieldset) {
 
 <?php $this->trigger('view.edit.form.after'); ?>
 <?= $this->form()->closeTag() ?>
+
+<?php if (isset($importForm)): $importForm->prepare(); ?>
+<dialog class="dialog-common dialog-import-config" aria-labelledby="dialog-import-config-heading">
+    <div class="dialog-background">
+        <div class="dialog-panel">
+            <div class="dialog-header">
+                <button type="button" class="dialog-header-close-button" autofocus="autofocus">
+                    <span class="dialog-close" aria-hidden="true">🗙</span>
+                    <span class="dialog-close-label"><?= $translate('Close') ?></span>
+                </button>
+            </div>
+            <div class="dialog-contents">
+                <div class="dialog-heading"><h2 id="dialog-import-config-heading"><?= $translate('Import a search page config') ?></h2></div>
+                <?= $this->form()->openTag($importForm) ?>
+                <div class="dialog-body">
+                    <p><?= $translate('The imported config replaces all the settings of this page, except the parameters of the tab General (name, slug, engine, sites).') ?></p>
+                    <?= $this->formCollection($importForm, false) ?>
+                </div>
+                <div class="dialog-footer">
+                    <button type="button" class="dialog-button dialog-cancel"><?= $translate('Cancel') ?></button>
+                    <button type="submit" class="dialog-button dialog-ok"><?= $translate('Import') ?></button>
+                </div>
+                <?= $this->form()->closeTag() ?>
+            </div>
+        </div>
+    </div>
+</dialog>
+<script>
+(function () {
+    const dialog = document.querySelector('dialog.dialog-import-config');
+    const button = document.getElementById('button-import-config');
+    if (!dialog || !button) return;
+    button.addEventListener('click', () => dialog.showModal());
+    dialog.querySelectorAll('.dialog-header-close-button, .dialog-cancel').forEach(
+        (closer) => closer.addEventListener('click', () => dialog.close())
+    );
+})();
+</script>
+<?php endif; ?>
+
 <?php $this->trigger('view.edit.after'); ?>

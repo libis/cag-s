@@ -57,93 +57,6 @@ class MapController extends AbstractActionController
      */
     protected $valueExtractorManager;
 
-    /**
-     * @var array
-     */
-    protected $solrLangs = [
-        'cjk' => 'cjk',
-        'zh' => 'cjk',
-        'zho' => 'cjk',
-        'chi' => 'cjk',
-        // 'ja' => 'cjk',
-        // 'jpn' => 'cjk',
-        // 'ko' => 'cjk',
-        // 'kor' => 'cjk',
-        'en' => 'en',
-        'eng' => 'en',
-        'ar' => 'ar',
-        'ara' => 'ar',
-        'bg' => 'bg',
-        'bul' => 'bg',
-        'ca' => 'ca',
-        'cat' => 'ca',
-        'cz' => 'cz',
-        'ces' => 'cz',
-        'cze' => 'cz',
-        'da' => 'da',
-        'dan' => 'da',
-        'de' => 'de',
-        'deu' => 'de',
-        'ger' => 'de',
-        'el' => 'el',
-        'ell' => 'el',
-        'gre' => 'el',
-        'es' => 'es',
-        'spa' => 'es',
-        'et' => 'et',
-        'est' => 'et',
-        'eu' => 'eu',
-        'eus' => 'eu',
-        'bas' => 'eu',
-        'fa' => 'fa',
-        'fas' => 'fa',
-        'per' => 'fa',
-        'fi' => 'fi',
-        'fin' => 'fi',
-        'fr' => 'fr',
-        'fra' => 'fr',
-        'fre' => 'fr',
-        'ga' => 'ga',
-        'gle' => 'ga',
-        'gl' => 'gl',
-        'glg' => 'gl',
-        'hi' => 'hi',
-        'hin' => 'hi',
-        'hu' => 'hu',
-        'hun' => 'hu',
-        'hy' => 'hy',
-        'hye' => 'hy',
-        'arm' => 'hy',
-        'id' => 'id',
-        'ind' => 'id',
-        'it' => 'it',
-        'ita' => 'it',
-        'ja' => 'ja',
-        'jpn' => 'ja',
-        'ko' => 'ko',
-        'kor' => 'ko',
-        'lv' => 'lv',
-        'lav' => 'lv',
-        'nl' => 'nl',
-        'nld' => 'nl',
-        'dut' => 'nl',
-        'no' => 'no',
-        'nor' => 'no',
-        'pt' => 'pt',
-        'por' => 'pt',
-        'ro' => 'ro',
-        'ron' => 'ro',
-        'rum' => 'ro',
-        'ru' => 'ru',
-        'rus' => 'ru',
-        'sv' => 'sv',
-        'swe' => 'sv',
-        'th' => 'th',
-        'tha' => 'th',
-        'tr' => 'tr',
-        'tur' => 'tr',
-    ];
-
     public function __construct(
         Connection $connection,
         ValueExtractorManager $valueExtractorManager
@@ -162,7 +75,7 @@ class MapController extends AbstractActionController
         $solrCoreId = $this->params('core-id');
         $resourceName = $this->params('resource-name');
         $url = $this->url()->fromRoute(
-            'admin/search/solr/core-id',
+            'admin/search-manager/solr/core-id',
             ['id' => $solrCoreId]
         );
         return $this->redirect()
@@ -174,12 +87,19 @@ class MapController extends AbstractActionController
         $solrCoreId = $this->params('core-id');
         $resourceName = $this->params('resource-name');
 
-        $solrCore = $this->api()->read('solr_cores', $solrCoreId)->getContent();
+        $solrCore = $this->solrCore((int) $solrCoreId);
 
         $form = $this->getForm(SolrMapForm::class, [
             'solr_core_id' => $solrCoreId,
             'resource_name' => $resourceName,
         ]);
+
+        // Prefill the source when given, e.g. from the "+" of the lists of the
+        // maps of the core page.
+        $sourceQuery = (string) $this->params()->fromQuery('source');
+        if ($sourceQuery !== '' && !$this->getRequest()->isPost()) {
+            $form->setData(['o:source' => $this->sourceStringToArray($sourceQuery)]);
+        }
 
         if ($this->getRequest()->isPost()) {
             $data = $this->params()->fromPost();
@@ -189,9 +109,14 @@ class MapController extends AbstractActionController
                 $data = $this->arrayFilterRecursiveEmptyValue($data);
                 $data = $this->cleanMapSettings($data);
                 $data = $this->arrayFilterRecursiveEmptyValue($data);
-                $data['o:source'] = $this->sourceArrayToString($data['o:source']);
+                $data['o:source'] = $this->sourceArrayToString($data['o:source'] ?? []);
                 $data['o:solr_core']['o:id'] = $solrCoreId;
-                $data['o:resource_name'] = $resourceName;
+                // The scope is chosen in the form ("Scope" radio); the route
+                // resource-name is only the default, so it is the fallback.
+                $data['o:resource_name'] = $data['o:resource_name'] ?? $resourceName;
+                // Explicit provenance: a map created by hand is never removed
+                // by the maps sync.
+                $data['o:settings']['origin'] = 'manual';
                 $this->api()->create('solr_maps', $data);
 
                 // Ideally, the update of the core should be done via event.
@@ -204,7 +129,7 @@ class MapController extends AbstractActionController
 
                 return $this->redirect()->toUrl(
                     $this->url()->fromRoute(
-                        'admin/search/solr/core-id',
+                        'admin/search-manager/solr/core-id',
                         ['id' => $solrCoreId]
                     ) . '?resource_type=' . urlencode(
                         $data['o:resource_name'] ?? $resourceName
@@ -240,10 +165,10 @@ class MapController extends AbstractActionController
         $id = $this->params('id');
 
         /**
-         * @var \SearchSolr\Api\Representation\SolrCoreRepresentation $solrCore
+         * @var \SearchSolr\Stdlib\SolrCore $solrCore
          * @var \SearchSolr\Api\Representation\SolrMapRepresentation $map
          */
-        $solrCore = $this->api()->read('solr_cores', $solrCoreId)->getContent();
+        $solrCore = $this->solrCore((int) $solrCoreId);
 
         /** @var \SearchSolr\Api\Representation\SolrMapRepresentation $map */
         $map = $this->api()->read('solr_maps', $id)->getContent();
@@ -264,9 +189,11 @@ class MapController extends AbstractActionController
                 $data = $this->arrayFilterRecursiveEmptyValue($data);
                 $data = $this->cleanMapSettings($data);
                 $data = $this->arrayFilterRecursiveEmptyValue($data);
-                $data['o:source'] = $this->sourceArrayToString($data['o:source']);
+                $data['o:source'] = $this->sourceArrayToString($data['o:source'] ?? []);
                 $data['o:solr_core']['o:id'] = $solrCoreId;
                 $data['o:resource_name'] = $resourceName;
+                // A map edited by hand becomes manual, whatever its origin.
+                $data['o:settings']['origin'] = 'manual';
                 $this->api()->update('solr_maps', $id, $data);
 
                 // Ideally, the update of the core should be done via an event.
@@ -281,7 +208,7 @@ class MapController extends AbstractActionController
 
                 return $this->redirect()->toUrl(
                     $this->url()->fromRoute(
-                        'admin/search/solr/core-id',
+                        'admin/search-manager/solr/core-id',
                         ['id' => $solrCoreId]
                     ) . '?resource_type=' . urlencode(
                         $data['o:resource_name'] ?? $resourceName
@@ -359,13 +286,21 @@ class MapController extends AbstractActionController
             }
         }
 
-        return $this->redirect()->toRoute('admin/search/solr/core-id', ['id' => $map->solrCore()->id()]);
+        return $this->redirect()->toRoute('admin/search-manager/solr/core-id', ['id' => $map->solrCore()->id()]);
     }
 
     protected function getSolrSchema($solrCoreId)
     {
-        $solrCore = $this->api()->read('solr_cores', $solrCoreId)->getContent();
-        return $solrCore->schema()->getSchema();
+        $solrCore = $this->solrCore((int) $solrCoreId);
+        try {
+            return $solrCore->schema()->getSchema();
+        } catch (\Exception $e) {
+            // Solr unreachable: the form still works without the schema hints.
+            $this->messenger()->addWarning(
+                'The Solr server is not reachable, so the schema hints are unavailable.' // @translate
+            );
+            return null;
+        }
     }
 
     protected function getSourceLabels()
@@ -379,11 +314,14 @@ class MapController extends AbstractActionController
             'owner' => 'Owner', // @translate
             'created' => 'Created', // @translate
             'modified' => 'Modified', // @translate
+            'changed' => 'Changed', // @translate
+            'indexed_at' => 'Indexed at', // @translate
             'resource_class' => 'Resource class', // @translate
             'resource_template' => 'Resource template', // @translate
             'item_set' => 'Item set', // @translate
             'item' => 'Item', // @translate
             'media' => 'Media', // @translate
+            'digital_object' => 'Digital object', // @translate
         ];
 
         $propertyLabels = [];
@@ -447,7 +385,7 @@ class MapController extends AbstractActionController
      */
     protected function sourceArrayToString($source)
     {
-        return implode('/', array_map(fn ($v) => $v['source'], $source));
+        return implode('/', array_map(fn ($v) => $v['source'] ?? '', $source ?: []));
     }
 
     /**
@@ -462,23 +400,46 @@ class MapController extends AbstractActionController
         return array_map(fn ($v) => ['source' => $v], explode('/', $source));
     }
 
+    /**
+     * Remove the settings specific to another formatter or normalization,
+     * so a map stores only what applies to it.
+     */
     protected function cleanMapSettings(array $data): array
     {
         $formatter = $data['o:settings']['formatter'] ?? '';
-        if (empty($data['o:settings']['index_for_link'])) {
-            unset($data['o:settings']['index_for_link']);
+        $specificByFormatter = [
+            'date' => ['date_mode', 'date_out'],
+            'place' => ['place_mode'],
+            'thesaurus' => ['thesaurus_resources', 'thesaurus_self', 'thesaurus_metadata'],
+        ];
+        foreach ($specificByFormatter as $formatterName => $keys) {
+            if ($formatter !== $formatterName) {
+                foreach ($keys as $key) {
+                    unset($data['o:settings'][$key]);
+                }
+            }
         }
-        if ($formatter !== 'place') {
-            unset(
-                $data['o:settings']['place_mode']
-            );
+        // The unchecked checkboxes post "0": store nothing.
+        foreach (['include_digital_object', 'thesaurus_self', 'table_index_original', 'table_check_strict'] as $key) {
+            if (empty($data['o:settings'][$key])) {
+                unset($data['o:settings'][$key]);
+            }
         }
-        if ($formatter !== 'thesaurus_self') {
-            unset(
-                $data['o:settings']['thesaurus_resources'],
-                $data['o:settings']['thesaurus_self'],
-                $data['o:settings']['thesaurus_metadata']
-            );
+        if (empty($data['o:pool']['filter_languages_no_lang'])) {
+            unset($data['o:pool']['filter_languages_no_lang']);
+        }
+        $normalizations = $data['o:settings']['normalization'] ?? [];
+        $specificByNormalization = [
+            'max_length' => ['max_length'],
+            'truncate' => ['truncate_at'],
+            'table' => ['table', 'table_mode', 'table_index_original', 'table_check_strict'],
+        ];
+        foreach ($specificByNormalization as $normalization => $keys) {
+            if (!in_array($normalization, $normalizations, true)) {
+                foreach ($keys as $key) {
+                    unset($data['o:settings'][$key]);
+                }
+            }
         }
         return $data;
     }

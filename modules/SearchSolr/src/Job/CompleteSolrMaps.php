@@ -4,6 +4,7 @@ namespace SearchSolr\Job;
 
 use Common\Stdlib\PsrMessage;
 use Omeka\Job\AbstractJob;
+use SearchSolr\Stdlib\LanguageCodes;
 
 /**
  * Create Solr maps for all used properties.
@@ -17,92 +18,21 @@ use Omeka\Job\AbstractJob;
 class CompleteSolrMaps extends AbstractJob
 {
     /**
+     * Minimum ratio of numeric values for a property to get a numeric index.
+     */
+    const DATATYPE_RATIO = 0.998;
+
+    /**
+     * A property gets no exact index when its number of distinct values is
+     * greater than this factor multiplied by the square root of its total.
+     */
+    const DATATYPE_CARDINALITY_FACTOR = 5;
+
+    /**
      * @var \Laminas\Log\Logger
      */
     protected $logger;
 
-    /**
-     * Solr language mappings (ISO-639 → Solr suffix).
-     */
-    protected $solrLangs = [
-        'cjk' => 'cjk',
-        'zh' => 'cjk',
-        'zho' => 'cjk',
-        'chi' => 'cjk',
-        'en' => 'en',
-        'eng' => 'en',
-        'ar' => 'ar',
-        'ara' => 'ar',
-        'bg' => 'bg',
-        'bul' => 'bg',
-        'ca' => 'ca',
-        'cat' => 'ca',
-        'cz' => 'cz',
-        'ces' => 'cz',
-        'cze' => 'cz',
-        'da' => 'da',
-        'dan' => 'da',
-        'de' => 'de',
-        'deu' => 'de',
-        'ger' => 'de',
-        'el' => 'el',
-        'ell' => 'el',
-        'gre' => 'el',
-        'es' => 'es',
-        'spa' => 'es',
-        'et' => 'et',
-        'est' => 'et',
-        'eu' => 'eu',
-        'eus' => 'eu',
-        'bas' => 'eu',
-        'fa' => 'fa',
-        'fas' => 'fa',
-        'per' => 'fa',
-        'fi' => 'fi',
-        'fin' => 'fi',
-        'fr' => 'fr',
-        'fra' => 'fr',
-        'fre' => 'fr',
-        'ga' => 'ga',
-        'gle' => 'ga',
-        'gl' => 'gl',
-        'glg' => 'gl',
-        'hi' => 'hi',
-        'hin' => 'hi',
-        'hu' => 'hu',
-        'hun' => 'hu',
-        'hy' => 'hy',
-        'hye' => 'hy',
-        'arm' => 'hy',
-        'id' => 'id',
-        'ind' => 'id',
-        'it' => 'it',
-        'ita' => 'it',
-        'ja' => 'ja',
-        'jpn' => 'ja',
-        'ko' => 'ko',
-        'kor' => 'ko',
-        'lv' => 'lv',
-        'lav' => 'lv',
-        'nl' => 'nl',
-        'nld' => 'nl',
-        'dut' => 'nl',
-        'no' => 'no',
-        'nor' => 'no',
-        'pt' => 'pt',
-        'por' => 'pt',
-        'ro' => 'ro',
-        'ron' => 'ro',
-        'rum' => 'ro',
-        'ru' => 'ru',
-        'rus' => 'ru',
-        'sv' => 'sv',
-        'swe' => 'sv',
-        'th' => 'th',
-        'tha' => 'th',
-        'tr' => 'tr',
-        'tur' => 'tr',
-    ];
 
     public function perform(): void
     {
@@ -132,9 +62,8 @@ class CompleteSolrMaps extends AbstractJob
         $resourceName = $this->getArg('resource_name', 'items');
 
         try {
-            /** @var \SearchSolr\Api\Representation\SolrCoreRepresentation $solrCore */
-            $solrCore = $api->read('solr_cores', $solrCoreId)
-                ->getContent();
+            /** @var \SearchSolr\Stdlib\SolrCore $solrCore */
+            $solrCore = new \SearchSolr\Stdlib\SolrCore($api->read('search_engines', $solrCoreId)->getContent(), $this->getServiceLocator());
         } catch (\Throwable $e) {
             $this->logger->err(
                 'Solr core #{id} not found.', // @translate
@@ -200,26 +129,52 @@ class CompleteSolrMaps extends AbstractJob
 
         // Load properties and filter to used ones.
         $properties = $api->search('properties')->getContent();
-        $usedPropertyIds = $this->listUsedPropertyIds(
-            $connection, $resourceName
-        );
+        if ($mode === 'datatypes') {
+            $usedProperties = $this->analyseUsedPropertyIds(
+                $connection, $resourceName
+            );
+        } else {
+            $usedProperties = $this->listUsedPropertyIds(
+                $connection, $resourceName
+            );
+        }
 
         $newMaps = [];
 
         foreach ($properties as $property) {
-            if (!in_array($property->id(), $usedPropertyIds)) {
+            if (!array_key_exists($property->id(), $usedProperties)) {
                 continue;
             }
 
             $term = $property->term();
             $label = $property->label();
 
-            // _txt: fulltext search.
+            $solrFieldType = 's';
             $name = strtr($term, ':', '_') . '_txt';
+            $stats = $usedProperties[$property->id()] ?? [];
+            // A typed index requires its formatter: a few values may not be
+            // numbers, and Solr rejects the whole document when one of them is
+            // sent as is, so the formatter drops them.
+            $formatter = '';
+
+            if ($mode === 'datatypes') {
+                if ($stats['z'] >= self::DATATYPE_RATIO * $stats['used']) {
+                    // integer
+                    $name = strtr($term, ':', '_') . '_is';
+                    $solrFieldType = 'i';
+                    $formatter = 'integer';
+                } elseif ($stats['r'] >= self::DATATYPE_RATIO * $stats['used']) {
+                    // floating point
+                    $name = strtr($term, ':', '_') . '_ds';
+                    $solrFieldType = 'd';
+                    $formatter = 'decimal';
+                }
+            }
+
             if ($this->createMap(
                 $api, $solrCoreId, $resourceName,
                 $name, $term, null, [],
-                ['formatter' => '', 'label' => $label],
+                ['formatter' => $formatter, 'label' => $label],
                 $existingFields
             )) {
                 $newMaps[] = $name;
@@ -227,17 +182,20 @@ class CompleteSolrMaps extends AbstractJob
 
             // _txt with language suffix.
             foreach ($langsByProperties[$term] ?? [] as $language) {
-                if (!isset($this->solrLangs[$language])) {
+                $suffix = LanguageCodes::toSolrSuffix($language);
+                if ($suffix === '') {
                     continue;
                 }
-                $suffix = $this->solrLangs[$language];
                 $name = strtr($term, ':', '_') . '_txt_' . $suffix;
                 if ($this->createMap(
                     $api, $solrCoreId, $resourceName,
                     $name, $term, null,
-                    ['filter_languages' => array_keys(
-                        $this->solrLangs, $suffix
-                    )],
+                    [
+                        'filter_languages' => LanguageCodes::codesForSolrSuffix($suffix),
+                        // A value without language is language neutral, so it
+                        // belongs to each language index.
+                        'filter_languages_no_lang' => true,
+                    ],
                     ['formatter' => '', 'label' => $label],
                     $existingFields
                 )) {
@@ -249,10 +207,14 @@ class CompleteSolrMaps extends AbstractJob
                 continue;
             }
 
-            // In recommended mode, skip _ss and _s for long-value
-            // properties.
+            // In recommended mode, skip _ss and _s for long-value properties.
             $skipStringFields = $mode === 'recommended'
                 && in_array($term, $longProperties);
+
+            // In datatypes mode, skip _ss for fields with too many distinct
+            // values: such a facet or filter cannot be browsed.
+            $skipManyValues = $mode === 'datatypes'
+                && sqrt((int) $stats['used']) * self::DATATYPE_CARDINALITY_FACTOR < $stats['numval'];
 
             if (!$skipStringFields) {
                 // _ss: filters and facets.
@@ -260,19 +222,20 @@ class CompleteSolrMaps extends AbstractJob
                 if ($this->createMap(
                     $api, $solrCoreId, $resourceName,
                     $name, $term, $term, [],
-                    ['formatter' => '', 'parts' => ['main'],
+                    ['formatter' => 'text', 'parts' => ['main'],
                         'label' => $label],
                     $existingFields
                 )) {
                     $newMaps[] = $name;
                 }
 
-                // _s: sort.
-                $name = strtr($term, ':', '_') . '_s';
+                // _s: sort. A numeric property sorts as a number: a string
+                // index would sort 10 before 9.
+                $name = strtr($term, ':', '_') . '_' . $solrFieldType;
                 if ($this->createMap(
                     $api, $solrCoreId, $resourceName,
                     $name, $term, null, [],
-                    ['formatter' => '', 'parts' => ['main'],
+                    ['formatter' => $formatter ?: 'text', 'parts' => ['main'],
                         'label' => $label],
                     $existingFields
                 )) {
@@ -285,8 +248,8 @@ class CompleteSolrMaps extends AbstractJob
             if ($this->createMap(
                 $api, $solrCoreId, $resourceName,
                 $name, $term, null, [],
-                ['index_for_link' => true, 'parts' => ['link'],
-                    'formatter' => '', 'label' => $label],
+                ['parts' => ['link'],
+                    'formatter' => 'text', 'label' => $label],
                 $existingFields
             )) {
                 $newMaps[] = $name;
@@ -294,8 +257,7 @@ class CompleteSolrMaps extends AbstractJob
         }
 
         // Update field boosts.
-        $solrCore = $api->read('solr_cores', $solrCoreId)
-            ->getContent();
+        $solrCore = new \SearchSolr\Stdlib\SolrCore($api->read('search_engines', $solrCoreId)->getContent(), $this->getServiceLocator());
         $this->updateFieldsBoost($solrCore, $api);
 
         if ($newMaps) {
@@ -354,6 +316,12 @@ class CompleteSolrMaps extends AbstractJob
             'item_sets' => \Omeka\Entity\ItemSet::class,
             'media' => \Omeka\Entity\Media::class,
         ];
+        if (class_exists('DigitalObject\Module', false)) {
+            $resourceTypes['digital_objects'] = \DigitalObject\Entity\DigitalObject::class;
+        }
+        if (class_exists('Thesaurus\Module', false)) {
+            $resourceTypes['concepts'] = \Thesaurus\Entity\Concept::class;
+        }
         if (!isset($resourceTypes[$resourceName])) {
             return [];
         }
@@ -370,8 +338,50 @@ class CompleteSolrMaps extends AbstractJob
             )
             ->orderBy('value.property_id', 'ASC');
         return $connection
-            ->executeQuery($qb, $qb->getParameters())
-            ->fetchFirstColumn();
+            ->executeQuery($qb->getSQL(), $qb->getParameters())
+            ->fetchAllAssociativeIndexed();
+    }
+
+    protected function analyseUsedPropertyIds(
+        \Doctrine\DBAL\Connection $connection,
+        string $resourceName
+    ): array {
+        $resourceTypes = [
+            'items' => \Omeka\Entity\Item::class,
+            'item_sets' => \Omeka\Entity\ItemSet::class,
+            'media' => \Omeka\Entity\Media::class,
+        ];
+        if (class_exists('DigitalObject\Module', false)) {
+            $resourceTypes['digital_objects'] = \DigitalObject\Entity\DigitalObject::class;
+        }
+        if (class_exists('Thesaurus\Module', false)) {
+            $resourceTypes['concepts'] = \Thesaurus\Entity\Concept::class;
+        }
+        if (!isset($resourceTypes[$resourceName])) {
+            return [];
+        }
+        $qb = $connection->createQueryBuilder()
+            ->select([
+                'value.property_id',
+                'COUNT(*) used',
+                'COUNT(DISTINCT value.value) numval',
+                'SUM(value.value RLIKE \'^-?\\\\d+(\\\\.\\\\d+)?$\') r',
+                'SUM(value.value RLIKE \'^-?\\\\d+$\') z'
+            ])
+            ->from('value', 'value')
+            ->innerJoin(
+                'value', 'resource', 'resource',
+                'resource.id = value.resource_id'
+            )
+            ->groupBy('value.property_id')
+            ->where('resource.resource_type = :resource_type')
+            ->setParameter(
+                'resource_type', $resourceTypes[$resourceName]
+            )
+            ->orderBy('value.property_id', 'ASC');
+        return $connection
+            ->executeQuery($qb->getSQL(), $qb->getParameters())
+            ->fetchAllAssociativeIndexed();
     }
 
     protected function listLongValueProperties(
@@ -396,7 +406,7 @@ class CompleteSolrMaps extends AbstractJob
             ->having('MAX(LENGTH(value.value)) > :max_length')
             ->setParameter('max_length', $maxLength);
         return $connection
-            ->executeQuery($qb, $qb->getParameters())
+            ->executeQuery($qb->getSQL(), $qb->getParameters())
             ->fetchFirstColumn();
     }
 
@@ -429,7 +439,7 @@ class CompleteSolrMaps extends AbstractJob
             ->andWhere("value.lang != ''")
             ->orderBy('property.id', 'asc')
             ->addOrderBy('value.lang', 'asc');
-        $result = $connection->executeQuery($qb)
+        $result = $connection->executeQuery($qb->getSQL(), $qb->getParameters())
             ->fetchAllAssociative();
         $langsByProperties = [];
         foreach ($result as $row) {
@@ -439,7 +449,7 @@ class CompleteSolrMaps extends AbstractJob
     }
 
     protected function updateFieldsBoost(
-        \SearchSolr\Api\Representation\SolrCoreRepresentation $solrCore,
+        \SearchSolr\Stdlib\SolrCore $solrCore,
         \Omeka\Api\Manager $api
     ): void {
         $solrCoreSettings = $solrCore->settings();
@@ -449,8 +459,23 @@ class CompleteSolrMaps extends AbstractJob
                 ?: 1;
         }
         $solrCoreSettings['field_boost'] = $boosts;
-        $api->update('solr_cores', $solrCore->id(), [
-            'o:settings' => $solrCoreSettings,
-        ], [], ['isPartial' => true]);
+        $this->updateEngineSolrSettings($solrCore->id(), $solrCoreSettings);
+    }
+
+    /**
+     * Save the solr settings of the engine (facet "solr" of its settings).
+     */
+    protected function updateEngineSolrSettings(int $engineId, array $solrSettings): void
+    {
+        $services = $this->getServiceLocator();
+        $connection = $services->get('Omeka\Connection');
+        $engineSettings = json_decode((string) $connection->fetchOne(
+            'SELECT `settings` FROM `search_engine` WHERE `id` = ?', [$engineId]
+        ), true) ?: [];
+        $engineSettings['solr'] = $solrSettings;
+        $connection->executeStatement(
+            'UPDATE `search_engine` SET `settings` = ?, `modified` = NOW() WHERE `id` = ?;',
+            [json_encode($engineSettings, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE), $engineId]
+        );
     }
 }

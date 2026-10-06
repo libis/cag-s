@@ -171,6 +171,25 @@ Run them from the root of Omeka:
 vendor/bin/phpunit -c modules/AdvancedSearch/phpunit.xml --testdox
 ```
 
+#### Querier parity
+
+Every querier resolves the same standard Omeka api query (the pivot), so the
+Internal engine (sql) and the Solr engine (module [Search Solr]) must return
+the same resources. A single list of reference queries, `AdvancedSearchTest\Querier\QuerierParityQueries`,
+drives both checks:
+
+- `InternalQuerierParityTest` runs the queries through the Internal engine on
+  deterministic fixtures and asserts querier-agnostic invariants (existence and
+  negation partition the set, exact is a subset of contains, a `filter[]` on a
+  system field equals the matching scalar arg, an unknown arg is ignored, etc.).
+  It does not need Solr, so it runs in continuous integration and guards the
+  pivot normalization and the Internal resolution.
+- `data/scripts/compare-queriers.php` runs the same queries through both engines
+  against a real base with a Solr core, and reports every id-set difference. It
+  is read-only and anonymous, so both sides are limited to public resources.
+  Options: `--base=/path/to/omeka`, `--solr-engine=ID`, `--only=label`, `--json`.
+  Use it after indexing a Solr core to confirm the two engines agree.
+
 ### Optional dependencies
 
 - Module [Reference] to display facets in the results with the internal adapter.
@@ -195,25 +214,35 @@ An engine and a page for the internal adapter are automatically prepared
 during install. This search engine can be enabled in main settings and site
 settings. It can be removed too.
 
+The search manager (menu "Search manager") is organized in two sections that
+follow the two sides of the search: "Indexing" lists the engines (and the Solr
+cores with module Search Solr, each core being a facet of its engine), and
+"Search" lists the search pages and the suggesters, grouped by engine. The
+search pages table shows where each page is used: a badge for the admin
+defaults, a "Sites" column, and an action to open the page in a new tab. An
+engine can also be created directly from the search page form, without leaving
+it.
+
 To create a new config for a page with a search engine, follow these steps.
 
-1. Create an engine
-    1. Add a new engine with name `Internal` or whatever you want, using the
-       `Internal` adapter. The engine can be set for items and/or item sets.
-    2. The internal adapter doesn’t create any engine, so you don’t need to
-       launch the indexation by clicking on the "reindex" button (two arrows
-       forming a circle).
-    3. The engine may have specific option that can be filled when needed. For
-       internal adapter, you can list the fields that will be managed as a
-       single field in the form.
+1. Check the engine
+    1. An engine is a real backend: the sql database (engine `Internal`,
+       created automatically at install) or a Solr core (see module Search
+       Solr). There is one engine per backend: a single internal engine, and
+       one engine per Solr core.
+    2. The internal engine queries the live database, so there is nothing to
+       index and no reindex button for it.
+    3. The engine may have specific options that can be filled when needed.
+       For the internal engine, you can list the fields that will be managed
+       as a single field in the form.
 
-2. Create a config for a page
-    1. Add a page named `Internal search` or whatever you want, a path to
+2. Create a search page
+    1. Add a search page named `Internal search` or whatever you want, a path to
        access it, for example `search` or `find`, the engine that was created in
        the previous step (`Internal` here), and a form adapter (`Main`) that
        will do the mapping between the form and the engine. Forms added by
        modules can manage an advanced input field and/or filters.
-    2. In the config of the page, you can manage main config of the page, and
+    2. In the search page, you can manage its main settings, and
        manage filters, sort fields and facets. Their fieldsets include a
        textarea that is a simple list of the fields you want, followed by the
        label and options. These textarea are followed by a field "available filters",
@@ -447,8 +476,8 @@ the core.
 
 The resource page block layout `Resource navigation` adds a `< prev / next >`
 navigation on an item show page, within the context of the last browse of the
-user: search results, item set (collection/album), user selection, or an
-arbitrary series of items (a `Browse preview` block on a site page).
+user: search results, item set, user selection, or an arbitrary series of items
+(a `Browse preview` block on a site page).
 
 Four navigation contexts are supported, enabled via the site setting
 `Block Resource navigation: active contexts`:
@@ -536,6 +565,19 @@ Furthermore, there may be an indexation delay between the moment when a resource
 is saved and the moment when it is fully available in the search engine (it may
 be some minutes with Solr, according to your configuration).
 
+Each search engine has an "Indexing enabled" option (except the internal one,
+which has no index). Disabling it suspends the automatic indexation of that
+engine while keeping it searchable. This is useful before a massive import with
+modules that does not use events. Don't forget to reenable indexation after
+import.
+
+When many resources are saved at once (batch edit, batch create, import), the
+automatic indexation is grouped into a single background job instead of indexing
+each resource individually, so large operations are not slowed down.
+
+Note: The modules [Bulk Import] and [CSV Import] don't need  this switch, and
+other ones may be implementing new processes to avoid it too.
+
 
 Deprecated improvements of the advanced search elements
 -------------------------------------------------------
@@ -616,6 +658,9 @@ TODO
 - [x] Updated index in batch, not one by one.
 - [ ] Add an option to replace the default Omeka search form.
 - [ ] Improve the internal autosuggester to return the list of next words when space.
+- [ ] Use all features of engine instead forcing from advanced search (facets, query, see the case of `resq` in site settings). And hide the ones that are not supported.
+- [ ] Allow nested groups of filters with parentheses (`(a or b) and c`).
+- [ ] Add the highlighting of the results.
 - [x] Use a "or" for facets of each group.
 - [x] Manage pagination when item set is redirected to search.
 - [ ] Reorder items in items set (from module Next, see MvcListeners).
@@ -649,7 +694,7 @@ TODO
 
 No more todo:
 
-- Move all code related to Internal (sql) into another module? No.
+- Move all code related to the internal engine (sql) into another module? No.
 
 
 Warning
@@ -711,13 +756,15 @@ This module is a merge of features from the deprecated modules [Advanced Search 
 [Search] and [Psl Search Form] and derivative ones.
 
 The Psl search form and the Solr modules were initially built by [BibLibre] and
-were used by the [digital library of PSL], a French university. Next improvements
-were done for various projects. The auto-completion was built for the future
-digital library of [Campus Condorcet]. The aggregated fields feature was built
-for the digital library [Corpus du Louvre].
+were initially used by the [digital library of PSL], a French university. Next
+improvements were done for various projects. The auto-completion was built for
+the future digital library of [Campus Condorcet]. The aggregated fields feature
+was built for the digital library [Corpus du Louvre]. Many performance
+improvements were done for the digital library [Musee de Bretagne].
 
 
 [Advanced Search]: https://gitlab.com/Daniel-KM/Omeka-S-module-AdvancedSearch
+[AdvancedSearch.zip]: https://gitlab.com/Daniel-KM/Omeka-S-module-AdvancedSearch/-/releases
 [Omeka S]: https://omeka.org/s
 [Solr]: https://solr.apache.org/
 [Search Solr]: https://gitlab.com/Daniel-KM/Omeka-S-module-SearchSolr
@@ -731,6 +778,8 @@ for the digital library [Corpus du Louvre].
 [Psl Search Form]: https://gitlab.com/Daniel-KM/Omeka-S-module-PslSearchForm
 [Solr of Biblibre]: https://github.com/BibLibre/Omeka-S-module-Solr
 [Browse preview]: https://omeka.org/s/docs/user-manual/sites/site_pages/#browse-preview
+[Bulk Import]: https://gitlab.com/Daniel-KM/Omeka-S-module-BulkImport
+[CSV Import]: https://github.com/omeka-s-modules/CSVImport
 [module issues]: https://gitlab.com/Daniel-KM/Omeka-S-module-AdvancedSearch/issues
 [CeCILL v2.1]: https://www.cecill.info/licences/Licence_CeCILL_V2.1-en.html
 [GNU/GPL]: https://www.gnu.org/licenses/gpl-3.0.html
@@ -740,6 +789,7 @@ for the digital library [Corpus du Louvre].
 [BibLibre]: https://github.com/biblibre
 [GitLab]: https://gitlab.com/Daniel-KM
 [digital library of PSL]: https://bibnum.explore.univ-psl.fr
-[Campus Condorcet]: https://www.campus-condorcet.fr
+[Campus Condorcet]: https://bibnum.campus-condorcet.fr
 [Corpus du Louvre]: https://corpus.louvre.fr
+[Musee de Bretagne]: https://www.collections.musee-bretagne.fr
 [Daniel-KM]: https://gitlab.com/Daniel-KM "Daniel Berthereau"

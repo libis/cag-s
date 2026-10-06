@@ -35,10 +35,10 @@ $messenger = $plugins->get('messenger');
 $siteSettings = $services->get('Omeka\Settings\Site');
 $entityManager = $services->get('Omeka\EntityManager');
 
-if (!method_exists($this, 'checkModuleActiveVersion') || !$this->checkModuleActiveVersion('Common', '3.4.84')) {
+if (!method_exists($this, 'checkModuleActiveVersion') || !$this->checkModuleActiveVersion('Common', '3.4.91')) {
     $message = new \Omeka\Stdlib\Message(
         $translate('The module %1$s should be upgraded to version %2$s or later.'), // @translate
-        'Common', '3.4.84'
+        'Common', '3.4.91'
     );
     $messenger->addError($message);
     throw new ModuleCannotInstallException((string) $translate('Missing requirement. Unable to upgrade.')); // @translate
@@ -55,10 +55,25 @@ if (PHP_VERSION_ID < 80100) {
     $hasError = true;
 }
 
-if (!$this->checkModuleActiveVersion('AdvancedSearch', '3.4.61')) {
+if (!$this->checkModuleActiveVersion('AdvancedSearch', '3.4.63')) {
     $message = new PsrMessage(
         $translator->translate('This module requires module "{module}" version "{version}" or greater.'), // @translate
-        ['module' => 'Advanced Search', 'version' => '3.4.61']
+        ['module' => 'Advanced Search', 'version' => '3.4.63']
+    );
+    $messenger->addError($message);
+    $hasError = true;
+}
+
+// The module Thesaurus, when installed, should be up to date, else the maps and
+// the queries on thesaurus fields may not work. The check applies whether it is
+// enabled or not, since its data remain, but not to a module only present on
+// the disk, and the version is compared without requiring an active module.
+if ($this->isModuleInstalled('Thesaurus')
+    && !$this->isModuleVersionAtLeast('Thesaurus', '3.4.26')
+) {
+    $message = new PsrMessage(
+        $translator->translate('This module requires module "{module}" version "{version}" or greater.'), // @translate
+        ['module' => 'Thesaurus', 'version' => '3.4.26']
     );
     $messenger->addError($message);
     $hasError = true;
@@ -257,7 +272,7 @@ if (version_compare($oldVersion, '3.5.31.3', '<')) {
         ->select('id', 'settings')
         ->from('solr_core', 'solr_core')
         ->orderBy('id', 'asc');
-    $solrCoresSettings = $connection->executeQuery($qb)->fetchAllKeyValue();
+    $solrCoresSettings = $connection->executeQuery($qb->getSQL(), $qb->getParameters())->fetchAllKeyValue();
     foreach ($solrCoresSettings as $solrCoreId => $solrCoreSettings) {
         $solrCoreSettings = json_decode($solrCoreSettings, true) ?: [];
         unset($solrCoreSettings['site_url']);
@@ -329,7 +344,7 @@ if (version_compare($oldVersion, '3.5.31.3', '<')) {
         ->select('id', 'settings')
         ->from('solr_core', 'solr_core')
         ->orderBy('id', 'asc');
-    $solrCoresSettings = $connection->executeQuery($qb)->fetchAllKeyValue();
+    $solrCoresSettings = $connection->executeQuery($qb->getSQL(), $qb->getParameters())->fetchAllKeyValue();
     foreach ($solrCoresSettings as $solrCoreId => $solrCoreSettings) {
         $solrCoreSettings = json_decode($solrCoreSettings, true) ?: [];
         foreach ($fields as $oldName => $newField) {
@@ -461,7 +476,12 @@ if (version_compare($oldVersion, '3.5.37.3', '<')) {
 if (version_compare($oldVersion, '3.5.42', '<')) {
     // Force to use module Table to manage tables if there is a table.
     if (!empty($config['searchsolr']['table'])) {
-        if (!$this->isModuleActive('Table')) {
+        // Table must be active and expose its "tables" api: the adapter is
+        // registered only when it is active and up to date, else the
+        // create('tables') below throws a BadRequestException.
+        if (!$this->isModuleActive('Table')
+            || !$services->get('Omeka\ApiAdapterManager')->has('tables')
+        ) {
             $message = new PsrMessage(
                 'This module requires the module "{module}", version {version} or above.', // @translate
                 ['module' => 'Table', 'version' => '3.4.1']
@@ -500,7 +520,7 @@ if (version_compare($oldVersion, '3.5.42', '<')) {
 
         $message = new PsrMessage(
             'The table used for indexation has been converted into a standard {link}table{link_end}. It is recommended to remove the old one from the config.', // @translate
-            ['link' => sprintf('<a href="%s">', $table->url()), 'link_end' => '</a>']
+            ['link' => sprintf('<a href="%s">', htmlspecialchars($table->url())), 'link_end' => '</a>']
         );
         $message->setEscapeHtml(false);
         $messenger->addWarning($message);
@@ -603,7 +623,7 @@ if (version_compare($oldVersion, '3.5.55', '<')) {
         ->select('id', 'id')
         ->from('solr_core', 'solr_core')
         ->orderBy('id', 'asc');
-    $solrCoreIds = $connection->executeQuery($qb)->fetchAllKeyValue();
+    $solrCoreIds = $connection->executeQuery($qb->getSQL(), $qb->getParameters())->fetchAllKeyValue();
     foreach ($solrCoreIds as $solrCoreId) {
         foreach ($newIndexes as $fieldName => $sourceName) {
             // Check if the map exists.
@@ -621,7 +641,7 @@ if (version_compare($oldVersion, '3.5.55', '<')) {
                 * /
                 ->where("solr_core_id = $solrCoreId AND resource_name = 'generic' AND field_name = '$fieldName'")
             ;
-            $solrCoreMaps = $connection->executeQuery($qb)->rowCount();
+            $solrCoreMaps = $connection->executeQuery($qb->getSQL(), $qb->getParameters())->rowCount();
             if (!is_numeric($solrCoreMaps) || $solrCoreMaps) {
                 continue;
             }
@@ -681,7 +701,7 @@ if (version_compare($oldVersion, '3.5.55', '<')) {
         ->select('id', 'settings')
         ->from('solr_map', 'solr_map')
         ->orderBy('id', 'asc');
-    $solrMapIds = $connection->executeQuery($qb)->fetchAllKeyValue();
+    $solrMapIds = $connection->executeQuery($qb->getSQL(), $qb->getParameters())->fetchAllKeyValue();
     foreach ($solrMapIds as $solrMapId => $solrMapSettings) {
         $solrMapSettings = json_decode($solrMapSettings, true);
         $formatter = $solrMapSettings['formatter'] ?? '';
@@ -900,7 +920,7 @@ if (version_compare($oldVersion, '3.5.58', '<')) {
     $message = new PsrMessage(
         'A {link}config form{link_end} was added to specify the use of php-curl if wanted and the solarium timeout.', // @translate
         [
-            'link' => sprintf('<a href="%s">', $url('admin/default', ['controller' => 'module', 'action' => 'configure'], ['query' => ['id' => 'SearchSolr']])),
+            'link' => sprintf('<a href="%s">', htmlspecialchars($url('admin/default', ['controller' => 'module', 'action' => 'configure'], ['query' => ['id' => 'SearchSolr']]))),
             'link_end' => '</a>',
         ]
     );
@@ -931,7 +951,7 @@ if (version_compare($oldVersion, '3.5.60', '<')) {
         ->select('id', 'settings')
         ->from('solr_map', 'solr_map')
         ->orderBy('id', 'asc');
-    $solrMapIds = $connection->executeQuery($qb)->fetchAllKeyValue();
+    $solrMapIds = $connection->executeQuery($qb->getSQL(), $qb->getParameters())->fetchAllKeyValue();
     foreach ($solrMapIds as $solrMapId => $solrMapSettings) {
         $solrMapSettings = json_decode($solrMapSettings, true);
         $parts = $solrMapSettings['part'] ?? $solrMapSettings['parts'] ?? [];
@@ -1006,7 +1026,7 @@ if (version_compare($oldVersion, '3.5.62', '<')) {
         ->select('id', 'settings')
         ->from('solr_core', 'solr_core')
         ->orderBy('id', 'asc');
-    $solrCoresSettings = $connection->executeQuery($qb)->fetchAllKeyValue();
+    $solrCoresSettings = $connection->executeQuery($qb->getSQL(), $qb->getParameters())->fetchAllKeyValue();
     foreach ($solrCoresSettings as $solrCoreId => $solrCoreSettings) {
         $solrCoreSettings = json_decode($solrCoreSettings, true) ?: [];
         $fieldBoost = $solrCoreSettings['field_boost'] ?? '';
@@ -1071,7 +1091,7 @@ if (version_compare($oldVersion, '3.5.64', '<')) {
         ->from('solr_map', 'solr_map')
         ->where('settings LIKE \'%"table"%\'')
         ->orderBy('id', 'asc');
-    $solrMapRows = $connection->executeQuery($qb)->fetchAllKeyValue();
+    $solrMapRows = $connection->executeQuery($qb->getSQL(), $qb->getParameters())->fetchAllKeyValue();
     $fixedTable = 0;
     foreach ($solrMapRows as $solrMapId => $solrMapSettings) {
         $solrMapSettings = json_decode($solrMapSettings, true) ?: [];
@@ -1109,7 +1129,7 @@ if (version_compare($oldVersion, '3.5.64', '<')) {
     $requiredMapsBySource = [
         ['source' => 'resource_name', 'field_name' => 'resource_name_s', 'alias' => 'resource_name', 'settings' => ['label' => 'Resource type']],
         ['source' => 'o:id', 'field_name' => 'id_i', 'alias' => 'id', 'settings' => ['label' => 'Internal id']],
-        ['source' => 'is_public', 'field_name' => 'is_public_i', 'alias' => 'is_public', 'settings' => ['parts' => ['main'], 'formatter' => 'boolean', 'label' => 'Public']],
+        ['source' => 'is_public', 'field_name' => 'is_public_b', 'alias' => 'is_public', 'settings' => ['parts' => ['main'], 'formatter' => 'boolean', 'label' => 'Public']],
         ['source' => 'owner/o:id', 'field_name' => 'owner_id_i', 'alias' => 'owner_id', 'settings' => ['label' => 'Owner']],
         ['source' => 'site/o:id', 'field_name' => 'site_id_is', 'alias' => 'site_id', 'settings' => ['label' => 'Site']],
     ];
@@ -1281,11 +1301,11 @@ if (version_compare($oldVersion, '3.5.65', '<')) {
         SELECT `id`, `settings` FROM `search_config`
         SQL;
     $usedSuggesterIds = [];
-    foreach ($connection->executeQuery($sql)->fetchAllAssociative() as $config) {
-        $configSettings = json_decode($config['settings'], true) ?: [];
+    foreach ($connection->executeQuery($sql)->fetchAllAssociative() as $configRow) {
+        $configSettings = json_decode($configRow['settings'], true) ?: [];
         $suggesterId = $configSettings['q']['suggester'] ?? null;
         if ($suggesterId) {
-            $usedSuggesterIds[(int) $suggesterId] = (int) $config['id'];
+            $usedSuggesterIds[(int) $suggesterId] = (int) $configRow['id'];
         }
     }
 
@@ -1399,6 +1419,723 @@ if (version_compare($oldVersion, '3.5.68', '<')) {
     }
 
     $messenger->addSuccess(new PsrMessage(
-        'The maintenance action "Sync maps from search configs" now stores a backup of the previous map configuration on each run. The last 3 snapshots are kept on each Solr core and can be restored from the core page.' // @translate
+        'The maintenance action "Sync maps from search configs" now stores a backup of the previous map configuration on each run. The last snapshots are kept on each Solr core and can be restored from the core page.' // @translate
+    ));
+}
+
+if (version_compare($oldVersion, '3.5.69', '<')) {
+    // Re-index multi-value list settings (parts, normalization, etc.) that
+    // were stored as json objects with a gap ({"1":"main"}) after an empty
+    // option was filtered out without re-indexing, so they become lists again
+    // (["main"]). Map-like settings such as "table" keep their keys.
+    $listKeys = ['parts', 'normalization', 'thesaurus_metadata', 'finalization'];
+    $rows = $connection
+        ->executeQuery('SELECT `id`, `settings` FROM `solr_map`')
+        ->fetchAllAssociative();
+    foreach ($rows as $row) {
+        // Not "$settings", that is the service of the main settings.
+        $mapSettings = strlen((string) $row['settings'])
+            ? json_decode($row['settings'], true)
+            : [];
+        if (!is_array($mapSettings) || !$mapSettings) {
+            continue;
+        }
+        $normalized = $mapSettings;
+        foreach ($listKeys as $listKey) {
+            if (isset($normalized[$listKey]) && is_array($normalized[$listKey])) {
+                $normalized[$listKey] = array_values($normalized[$listKey]);
+            }
+        }
+        if ($normalized !== $mapSettings) {
+            $connection->executeStatement(
+                'UPDATE `solr_map` SET `settings` = :settings WHERE `id` = :id',
+                ['settings' => json_encode($normalized), 'id' => $row['id']]
+            );
+        }
+    }
+
+    $messenger->addSuccess(new PsrMessage(
+        'Autocompletion is now diacritics-insensitive by default. To apply, click "Recreate suggest_txt" in the "Suggest configuration" section on the core show page and reindex.' // @translate
+    ));
+
+    $messenger->addSuccess(new PsrMessage(
+        'The search now supports jokers "*" and "?" by default. They cannot be used as first character and the query should contains at least three characters.' // @translate
+    ));
+
+    $messenger->addSuccess(new PsrMessage(
+        'The map source "Item: Has media" has a new option "Include digital objects": when set, an item with no native media but linked to at least one digital object (module Digital Object) is also indexed as having media.' // @translate
+    ));
+}
+
+// Merge the Solr cores into the search engines: the connection and the core
+// settings move to the engine settings under "solr" (snapshots included) and
+// the maps belong to the engine directly. A core without engine gets one.
+//
+// A core may be shared by several engines, that all need the connection, but
+// the maps are not duplicated: they belong to the first engine of the core.
+//
+// Defined as a closure and not inlined in the version block below, because the
+// version is recorded before the upgrade: an upgrade interrupted here would
+// never migrate, since the version block does not run any more. So the repair
+// below calls it again on any later upgrade, as long as a core remains.
+$migrateSolrCoresToEngines = function () use ($connection, $messenger): void {
+    // The column identifies the owner of the map, so it is created right after
+    // the id, like in the schema of a new install. It is queried by the steps
+    // below, so it cannot wait for the version block that finalizes it.
+    $hasEngineColumn = (bool) $connection->fetchOne(
+        "SHOW COLUMNS FROM `solr_map` LIKE 'engine_id'"
+    );
+    if (!$hasEngineColumn) {
+        $connection->executeStatement('ALTER TABLE `solr_map` ADD `engine_id` INT DEFAULT NULL AFTER `id`;');
+    }
+
+
+    // 1. Merge each core into its engine, creating the missing engines.
+    $coreToEngine = [];
+    $engines = $connection->fetchAllAssociative(
+        "SELECT `id`, `settings` FROM `search_engine` WHERE `adapter` = 'solarium' ORDER BY `id` ASC"
+    );
+    $cores = $connection->fetchAllAssociative(
+        'SELECT `id`, `name`, `settings`, `backup_maps` FROM `solr_core` ORDER BY `id` ASC'
+    );
+    foreach ($cores as $core) {
+        $coreId = (int) $core['id'];
+        // A core may be shared by several engines: they all get the connection,
+        // and the first one owns the maps.
+        $engineIds = [];
+        $engineSettingsById = [];
+        foreach ($engines as $engine) {
+            $checkSettings = json_decode((string) $engine['settings'], true) ?: [];
+            if ((int) ($checkSettings['engine_adapter']['solr_core_id'] ?? 0) === $coreId) {
+                $engineIds[] = (int) $engine['id'];
+                $engineSettingsById[(int) $engine['id']] = $checkSettings;
+            }
+        }
+        $engineId = $engineIds ? reset($engineIds) : null;
+        $solrSettings = json_decode((string) $core['settings'], true) ?: [];
+        $backups = json_decode((string) ($core['backup_maps'] ?? ''), true);
+        if (is_array($backups) && count($backups)) {
+            $solrSettings['backup_maps'] = $backups;
+        }
+        if ($engineId) {
+            foreach ($engineIds as $engineIdCore) {
+                $engineSettings = $engineSettingsById[$engineIdCore];
+                $engineSettings['solr'] = $solrSettings;
+                // The index name for a shared core is a facet of the solr
+                // settings; the solarium engine has no more adapter settings.
+                if (($engineSettings['engine_adapter']['index_name'] ?? '') !== '') {
+                    $engineSettings['solr']['index_name'] = $engineSettings['engine_adapter']['index_name'];
+                }
+                unset($engineSettings['engine_adapter']);
+                $connection->executeStatement(
+                    'UPDATE `search_engine` SET `settings` = ?, `modified` = NOW() WHERE `id` = ?;',
+                    [json_encode($engineSettings, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE), $engineIdCore]
+                );
+            }
+        } else {
+            $engineSettings = [
+                'resource_types' => ['items', 'item_sets'],
+                'solr' => $solrSettings,
+            ];
+            $connection->executeStatement(
+                'INSERT INTO `search_engine` (`name`, `adapter`, `settings`, `created`, `modified`) VALUES (?, ?, ?, NOW(), NOW());',
+                [$core['name'], 'solarium', json_encode($engineSettings, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE)]
+            );
+            $engineId = (int) $connection->lastInsertId();
+        }
+        $coreToEngine[$coreId] = $engineId;
+    }
+
+    // 2. Move the maps to the engine of their core.
+    foreach ($coreToEngine as $coreId => $engineId) {
+        $connection->executeStatement(
+            'UPDATE `solr_map` SET `engine_id` = ? WHERE `solr_core_id` = ?;',
+            [$engineId, $coreId]
+        );
+    }
+
+    // 3. Drop the legacy column with its constraint and indexes, whose
+    // names may differ between installs, then finalize the new column.
+    //
+    // Only when every map has an engine: a map whose core is missing cannot be
+    // attached, and the legacy column is the only way to recover it later, so
+    // it is kept, with the table of the cores, until the issue is fixed.
+    $mapsOrphan = (int) $connection->fetchOne(
+        'SELECT COUNT(`id`) FROM `solr_map` WHERE `engine_id` IS NULL'
+    );
+    if ($mapsOrphan) {
+        $messenger->addWarning(new PsrMessage(
+            'The Solr cores were merged into their search engines, but the maps attached to no core were kept aside ({count}), so the old table was not removed. Check the search engines and their maps.', // @translate
+            ['count' => $mapsOrphan]
+        ));
+        return;
+    }
+
+    $foreignKeys = $connection->fetchFirstColumn(
+        "SELECT DISTINCT `CONSTRAINT_NAME` FROM `information_schema`.`KEY_COLUMN_USAGE`
+        WHERE `TABLE_SCHEMA` = DATABASE() AND `TABLE_NAME` = 'solr_map'
+            AND `COLUMN_NAME` = 'solr_core_id' AND `REFERENCED_TABLE_NAME` IS NOT NULL"
+    );
+    foreach ($foreignKeys as $foreignKey) {
+        $connection->executeStatement("ALTER TABLE `solr_map` DROP FOREIGN KEY `$foreignKey`;");
+    }
+    $indexes = $connection->fetchFirstColumn(
+        "SELECT DISTINCT `INDEX_NAME` FROM `information_schema`.`STATISTICS`
+        WHERE `TABLE_SCHEMA` = DATABASE() AND `TABLE_NAME` = 'solr_map'
+            AND `COLUMN_NAME` = 'solr_core_id' AND `INDEX_NAME` != 'PRIMARY'"
+    );
+    foreach ($indexes as $index) {
+        $connection->executeStatement("ALTER TABLE `solr_map` DROP INDEX `$index`;");
+    }
+    $connection->executeStatement('ALTER TABLE `solr_map` DROP COLUMN `solr_core_id`;');
+    $connection->executeStatement('ALTER TABLE `solr_map` MODIFY `engine_id` INT NOT NULL AFTER `id`;');
+    $connection->executeStatement('ALTER TABLE `solr_map` ADD INDEX IDX_39A565C5E78C9C0A (`engine_id`);');
+    $connection->executeStatement('ALTER TABLE `solr_map` ADD INDEX IDX_39A565C5E78C9C0A5103DEBC (`engine_id`, `resource_name`);');
+    $connection->executeStatement('ALTER TABLE `solr_map` ADD INDEX IDX_39A565C5E78C9C0A4DEF17BC (`engine_id`, `field_name`);');
+    $connection->executeStatement('ALTER TABLE `solr_map` ADD INDEX IDX_39A565C5E78C9C0AE16C6B94 (`engine_id`, `alias`);');
+    $connection->executeStatement('ALTER TABLE `solr_map` ADD INDEX IDX_39A565C5E78C9C0A5F8A7F73 (`engine_id`, `source`);');
+    $connection->executeStatement('ALTER TABLE `solr_map` ADD CONSTRAINT FK_39A565C5E78C9C0A FOREIGN KEY (`engine_id`) REFERENCES `search_engine` (`id`) ON DELETE CASCADE;');
+
+    // 4. The core table is merged: drop it.
+    $connection->executeStatement('DROP TABLE `solr_core`;');
+
+    $messenger->addSuccess(new PsrMessage(
+        'The Solr cores were merged into their search engines: the connection and the maps now belong to the engine directly.' // @translate
+    ));
+};
+
+if (version_compare($oldVersion, '3.5.70', '<')) {
+    // The migration runs first, so the next steps work on the new model.
+    if ($connection->fetchOne("SHOW TABLES LIKE 'solr_core'")) {
+        $migrateSolrCoresToEngines();
+    }
+
+    // The query relevance settings (minimum match, tie breaker) are a facet of
+    // the query context: move them from the core to the search pages of the
+    // engine, under the section "engine" with the field boosts.
+    $engines = $connection->fetchAllAssociative(
+        "SELECT `id`, `settings` FROM `search_engine` WHERE `adapter` = 'solarium' ORDER BY `id` ASC"
+    );
+    foreach ($engines as $engine) {
+        $engineSettings = json_decode((string) $engine['settings'], true) ?: [];
+        if (!array_key_exists('query', $engineSettings['solr'] ?? [])) {
+            continue;
+        }
+        $queryRelevance = array_intersect_key(
+            array_filter($engineSettings['solr']['query'] ?? [], fn ($v) => $v !== '' && $v !== null),
+            ['minimum_match' => null, 'tie_breaker' => null]
+        );
+        if ($queryRelevance) {
+            $configs = $connection->fetchAllAssociative(
+                'SELECT `id`, `settings` FROM `search_config` WHERE `engine_id` = ?;',
+                [(int) $engine['id']]
+            );
+            foreach ($configs as $configRow) {
+                $configSettings = json_decode((string) $configRow['settings'], true) ?: [];
+                foreach ($queryRelevance as $key => $value) {
+                    if (($configSettings['engine'][$key] ?? '') === '') {
+                        $configSettings['engine'][$key] = $value;
+                    }
+                }
+                $connection->executeStatement(
+                    'UPDATE `search_config` SET `settings` = ? WHERE `id` = ?;',
+                    [json_encode($configSettings, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE), (int) $configRow['id']]
+                );
+            }
+        }
+        unset($engineSettings['solr']['query']);
+        $connection->executeStatement(
+            'UPDATE `search_engine` SET `settings` = ?, `modified` = NOW() WHERE `id` = ?;',
+            [json_encode($engineSettings, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE), (int) $engine['id']]
+        );
+    }
+
+    // Many maps stored the term as their label: replace it with the label of
+    // the property, in the default admin language. Custom labels are kept.
+    $defaultLocale = (string) $settings->get('locale') ?: 'en';
+    $propertyLabels = $connection->fetchAllKeyValue(
+        'SELECT CONCAT(vo.prefix, ":", pr.local_name), pr.label
+        FROM property pr
+        INNER JOIN vocabulary vo ON vo.id = pr.vocabulary_id'
+    );
+    $maps = $connection->fetchAllAssociative(
+        'SELECT `id`, `source`, `settings` FROM `solr_map`'
+    );
+    foreach ($maps as $map) {
+        $mapSettings = json_decode((string) $map['settings'], true) ?: [];
+        if (!isset($propertyLabels[$map['source']])) {
+            continue;
+        }
+        $label = (string) ($mapSettings['label'] ?? '');
+        $source = $map['source'];
+        $propertyLabel = $translator->translate($propertyLabels[$source], 'default', $defaultLocale);
+        if ($label === $source) {
+            $mapSettings['label'] = $propertyLabel;
+        } elseif (preg_match('~^' . preg_quote($source, '~') . ' \((\w+)\)$~', $label, $matches)) {
+            $mapSettings['label'] = $propertyLabel . ' (' . $matches[1] . ')';
+        } else {
+            continue;
+        }
+        $connection->executeStatement(
+            'UPDATE `solr_map` SET `settings` = ? WHERE `id` = ?;',
+            [json_encode($mapSettings, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE), (int) $map['id']]
+        );
+    }
+
+    // The setting "index_for_link" was informational only: the part "link"
+    // is the single source of truth of the bounce link indexes.
+    $maps = $connection->fetchAllAssociative(
+        'SELECT `id`, `settings` FROM `solr_map` WHERE `settings` LIKE \'%index_for_link%\''
+    );
+    foreach ($maps as $map) {
+        $mapSettings = json_decode((string) $map['settings'], true) ?: [];
+        unset($mapSettings['index_for_link']);
+        $connection->executeStatement(
+            'UPDATE `solr_map` SET `settings` = ? WHERE `id` = ?;',
+            [json_encode($mapSettings, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE), (int) $map['id']]
+        );
+    }
+
+    // The empty formatter was a duplicate of "text", the fallback of the
+    // indexer: set it explicitly.
+    $maps = $connection->fetchAllAssociative(
+        'SELECT `id`, `settings` FROM `solr_map`'
+    );
+    foreach ($maps as $map) {
+        $mapSettings = json_decode((string) $map['settings'], true) ?: [];
+        if (($mapSettings['formatter'] ?? '') !== '') {
+            continue;
+        }
+        $mapSettings['formatter'] = 'text';
+        $connection->executeStatement(
+            'UPDATE `solr_map` SET `settings` = ? WHERE `id` = ?;',
+            [json_encode($mapSettings, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE), (int) $map['id']]
+        );
+    }
+
+    // The five date formatters are merged into the single formatter "date",
+    // with the mode (single or interval) and the precision of the output
+    // (year, date, date time) as settings.
+    $dateFormatterMap = [
+        'edtf' => [],
+        'edtf_date' => ['date_out' => 'date'],
+        'edtf_year' => ['date_out' => 'year'],
+        'date_range' => ['date_mode' => 'interval', 'date_out' => 'year'],
+    ];
+    $maps = $connection->fetchAllAssociative(
+        'SELECT `id`, `settings` FROM `solr_map`'
+    );
+    foreach ($maps as $map) {
+        $mapSettings = json_decode((string) $map['settings'], true) ?: [];
+        $formatter = $mapSettings['formatter'] ?? '';
+        if (!isset($dateFormatterMap[$formatter])) {
+            continue;
+        }
+        $mapSettings['formatter'] = 'date';
+        $mapSettings += $dateFormatterMap[$formatter];
+        $connection->executeStatement(
+            'UPDATE `solr_map` SET `settings` = ? WHERE `id` = ?;',
+            [json_encode($mapSettings, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE), (int) $map['id']]
+        );
+    }
+
+    // Standardize the visibility map on the boolean field "is_public_b" (like
+    // the other boolean field "has_media_b"; the two are separate indexes)
+    // instead of the integer "is_public_i", with a zero-downtime, two-phase
+    // migration.
+    //
+    // Phase 1: add "is_public_b" next to "is_public_i" (a clone of the same
+    // source) and relaunch indexing. Both fields get populated; the querier
+    // keeps using the older "is_public_i" (see SolariumQuerier::solrCoreField),
+    // so public search is never interrupted.
+    $isPublicToAdd = $connection->fetchAllAssociative(<<<'SQL'
+        SELECT `i`.`engine_id` AS `engine_id`, `i`.`alias`, `i`.`pool`, `i`.`settings`
+        FROM `solr_map` `i`
+        LEFT JOIN `solr_map` `b`
+            ON `b`.`engine_id` = `i`.`engine_id`
+            AND `b`.`source` = 'is_public'
+            AND `b`.`field_name` = 'is_public_b'
+        WHERE `i`.`source` = 'is_public'
+            AND `i`.`field_name` = 'is_public_i'
+            AND `b`.`id` IS NULL;
+        SQL);
+    $addedEngineIds = [];
+    foreach ($isPublicToAdd as $row) {
+        $connection->executeStatement(
+            'INSERT INTO `solr_map` (`engine_id`, `resource_name`, `field_name`, `alias`, `source`, `pool`, `settings`) VALUES (?, ?, ?, ?, ?, ?, ?);',
+            [(int) $row['engine_id'], 'generic', 'is_public_b', $row['alias'], 'is_public', $row['pool'], $row['settings']]
+        );
+        $addedEngineIds[$row['engine_id']] = (int) $row['engine_id'];
+    }
+    if ($addedEngineIds) {
+        $services->get('Omeka\Job\Dispatcher')->dispatch(
+            \AdvancedSearch\Job\IndexSearch::class,
+            ['search_engine_ids' => array_values($addedEngineIds)]
+        );
+        $messenger->addNotice(new PsrMessage(
+            'A boolean visibility index "is_public_b" was added and indexing relaunched. The legacy "is_public_i" stays active until the reindex completes, then it is removed automatically on a later upgrade (no interruption).' // @translate
+        ));
+    }
+
+    // The Solr passwords are now stored encrypted at rest via Omeka\Cipher.
+    // encrypt() is idempotent and skips a value that is already encrypted.
+    $cipherAtRest = $services->get('Omeka\Cipher');
+    foreach ($connection->fetchAllAssociative("SELECT `id`, `settings` FROM `search_engine` WHERE `adapter` = 'solarium'") as $engineRow) {
+        $engineSettings = json_decode((string) $engineRow['settings'], true) ?: [];
+        if (empty($engineSettings['solr']['client']) || !is_array($engineSettings['solr']['client'])) {
+            continue;
+        }
+        $changed = false;
+        foreach (['password', 'admin_password'] as $key) {
+            $value = (string) ($engineSettings['solr']['client'][$key] ?? '');
+            if ($value === '') {
+                continue;
+            }
+            $encrypted = $cipherAtRest->encrypt($value);
+            if ($encrypted !== $value) {
+                $engineSettings['solr']['client'][$key] = $encrypted;
+                $changed = true;
+            }
+        }
+        if ($changed) {
+            $connection->executeStatement(
+                'UPDATE `search_engine` SET `settings` = ? WHERE `id` = ?;',
+                [json_encode($engineSettings, 320), (int) $engineRow['id']]
+            );
+        }
+    }
+
+    // Ensure the suggester and the api config of the first solarium engine.
+    $firstEngineId = (int) $connection->fetchOne(
+        "SELECT `id` FROM `search_engine` WHERE `adapter` = 'solarium' ORDER BY `id` ASC"
+    );
+    if ($firstEngineId) {
+        $this->createDefaultSearchEngines($connection, $firstEngineId, $messenger, $url);
+    }
+}
+
+// Repair an upgrade to 3.5.70 interrupted before the merge of the cores: the
+// version is recorded first, so its block does not run any more and the
+// connection, the settings and the maps stay in the legacy model, unusable.
+// The remaining table is the witness, so the migration is replayed here, on
+// any later upgrade. A no-op once the merge is done.
+if ($connection->fetchOne("SHOW TABLES LIKE 'solr_core'")) {
+    $migrateSolrCoresToEngines();
+}
+
+// Not version-gated on purpose: the finalization must retry on every later
+// upgrade until the reindex launched by phase 1 has populated the new field.
+// Self-guarded and cheap once done (both maps no longer coexist).
+// Phase 2: once "is_public_b" is populated in Solr, drop the legacy
+// "is_public_i" so the querier switches to the boolean field, and align the
+// rare search configs referencing the raw field name. Resilient: an engine
+// that is unreachable or not yet reindexed is skipped and retried on the next
+// upgrade. The engines are read with direct sql (no api during upgrade) and
+// the document count is queried on Solr from the connection stored in the
+// engine settings (passwords decrypted at rest).
+$finalized = false;
+$cipher = $services->get('Omeka\Cipher');
+$decryptPassword = function ($value) use ($cipher) {
+    if ($value === null || $value === '') {
+        return (string) $value;
+    }
+    try {
+        return $cipher->decrypt((string) $value);
+    } catch (\Throwable $e) {
+        // Legacy clear value stored before encryption at rest.
+        return (string) $value;
+    }
+};
+$fieldDocCount = function (array $client, string $field) use ($decryptPassword): ?int {
+    $scheme = $client['scheme'] ?? null;
+    $host = $client['host'] ?? null;
+    $core = $client['core'] ?? null;
+    if (!$scheme || !$host || !$core) {
+        return null;
+    }
+    $base = $scheme . '://' . $host . (empty($client['port']) ? '' : ':' . $client['port']) . '/solr/' . $core;
+    $header = null;
+    if (!empty($client['username'])) {
+        $header = 'Authorization: Basic ' . base64_encode($client['username'] . ':' . $decryptPassword($client['password'] ?? ''));
+    }
+    $response = @file_get_contents(
+        $base . '/admin/luke?numTerms=0&fl=' . urlencode($field),
+        false,
+        stream_context_create(['http' => ['timeout' => 10, 'header' => $header]])
+    );
+    if ($response === false) {
+        return null;
+    }
+    $luke = json_decode($response, true);
+    if (!is_array($luke) || !isset($luke['fields'])) {
+        return null;
+    }
+    return (int) ($luke['fields'][$field]['docs'] ?? 0);
+};
+foreach ($connection->fetchAllAssociative("SELECT `id`, `settings` FROM `search_engine` WHERE `adapter` = 'solarium'") as $engineRow) {
+    $engineId = (int) $engineRow['id'];
+    $engineSettings = json_decode((string) $engineRow['settings'], true) ?: [];
+    $client = $engineSettings['solr']['client'] ?? [];
+    $mapsByField = [];
+    foreach ($connection->fetchAllAssociative(
+        "SELECT `id`, `field_name` FROM `solr_map` WHERE `engine_id` = ? AND `source` = 'is_public' AND `field_name` IN ('is_public_i', 'is_public_b')",
+        [$engineId]
+    ) as $mapRow) {
+        $mapsByField[$mapRow['field_name']] = (int) $mapRow['id'];
+    }
+    if (!isset($mapsByField['is_public_i'], $mapsByField['is_public_b'])) {
+        continue;
+    }
+    $docs = $fieldDocCount($client, 'is_public_b');
+    if ($docs !== null && $docs > 0) {
+        $connection->executeStatement('DELETE FROM `solr_map` WHERE `id` = ?;', [$mapsByField['is_public_i']]);
+        $finalized = true;
+    }
+}
+if ($finalized) {
+    // Aliases stay "is_public" and are untouched; "has_media_b" never matched.
+    $connection->executeStatement(<<<'SQL'
+        UPDATE `search_config`
+        SET `settings` = REPLACE(`settings`, 'is_public_i', 'is_public_b')
+        WHERE `settings` LIKE '%is_public_i%';
+        SQL);
+    $messenger->addSuccess(new PsrMessage(
+        'The visibility index switched to "is_public_b"; the legacy "is_public_i" was removed.' // @translate
+    ));
+}
+
+// Stamp provenance on historical maps created before the sync tracked it.
+// Without provenance, the alignment relies on a heuristic only, so a plain
+// legacy map not referenced by any config would be removed at the first clean.
+// A map with a custom formatter, normalization, boost, pool filter, visibility
+// or a renamed field is flagged "manual" and therefore never removed; the
+// generic and system maps are flagged "system"; all the others become "sync",
+// so they are managed automatically from now on.
+$mapRows = $connection->fetchAllAssociative(
+    'SELECT `id`, `source`, `field_name`, `settings`, `pool` FROM `solr_map`;'
+);
+$stamped = ['manual' => 0, 'system' => 0, 'sync' => 0];
+foreach ($mapRows as $mapRow) {
+    $mapSettings = json_decode((string) $mapRow['settings'], true) ?: [];
+    if (array_key_exists('origin', $mapSettings)) {
+        continue;
+    }
+    $pool = json_decode((string) $mapRow['pool'], true) ?: [];
+    $source = (string) $mapRow['source'];
+
+    $visibility = $pool['filter_visibility'] ?? '';
+    $isCustomized = !empty($mapSettings['formatter'])
+        || !empty($mapSettings['normalization'])
+        || (!empty($mapSettings['boost']) && (float) $mapSettings['boost'] !== 1.0)
+        || !empty($pool['filter_values'])
+        || !empty($pool['filter_uris'])
+        || !empty($pool['filter_resources'])
+        || !empty($pool['filter_value_resources'])
+        || !empty($pool['data_types'])
+        || !empty($pool['data_types_exclude'])
+        || !empty($pool['filter_languages'])
+        || ($visibility !== '' && $visibility !== 'default');
+    if (!$isCustomized && strpos($source, ':') !== false) {
+        $expectedPrefix = strtr($source, ':', '_') . '_';
+        $isCustomized = strpos((string) $mapRow['field_name'], $expectedPrefix) !== 0;
+    }
+
+    if ($isCustomized) {
+        $origin = 'manual';
+    } elseif (strpos($source, ':') === false || strpos($source, '/') !== false) {
+        $origin = 'system';
+    } else {
+        $origin = 'sync';
+    }
+
+    $mapSettings['origin'] = $origin;
+    $connection->executeStatement(
+        'UPDATE `solr_map` SET `settings` = ? WHERE `id` = ?;',
+        [json_encode($mapSettings, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE), $mapRow['id']]
+    );
+    ++$stamped[$origin];
+}
+if (array_sum($stamped)) {
+    $messenger->addSuccess(new PsrMessage(
+        'The provenance was set on the historical maps: {sync} automatic, {manual} manual (customized, never removed), {system} system.', // @translate
+        ['sync' => $stamped['sync'], 'manual' => $stamped['manual'], 'system' => $stamped['system']]
+    ));
+    $messenger->addWarning(new PsrMessage(
+        'It is recommended to align the maps manually on each Solr core, then to reindex: the automatic maps not used by any config will be removed when the cleaning is checked.' // @translate
+    ));
+}
+
+if (version_compare($oldVersion, '3.5.71', '<')) {
+    // The column "engine_id" was appended at the end of the table when the cores
+    // were merged into the engines. It identifies the owner of the map, so it is
+    // moved right after the id, like in the schema of a new install. Idempotent:
+    // the position is checked first, and the constraint and the indexes are kept by
+    // a modification in place.
+    $positionEngineId = (int) $connection->fetchOne(
+        "SELECT `ORDINAL_POSITION`
+        FROM `INFORMATION_SCHEMA`.`COLUMNS`
+        WHERE `TABLE_SCHEMA` = DATABASE()
+            AND `TABLE_NAME` = 'solr_map'
+            AND `COLUMN_NAME` = 'engine_id'"
+    );
+    if ($positionEngineId > 2) {
+        $connection->executeStatement('ALTER TABLE `solr_map` MODIFY `engine_id` INT NOT NULL AFTER `id`;');
+    }
+
+    // The date of the indexation is a default field: it is the only date the index
+    // knows and the database does not, so it allows to find the documents that were
+    // not reindexed after a change of their resource. Add it to the engines that
+    // have no such map yet. A reindexation is needed to fill it.
+    $engineIdsSolr = $connection->fetchFirstColumn(
+        "SELECT `id` FROM `search_engine` WHERE `adapter` = 'solarium' ORDER BY `id` ASC"
+    );
+    $engineIdsIndexedAt = [];
+    foreach ($engineIdsSolr as $engineIdSolr) {
+        $hasMapIndexedAt = (bool) $connection->fetchOne(
+            'SELECT `id` FROM `solr_map` WHERE `engine_id` = ? AND `source` = ?',
+            [$engineIdSolr, 'indexed_at']
+        );
+        if ($hasMapIndexedAt) {
+            continue;
+        }
+        $connection->executeStatement(
+            'INSERT INTO `solr_map` (`engine_id`, `resource_name`, `field_name`, `alias`, `source`, `pool`, `settings`) VALUES (?, ?, ?, ?, ?, ?, ?);',
+            [
+                $engineIdSolr,
+                'generic',
+                'indexed_at_dt',
+                'indexed_at',
+                'indexed_at',
+                '[]',
+                json_encode(['label' => 'Indexed at', 'origin' => 'system'], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE),
+            ]
+        );
+        $engineIdsIndexedAt[] = $engineIdSolr;
+    }
+    if ($engineIdsIndexedAt) {
+        $messenger->addSuccess(new PsrMessage(
+            'The date of indexation is now indexed ("indexed_at_dt"), so the check of the parity can find the documents that were not reindexed after a change of their resource. Reindex to fill it.' // @translate
+        ));
+    }
+
+    // Some historical maps reference a source that matches no extractor, so the
+    // index is declared but stays empty: the scope glued to the source
+    // ("generic:title"), a separator ":" instead of "_" ("has:media"), a truncated
+    // name, or a property that no longer exists. Normalize what can be, and remove
+    // the maps that point to nothing and are already mapped elsewhere.
+    $sourcesRenamed = [
+        // The scope is not part of the source.
+        'generic:title' => 'o:title',
+        'generic:property_values' => 'property_values',
+        // The separator of a source is "_", and a path uses "/".
+        'has:media' => 'has_media',
+        'resource:name' => 'resource_name',
+        'resource:class' => 'resource_class',
+        'resource:template_id' => 'resource_template/o:id',
+        // The name was truncated.
+        'selection_public' => 'selection_public_id',
+    ];
+    // A property that was renamed in its vocabulary, or that never existed: there
+    // is nothing to point to, so the map is removed.
+    $sourcesRemoved = [
+        // Renamed as "curation:end" by the vocabulary of the modules that install
+        // it, and the maps of the new name already exist.
+        'curation:dateEnd',
+        'curation:dateStart',
+        // Never existed in the vocabulary Dublin Core terms.
+        'dcterms:temporal_uri',
+    ];
+
+    $mapsNormalized = [];
+    $mapsRemovedDuplicate = [];
+    $mapsRemovedUnknown = [];
+    $mapsSourceInvalid = $connection->fetchAllAssociative(
+        'SELECT `id`, `engine_id`, `resource_name`, `field_name`, `source` FROM `solr_map` ORDER BY `id` ASC'
+    );
+    // A source prefixed with "va:" was an attempt to index a value annotation,
+    // but the syntax of the extractor is "value_annotations[/term]" or
+    // "term/annotation[/term]": the index stayed empty. Remove them, unless a real
+    // vocabulary uses this prefix.
+    $hasVocabularyVa = (bool) $connection->fetchOne(
+        'SELECT `id` FROM `vocabulary` WHERE `prefix` = ? LIMIT 1',
+        ['va']
+    );
+
+    foreach ($mapsSourceInvalid as $mapRow) {
+        $source = (string) $mapRow['source'];
+
+        if (!$hasVocabularyVa && strncmp($source, 'va:', 3) === 0) {
+            $connection->executeStatement('DELETE FROM `solr_map` WHERE `id` = ?', [$mapRow['id']]);
+            $mapsRemovedUnknown[] = $mapRow['field_name'] . ' (' . $source . ')';
+            continue;
+        }
+
+        if (in_array($source, $sourcesRemoved, true)) {
+            $connection->executeStatement('DELETE FROM `solr_map` WHERE `id` = ?', [$mapRow['id']]);
+            $mapsRemovedUnknown[] = $mapRow['field_name'] . ' (' . $source . ')';
+            continue;
+        }
+
+        if (isset($sourcesRenamed[$source])) {
+            $sourceNormalized = $sourcesRenamed[$source];
+        } elseif ($source === 'item:set_id' || $source === 'resource:template') {
+            // The data is the id or the label, according to the type of the solr
+            // field: an integer field cannot hold a label.
+            $isFieldInteger = (bool) preg_match('~_(i|is|l|ls)$~', (string) $mapRow['field_name']);
+            if ($source === 'item:set_id') {
+                $sourceNormalized = $isFieldInteger ? 'item_set/o:id' : 'item_set/o:title';
+            } else {
+                $sourceNormalized = $isFieldInteger ? 'resource_template/o:id' : 'resource_template';
+            }
+        } else {
+            continue;
+        }
+
+        $idDuplicate = (int) $connection->fetchOne(
+            'SELECT `id` FROM `solr_map` WHERE `engine_id` = ? AND `resource_name` = ? AND `field_name` = ? AND `source` = ? AND `id` != ? LIMIT 1',
+            [$mapRow['engine_id'], $mapRow['resource_name'], $mapRow['field_name'], $sourceNormalized, $mapRow['id']]
+        );
+        if ($idDuplicate) {
+            $connection->executeStatement('DELETE FROM `solr_map` WHERE `id` = ?', [$mapRow['id']]);
+            $mapsRemovedDuplicate[] = $mapRow['field_name'] . ' (' . $source . ')';
+            continue;
+        }
+
+        $connection->executeStatement(
+            'UPDATE `solr_map` SET `source` = ? WHERE `id` = ?',
+            [$sourceNormalized, $mapRow['id']]
+        );
+        $mapsNormalized[] = $source . ' → ' . $sourceNormalized;
+    }
+
+    if ($mapsNormalized) {
+        $messenger->addSuccess(new PsrMessage(
+            'The sources of some maps matched no extractor, so their index stayed empty: {sources}. Reindex to fill them.', // @translate
+            ['sources' => implode(', ', array_unique($mapsNormalized))]
+        ));
+    }
+    if ($mapsRemovedDuplicate) {
+        $messenger->addWarning(new PsrMessage(
+            'Some maps were removed, because the same index was already mapped to the same source: {maps}.', // @translate
+            ['maps' => implode(', ', $mapsRemovedDuplicate)]
+        ));
+    }
+    if ($mapsRemovedUnknown) {
+        $messenger->addWarning(new PsrMessage(
+            'Some maps were removed, because they point to a property that no longer exists: {maps}.', // @translate
+            ['maps' => implode(', ', $mapsRemovedUnknown)]
+        ));
+    }
+
+    $messenger->addSuccess(new PsrMessage(
+        'The alignment of the maps has new sources: the values of the media, indexed on their item, the numeric values, that get an integer or decimal index for a real sort and range facets, and the geographic coordinates, that get a spatial index. A limit of distinct values avoids the exact indexes that cannot be browsed. See the sidebar "Align the maps" of a Solr core.' // @translate
+    ));
+
+    $messenger->addWarning(new PsrMessage(
+        'The geographic points were never indexed: reindex to get them.' // @translate
+    ));
+
+    $messenger->addWarning(new PsrMessage(
+        'A sync and a re-indexation are recommended.' // @translate
     ));
 }

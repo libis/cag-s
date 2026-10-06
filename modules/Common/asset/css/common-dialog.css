@@ -50,7 +50,7 @@
 
     .field .messages {
         width: 70%;
-        color: lighten(#a91919, 45%);
+        color: #a91919;
         margin-left: auto;
 
         & li {
@@ -60,7 +60,7 @@
 
     .error,
     .error a {
-        color: lighten(#a91919, 45%);;
+        color: #a91919;
     }
     .success,
     .success a {
@@ -86,6 +86,10 @@
     .dialog-body,
 	.dialog-footer {
         margin-top: 1em;
+    }
+    /* Keep margin below contents symmetric to top margin above. */
+    .dialog-contents {
+        margin-bottom: 1em;
     }
     dialog .dialog-header-close-button {
         position: absolute;
@@ -202,8 +206,7 @@
             text-indent: initial;
             padding-left: 8px;
         }
-        /* Center action-bar icons (no margin) so glyphs of different widths align
-        and spacing stays even across spans, buttons and links. */
+        /* Center action-bar icons so glyphs of different widths stays. */
         & .single-action span.fas,
         & .no-action span.fas {
             display: block;

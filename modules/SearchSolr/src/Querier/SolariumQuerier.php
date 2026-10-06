@@ -7,7 +7,8 @@ use AdvancedSearch\Querier\Exception\QuerierException;
 use AdvancedSearch\Query;
 use AdvancedSearch\Response;
 use AdvancedSearch\Stdlib\SearchResources;
-use SearchSolr\Api\Representation\SolrCoreRepresentation;
+use SearchSolr\Stdlib\LanguageCodes;
+use SearchSolr\Stdlib\SolrCore as SolrCoreRepresentation;
 use Solarium\Client as SolariumClient;
 use Solarium\QueryType\Select\Query\Query as SelectQuery;
 use Solarium\QueryType\Select\Result\Result as SolariumResult;
@@ -25,6 +26,11 @@ use Solarium\QueryType\Select\Result\Result as SolariumResult;
  */
 class SolariumQuerier extends AbstractQuerier
 {
+    /**
+     * Max number of buckets of a range facet without an explicit step.
+     */
+    const FACET_RANGE_MAX_BUCKETS = 1000;
+
     protected Response $response;
     protected int $appendToKey = 0;
     protected bool $byResourceType = false;
@@ -63,6 +69,42 @@ class SolariumQuerier extends AbstractQuerier
      * Cache for solrCoreField() lookups.
      */
     protected array $solrCoreFieldCache = [];
+
+    /**
+     * System field aliases, mapped to the source of their map.
+     *
+     * A config made for the internal engine uses keys like
+     * "resource_template_id"; they are mapped to the Solr field via the map
+     * source, so facets, filters and sorts still resolve after switching to
+     * Solr.
+     */
+    public const SYSTEM_SOURCES = [
+        'resource_type' => 'resource_name',
+        'resource_name' => 'resource_name',
+        'is_public' => 'is_public',
+        'id' => 'o:id',
+        'owner_id' => 'owner/o:id',
+        'site_id' => 'site/o:id',
+        'resource_class_id' => 'resource_class/o:term',
+        'resource_class_term' => 'resource_class/o:term',
+        'resource_template_id' => 'resource_template/o:label',
+        'item_set_id' => 'item_set/o:id',
+        'has_media' => 'has_media',
+        'has_original' => 'has_original',
+        'has_thumbnails' => 'has_thumbnails',
+        'media_type' => 'o:media_type',
+        'media_types' => 'media/o:media_type',
+        'item_id' => 'item/o:id',
+        'is_open' => 'is_open',
+        'asset_id' => 'asset',
+        // Pseudo-field for "any property" rows and the arg "search".
+        'property_values' => 'property_values',
+        // Standard sort keys.
+        'created' => 'created',
+        'modified' => 'modified',
+        'changed' => 'changed',
+        'title' => 'o:title',
+    ];
 
     /**
      * Flag to track if aliases have been appended.
@@ -148,6 +190,12 @@ class SolariumQuerier extends AbstractQuerier
             $result = $client->suggester($suggesterQuery);
 
             $limit = $this->query ? $this->query->getLimit() : 10;
+            // Resolve the locale used to strip elided articles from suggested
+            // surface forms. Solr's AnalyzingInfixLookupFactory returns the raw
+            // stored text, so the dedup and the displayed value are normalized
+            // here: "l'écomusée", "l’écomusée" and "écomusée" collapse to one.
+            $elisionLocale = $suggestOptions['elision_locale']
+                ?? $this->resolveTranslatorLocale();
             $seen = [];
             $suggestions = [];
             foreach ($result as $dictionary) {
@@ -157,6 +205,7 @@ class SolariumQuerier extends AbstractQuerier
                         if ($value === '') {
                             continue;
                         }
+                        $value = $this->stripElidedArticles($value, $elisionLocale);
                         // Truncate long suggestions at word boundary.
                         if ($maxLength && mb_strlen($value) > $maxLength) {
                             $value = mb_substr($value, 0, $maxLength);
@@ -196,17 +245,136 @@ class SolariumQuerier extends AbstractQuerier
     }
 
     /**
+     * Per-language elided articles (aligned on Solr's lang/contractions_*.txt).
+     * Keys are 2-letter ISO 639-1 codes. Articles are matched
+     * case-insensitively and accept both ASCII (U+0027) and curly (U+2019)
+     * apostrophes.
+     */
+    protected const ELISION_ARTICLES = [
+        'fr' => ['l', 'd', 'n', 'qu', 'j', 'm', 't', 's', 'c', 'jusqu', 'lorsqu', 'puisqu', 'quoiqu'],
+        'it' => ['c', 'l', 'all', 'dall', 'dell', 'nell', 'sull', 'coll', 'pell', 'gl', 'agl', 'dagl', 'degl', 'negl', 'sugl', 'un', 'm', 't', 's', 'v', 'd', 'st', 'n', 'd'],
+        'ca' => ['d', 'l', 'm', 'n', 's', 't'],
+        'ga' => ['d', 'm', 'b'],
+    ];
+
+    /**
+     * Strip a leading elided article from a value, based on locale. Matches the
+     * Solr ElisionFilter but applied to the displayed surface form so that the
+     * deduplication and the displayed suggestion are language-aware.
+     */
+    protected function stripElidedArticles(string $value, ?string $locale): string
+    {
+        if ($value === '' || $locale === null) {
+            return $value;
+        }
+        $lang = strtolower(substr($locale, 0, 2));
+        $articles = self::ELISION_ARTICLES[$lang] ?? null;
+        if (!$articles) {
+            return $value;
+        }
+        $pattern = '/^(' . implode('|', array_map('preg_quote', $articles)) . ')[\'\x{2019}]\s*/iu';
+        $stripped = preg_replace($pattern, '', $value);
+        return $stripped === null ? $value : ltrim($stripped);
+    }
+
+    /**
+     * Resolve the locale used as fallback for elision stripping. Looks first at
+     * the site locale (from the query site id) so that suggestions on a French
+     * site strip French articles even when the global translator has not been
+     * switched yet to the site locale.
+     */
+    protected function resolveTranslatorLocale(): ?string
+    {
+        try {
+            $siteId = $this->query ? $this->query->getSiteId() : null;
+            if ($siteId) {
+                $siteSettings = $this->services->get('Omeka\Settings\Site');
+                $siteSettings->setTargetId($siteId);
+                $locale = $siteSettings->get('locale');
+                if (is_string($locale) && $locale !== '') {
+                    return $locale;
+                }
+            }
+        } catch (\Throwable $e) {
+            // Fall through to translator locale.
+        }
+        try {
+            $translator = $this->services->get('MvcTranslator');
+            $locale = method_exists($translator, 'getLocale') ? $translator->getLocale() : null;
+            return is_string($locale) && $locale !== '' ? $locale : null;
+        } catch (\Throwable $e) {
+            return null;
+        }
+    }
+
+    /**
+     * Get the text indexes of the language of the site, boosted.
+     *
+     * The alignment creates a text index by language ("{base}_txt_{suffix}")
+     * with the analyzer of the language, so a query matches the inflected forms
+     * of words. The neutral indexes are still queried, so the records without
+     * translation are found too, with a lower score.
+     */
+    protected function siteLanguageQueryFields(): array
+    {
+        if (!$this->query->getSiteId()) {
+            return [];
+        }
+        $suffix = LanguageCodes::toSolrSuffix(LanguageCodes::toIso1($this->resolveTranslatorLocale()));
+        if ($suffix === '') {
+            return [];
+        }
+        $fields = [];
+        foreach (array_keys($this->solrCore->mapsByFieldName()) as $fieldName) {
+            if (substr((string) $fieldName, -strlen('_txt_' . $suffix)) === '_txt_' . $suffix) {
+                $fields[] = $fieldName . '^2';
+            }
+        }
+        return $fields;
+    }
+
+    /**
+     * Get the language index of an exact-value field for the given languages.
+     *
+     * The alignment creates an index by language ("{base}_{lang}_ss") for the
+     * multilingual properties, that contains the values without language too.
+     * It is used only when the languages match a single one, the empty language
+     * being the values without language, and when the index is mapped: the
+     * dynamic field "*_ss" accepts any name, even an index that is not filled.
+     */
+    protected function languageField(string $field, array $languages): string
+    {
+        if (!$languages || substr($field, -3) !== '_ss') {
+            return $field;
+        }
+        $isoCodes = array_unique(array_filter(array_map(
+            fn ($language): string => LanguageCodes::toIso1((string) $language),
+            $languages
+        )));
+        if (count($isoCodes) !== 1) {
+            return $field;
+        }
+        $languageField = substr($field, 0, -3) . '_' . reset($isoCodes) . '_ss';
+        return $this->solrCore->mapsByFieldName($languageField) ? $languageField : $field;
+    }
+
+    /**
      * Build suggester names from settings.
      *
      * @return array|string Suggester name(s) to query.
      */
     protected function getSuggesterNames(array $suggestOptions)
     {
-        // Support both old single field (solr_field) and new multi-field (solr_fields).
+        // Support both old single field (solr_field) and new multi-field
+        // (solr_fields).
         $solrFields = $suggestOptions['solr_fields'] ?? [];
         if (empty($solrFields) && !empty($suggestOptions['solr_field'])) {
             $solrFields = [$suggestOptions['solr_field']];
         }
+
+        // When a catchall is explicitly selected, a single suggester on it is
+        // enough. Kept consistent with CreateSolrSuggesters.
+        $solrFields = \SearchSolr\Stdlib\SuggesterFields::reduceToCatchall($solrFields);
 
         // Resolve "auto": stored text and string fields, preferring _txt.
         if (empty($solrFields) || in_array('auto', $solrFields)) {
@@ -265,7 +433,7 @@ class SolariumQuerier extends AbstractQuerier
      * @todo Merge queryDocuments() of SolariumQuerier with SolrRepresentation.
      *
      * Adapted:
-     * @see \SearchSolr\Api\Representation\SolrCoreRepresentation::queryDocuments()
+     * @see \SearchSolr\Stdlib\SolrCore::queryDocuments()
      * @see \SearchSolr\Querier\SolariumQuerier::queryDocuments()
      */
     public function queryDocuments(string $resourceType, array $ids): array
@@ -300,7 +468,7 @@ class SolariumQuerier extends AbstractQuerier
      * @todo Merge queryValues() of SolariumQuerier with SolrRepresentation.
      *
      * Adapted:
-     * @see \SearchSolr\Api\Representation\SolrCoreRepresentation::queryValues()
+     * @see \SearchSolr\Stdlib\SolrCore::queryValues()
      * @see \SearchSolr\Querier\SolariumQuerier::queryValues()
      *
      * {@inheritDoc}
@@ -342,6 +510,13 @@ class SolariumQuerier extends AbstractQuerier
                 }
                 return $f;
             }, $fields);
+
+            // A filter limited to the language of the site lists the values of
+            // the language index.
+            $languages = $this->query->getFieldsQueryArgs()[$field]['lang'] ?? [];
+            if ($languages) {
+                $fields = array_map(fn ($f) => $this->languageField($f, (array) $languages), $fields);
+            }
 
             $isPublicField = $this->solrCoreField('is_public');
             $sitesField = $this->solrCoreField('site/o:id');
@@ -451,7 +626,7 @@ class SolariumQuerier extends AbstractQuerier
      * @todo Merge queryValuesCount() of SolariumQuerier with SolrRepresentation.
      *
      * Adapted:
-     * @see \SearchSolr\Api\Representation\SolrCoreRepresentation::queryValuesCount()
+     * @see \SearchSolr\Stdlib\SolrCore::queryValuesCount()
      * @see \SearchSolr\Querier\SolariumQuerier::queryValuesCount()
      */
     public function queryValuesCount($fields, ?string $sort = 'index asc'): array
@@ -503,6 +678,106 @@ class SolariumQuerier extends AbstractQuerier
             }
             $result[$field] = $terms;
         }
+        return $result;
+    }
+
+    /**
+     * List the fields a visitor may target in the query itself.
+     *
+     * @see https://solr.apache.org/guide/solr/latest/query-guide/edismax-query-parser.html
+     *
+     * @return string The value of the param "uf": the fields, else "-*".
+     */
+    protected function userFields(): string
+    {
+        $fields = [];
+
+        // The fields of the maps of the core: they are the indexed ones.
+        try {
+            foreach ($this->getSolrCore()->maps() as $solrMap) {
+                $fieldName = $solrMap->fieldName();
+                if ($fieldName) {
+                    $fields[$fieldName] = true;
+                }
+            }
+        } catch (\Throwable $e) {
+            // Without the maps, no field is allowed.
+        }
+
+        // The aliases of the search config point to these fields, but they may
+        // be used by their own name too.
+        foreach (array_keys($this->query->getAliases() ?: []) as $alias) {
+            if (is_string($alias) && $alias !== '') {
+                $fields[$alias] = true;
+            }
+        }
+
+        return $fields
+            ? implode(' ', array_keys($fields))
+            : '-*';
+    }
+
+    /**
+     * Get the min and the max of some fields, without listing their values.
+     *
+     * The component "stats" of Solr computes them in a single pass, unlike a
+     * terms query, that returns every distinct value only to keep two of them:
+     * a field with a high cardinality could exhaust the java heap.
+     *
+     * @return array Min and max by field, when the field has values.
+     */
+    public function queryFieldsMinMax(array $fields): array
+    {
+        if (!$fields) {
+            return [];
+        }
+
+        $this->getClient();
+        $this->appendCoreAliasesToQuery();
+
+        $query = $this->solariumClient->createSelect();
+        $query
+            ->setQuery('*:*')
+            ->setRows(0)
+            ->setFields(['id']);
+
+        $stats = $query->getStats();
+        foreach ($fields as $field) {
+            $stats->createField($field);
+        }
+
+        try {
+            $resultSet = $this->solariumClient->select($query);
+        } catch (\Throwable $e) {
+            if ($this->logger) {
+                $this->logger->err(
+                    'Solr query failed to get the bounds of the fields {fields}: {message}', // @translate
+                    ['fields' => implode(', ', $fields), 'message' => $e->getMessage()]
+                );
+            }
+            return [];
+        }
+
+        $statsResult = $resultSet->getStats();
+        if (!$statsResult) {
+            return [];
+        }
+
+        $result = [];
+        foreach ($fields as $field) {
+            $fieldResult = $statsResult->getResult($field);
+            if (!$fieldResult) {
+                continue;
+            }
+            $min = $fieldResult->getMin();
+            $max = $fieldResult->getMax();
+            // A field without any value has no bounds, or null ones.
+            if ($min === null || $max === null) {
+                continue;
+            }
+            $result[$field] = ['min' => $min, 'max' => $max];
+        }
+
         return $result;
     }
 
@@ -667,18 +942,37 @@ class SolariumQuerier extends AbstractQuerier
             return $this;
         }
 
-        $this->select->addParam('defType', 'edismax')->addParam('sow', 'false');
+        // Solarium asks "*,score" by default, so Solr returns every stored
+        // field, including the full text of the ocr: a page of results could
+        // weigh hundreds of megabytes, exhausting the heap of Solr and the
+        // memory of php, while only the id is read from the documents.
+        /** @see \SearchSolr\Querier\SolariumQuerier::hydrateResponse() */
+        $this->select->setFields(['id', 'score']);
+
+        $this->select
+            ->addParam('defType', 'edismax')
+            ->addParam('sow', 'false')
+            // Restrict the fields a visitor may target with the syntax
+            // "field:value" in the query: by default, edismax allows any field
+            // of the index, including fields that store data indexed whatever
+            // the visibility. Only the mapped fields and the aliases are
+            // allowed, and none when there is no map.
+            ->addParam('uf', $this->userFields());
+
         $dismax = $this->select->getDisMax();
+
+        // The text indexes of the language of the site are added to the other
+        // query fields, whatever they are.
+        $languageFields = $this->siteLanguageQueryFields();
 
         // Use catchall field _text_ if available.
         // Add only fields with custom boosts (≠1) for scoring priority.
         if ($this->solrCore->schema()->checkDefaultField()) {
-            $boostedFields = $this->getCustomBoostedFields();
-            if ($boostedFields) {
-                $dismax->setQueryFields('_text_ ' . implode(' ', $boostedFields));
-            } else {
-                $dismax->setQueryFields('_text_');
-            }
+            $dismax->setQueryFields(implode(' ', array_merge(
+                ['_text_'],
+                $this->getCustomBoostedFields(),
+                $languageFields
+            )));
             return $this;
         }
 
@@ -694,7 +988,7 @@ class SolariumQuerier extends AbstractQuerier
                 fn ($p) => isset($allowed[preg_replace('~\^.*$~', '', $p)])
             );
             if ($kept) {
-                $kept = array_slice($kept, 0, $maxFields);
+                $kept = array_slice(array_merge($languageFields, $kept), 0, $maxFields);
                 $dismax->setQueryFields(implode(' ', $kept));
             }
             return $this;
@@ -713,7 +1007,7 @@ class SolariumQuerier extends AbstractQuerier
                     $rest[] = $field;
                 }
             }
-            $foldable = array_merge($priority, $rest);
+            $foldable = array_merge($languageFields, $priority, $rest);
             $foldable = array_slice($foldable, 0, $maxFields);
             $dismax->setQueryFields(implode(' ', $foldable));
         }
@@ -787,15 +1081,15 @@ class SolariumQuerier extends AbstractQuerier
             $this->select->setQuery($refineEscaped);
         }
 
-        // Set settings used for main search.
-        $cfg = array_filter($this->solrCore->settings()['query'] ?? []);
-        if ($cfg) {
-            // TODO These options and other DisMax ones can be passed directly as options. Even the query is an option.
+        // The query relevance settings are a facet of the query context, so
+        // they are set by search page in its config.
+        // TODO These options and other DisMax ones can be passed directly as options. Even the query is an option.
+        $minimumMatch = $this->query->getMinimumMatch();
+        $tieBreaker = $this->query->getTieBreaker();
+        if ($minimumMatch !== '' || $tieBreaker !== '') {
             $dismax = $this->select->getDisMax();
-            isset($cfg['minimum_match'])
-                && $dismax->setMinimumMatch($cfg['minimum_match']);
-            isset($cfg['tie_breaker'])
-                && $dismax->setTie((float) $cfg['tie_breaker']);
+            $minimumMatch === '' || $dismax->setMinimumMatch($minimumMatch);
+            $tieBreaker === '' || $dismax->setTie((float) $tieBreaker);
         }
 
         return $this;
@@ -834,10 +1128,35 @@ class SolariumQuerier extends AbstractQuerier
         // Since version of module Access 3.4.17, the access level is a standard
         // filter that may be enable or not.
 
-        // Visibility.
+        // Visibility (is_public + module Group).
+        // In module Access, is_public and the access level are independent: a
+        // public resource may still be access-restricted.
         if ($this->query->getIsPublic() && ($field = $this->solrCoreField('is_public'))) {
             $val = $this->fieldIsBool($field) ? 'true' : '1';
-            $this->select->addFilterQuery(['key' => 'is_public', 'query' => "$field:$val"]);
+            $publicClause = "$field:$val";
+            // Module Group: also show resources reserved to a group the current
+            // user belongs to (so reserved private content is searchable and
+            // faceted, like it is already browsable).
+            $groupClause = $this->groupVisibilityClause();
+            $this->select->addFilterQuery([
+                'key' => 'is_public',
+                'query' => $groupClause ? "($publicClause OR $groupClause)" : $publicClause,
+            ]);
+        }
+
+        // Access level (module Access).
+        // A public resource (is_public) may still be hidden from public lists
+        // when its access level is "protected" or "forbidden" AND Access is
+        // configured to hide them from listings (Doctrine filter "access_level"
+        // enabled).
+        if ($this->query->getIsPublic()
+            && ($field = $this->solrCoreField('access_level'))
+            && $this->isAccessLevelFilterEnabled()
+        ) {
+            $this->select->addFilterQuery([
+                'key' => 'access_level',
+                'query' => "-$field:(protected OR forbidden)",
+            ]);
         }
 
         // Site.
@@ -854,7 +1173,7 @@ class SolariumQuerier extends AbstractQuerier
         }
 
         // Index name.
-        if ($this->searchEngine->settingEngineAdapter('index_name') && ($field = $this->solrCoreField('search_index'))) {
+        if ($this->getSolrCore()->setting('index_name') && ($field = $this->solrCoreField('search_index'))) {
             $this->select->addFilterQuery(['key' => 'index_name', 'query' => "$field:" . $this->searchEngine->shortName()]);
         }
 
@@ -909,11 +1228,48 @@ class SolariumQuerier extends AbstractQuerier
                 continue;
             }
 
+            // Resolve the configured field (property term or alias) to its Solr
+            // index. Skip the facet when the field is not mapped, to avoid an
+            // "undefined field" error from Solr.
+            $field = $this->resolveFieldOrNull($data['field']);
+            if ($field === null) {
+                $this->getLogger()
+                    ->warn(
+                        'Solr: skipped facet on unmapped field "{field}".', // @translate
+                        ['field' => $data['field']]
+                    );
+                continue;
+            }
+            $data['field'] = $field;
+
+            // A facet limited to the language of the site lists the values of
+            // the language index, that contains the values without language.
+            if (!in_array($data['type'] ?? '', ['Range', 'RangeDouble', 'SelectRange'])) {
+                $data['field'] = $this->languageField($field, $data['languages'] ?? []);
+            }
+
             // Handle range facets.
             if (in_array($data['type'] ?? '', ['Range', 'RangeDouble', 'SelectRange'])) {
                 $min = $data['min'] ?? ($fieldRanges[$name]['min'] ?? 0);
                 $max = $data['max'] ?? ($fieldRanges[$name]['max'] ?? 0);
                 $step = (int) ($data['step'] ?? 1);
+
+                // Without a step, the default one is 1, so a field with a wide
+                // range, like a timestamp, would build one bucket by unit and
+                // exhaust the memory of Solr. So the step is adapted to keep a
+                // number of buckets that a facet can display.
+                if (empty($data['step'])) {
+                    $amplitude = (int) $max - (int) $min;
+                    if ($amplitude > self::FACET_RANGE_MAX_BUCKETS) {
+                        $step = (int) ceil($amplitude / self::FACET_RANGE_MAX_BUCKETS);
+                        if ($this->logger) {
+                            $this->logger->notice(
+                                'Facet "{facet_name}": the range from {min} to {max} has no step, so the step is set to {step} to limit the number of buckets. Set it in the search page.', // @translate
+                                ['facet_name' => $name, 'min' => $min, 'max' => $max, 'step' => $step]
+                            );
+                        }
+                    }
+                }
 
                 // Solr upper bounds are excluded by default, so add step to max.
                 /** @see https://solr.apache.org/guide/solr/latest/query-guide/faceting.html */
@@ -944,11 +1300,17 @@ class SolariumQuerier extends AbstractQuerier
                 // related to the facet.
                 // see: https://yonik.com/multi-select-faceting/
                 /** @var \Solarium\Component\Facet\FieldValueParametersInterface $facet */
+                // A facet joined with "and" narrows the results, so its own
+                // filter is kept in the domain of the counts: else a value
+                // would promise results that the "and" cannot return.
+                $isAnd = ($data['join'] ?? $data['options']['join'] ?? 'or') === 'and';
                 $excludeTag = strtoupper($name . '-facet');
                 $facet = $facetSet->createJsonFacetTerms($name)
                     ->setField($data['field'])
-                    ->setSort($orders[$data['order'] ?? 'default'] ?? $orders['default'])
-                    ->setOptions(['domain' => ['excludeTags' => [$excludeTag]]]);
+                    ->setSort($orders[$data['order'] ?? 'default'] ?? $orders['default']);
+                if (!$isAnd) {
+                    $facet->setOptions(['domain' => ['excludeTags' => [$excludeTag]]]);
+                }
 
                 if (isset($data['limit']) && $data['limit'] > 0) {
                     $facet
@@ -981,15 +1343,21 @@ class SolariumQuerier extends AbstractQuerier
                 continue;
             }
 
+            // Resolve the active facet field; skip when it is not mapped.
+            $facetData = $facetsConfig[$fname] ?? [];
+            $startField = $this->resolveFieldOrNull($facetData['field'] ?? $fname);
+            if ($startField === null) {
+                continue;
+            }
+            $endField = !empty($facetData['field_end'])
+                ? $this->resolveFieldOrNull($facetData['field_end'])
+                : null;
+
             $firstKey = key($values);
             // Check for range facet.
             if (count($values) <= 2 && ($firstKey === 'from' || $firstKey === 'to')) {
                 $hasFrom = isset($values['from']) && $values['from'] !== '';
                 $hasTo = isset($values['to']) && $values['to'] !== '';
-
-                $facetData = $facetsConfig[$fname] ?? [];
-                $startField = $facetData['field'] ?? $fname;
-                $endField = !empty($facetData['field_end']) ? $facetData['field_end'] : null;
 
                 if ($endField) {
                     // Interval overlap on uncertain dates: start ≤ to AND end ≥
@@ -1013,21 +1381,21 @@ class SolariumQuerier extends AbstractQuerier
                     $to = $this->escapePhrase($values['to']);
                     $this->select->addFilterQuery([
                         'key' => $fname . '-facet',
-                        'query' => "$fname:[$from TO $to]",
+                        'query' => "$startField:[$from TO $to]",
                         'tag' => 'exclude',
                     ]);
                 } elseif ($hasFrom) {
                     $from = $this->escapePhrase($values['from']);
                     $this->select->addFilterQuery([
                         'key' => $fname . '-facet',
-                        'query' => "$fname:[$from TO *]",
+                        'query' => "$startField:[$from TO *]",
                         'tag' => 'exclude',
                     ]);
                 } elseif ($hasTo) {
                     $to = $this->escapePhrase($values['to']);
                     $this->select->addFilterQuery([
                         'key' => $fname . '-facet',
-                        'query' => "$fname:[* TO $to]",
+                        'query' => "$startField:[* TO $to]",
                         'tag' => 'exclude',
                     ]);
                 }
@@ -1038,10 +1406,15 @@ class SolariumQuerier extends AbstractQuerier
                 // using 'query', add the tag in the query statement.
                 $key = $fname . '-facet';
                 $tag = strtoupper($key);
-                $escaped = $this->escapePhraseValue($values, 'OR');
+                // With the joiner "and", a resource must match all the selected
+                // values, so each new value narrows the results.
+                $joiner = ($facetData['join'] ?? $facetData['options']['join'] ?? 'or') === 'and'
+                    ? 'AND'
+                    : 'OR';
+                $escaped = $this->escapePhraseValue($values, $joiner);
                 $this->select->addFilterQuery([
                     'key' => $key,
-                    'query' => "{!tag=$tag}$fname:$escaped",
+                    'query' => "{!tag=$tag}$startField:$escaped",
                 ]);
             }
         }
@@ -1059,12 +1432,17 @@ class SolariumQuerier extends AbstractQuerier
         foreach ($facets as $name => $data) {
             if (in_array($data['type'] ?? '', ['Range', 'RangeDouble', 'SelectRange'])) {
                 if (!isset($data['min']) || !isset($data['max'])) {
-                    $field = $data['field'] ?? null;
+                    $field = !empty($data['field'])
+                        ? $this->resolveFieldOrNull($data['field'])
+                        : null;
                     if ($field) {
                         $fieldRanges[$name] = [];
                         $nameToField[$name] = $field;
                         if (!empty($data['field_end'])) {
-                            $nameToFieldEnd[$name] = $data['field_end'];
+                            $endField = $this->resolveFieldOrNull($data['field_end']);
+                            if ($endField !== null) {
+                                $nameToFieldEnd[$name] = $endField;
+                            }
                         }
                     }
                 }
@@ -1077,7 +1455,7 @@ class SolariumQuerier extends AbstractQuerier
                 array_values($nameToField),
                 array_values($nameToFieldEnd)
             ));
-            $all = $this->queryValuesCount($solrFields);
+            $all = $this->queryFieldsMinMax($solrFields);
 
             // Map results back to facet names. For interval mode, min comes
             // from the start field and max from the end field.
@@ -1085,14 +1463,10 @@ class SolariumQuerier extends AbstractQuerier
                 $field = $nameToField[$name] ?? null;
                 $fieldEnd = $nameToFieldEnd[$name] ?? null;
                 if ($field && isset($all[$field])) {
-                    $startValues = array_keys(array_filter($all[$field]));
-                    $range['min'] = $startValues ? min($startValues) : 0;
-                    if ($fieldEnd && isset($all[$fieldEnd])) {
-                        $endValues = array_keys(array_filter($all[$fieldEnd]));
-                        $range['max'] = $endValues ? max($endValues) : 0;
-                    } else {
-                        $range['max'] = $startValues ? max($startValues) : 0;
-                    }
+                    $range['min'] = $all[$field]['min'];
+                    $range['max'] = $fieldEnd && isset($all[$fieldEnd])
+                        ? $all[$fieldEnd]['max']
+                        : $all[$field]['max'];
                 } else {
                     $range['min'] = 0;
                     $range['max'] = 0;
@@ -1117,8 +1491,32 @@ class SolariumQuerier extends AbstractQuerier
             }
         } elseif ($sort) {
             [$field, $order] = array_pad(explode(' ', $sort, 2), 2, 'asc');
-            $field = $this->fieldToIndex($field) ?? $field;
-            $this->select->addSort($field, strtolower($order) === 'desc' ? SelectQuery::SORT_DESC : SelectQuery::SORT_ASC);
+            $name = $this->resolveFieldOrNull($field);
+            if ($name === null) {
+                $this->getLogger()
+                    ->warn(
+                        'Solr: skipped sort on unmapped field "{field}".', // @translate
+                        ['field' => $field]
+                    );
+            } else {
+                $solariumOrder = strtolower($order) === 'desc' ? SelectQuery::SORT_DESC : SelectQuery::SORT_ASC;
+                // The sort follows the collation when a folded variant of the
+                // field exists (a plain string field sorts in byte order).
+                $name = $this->preferFoldedField($name);
+                $this->select->addSort($name, $solariumOrder);
+                // Like the api: the resource id is always the tie-breaker, in
+                // the same order (see AbstractEntityAdapter::search()).
+                $idField = $this->fieldToIndex('id');
+                if ($idField && $idField !== $name && $idField !== 'id') {
+                    $this->select->addSort($idField, $solariumOrder);
+                }
+            }
+        } else {
+            // Without an explicit sort, the most recent resources come first.
+            $idField = $this->fieldToIndex('id');
+            if ($idField) {
+                $this->select->addSort($idField, SelectQuery::SORT_DESC);
+            }
         }
 
         return $this;
@@ -1210,8 +1608,15 @@ class SolariumQuerier extends AbstractQuerier
         $result = [];
         foreach ($merged as $field => $boost) {
             $boost = (float) $boost;
-            if ($boost !== 1.0 && $boost > 0) {
-                $result[] = "$field^$boost";
+            if ($boost === 1.0 || $boost <= 0) {
+                continue;
+            }
+            // A boost may be keyed by a property term ("dcterms:title"), so
+            // resolve it to the Solr field, and skip it when it is not mapped:
+            // Solr rejects the whole query on an unknown field in "qf".
+            $index = $this->resolveFieldOrNull((string) $field);
+            if ($index !== null) {
+                $result[] = "$index^$boost";
             }
         }
         return $result;
@@ -1243,8 +1648,14 @@ class SolariumQuerier extends AbstractQuerier
                 continue;
             }
             $boost = (float) $boost;
-            if ($boost > 0 && $boost !== 1.0) {
-                $boosted[$field] = "$field^$boost";
+            if ($boost <= 0 || $boost === 1.0) {
+                continue;
+            }
+            // Resolve property terms to Solr fields and skip unmapped ones,
+            // else Solr rejects the query ("is not a valid field name").
+            $index = $this->resolveFieldOrNull($field);
+            if ($index !== null) {
+                $boosted[$index] = "$index^$boost";
             }
         }
 
@@ -1430,8 +1841,40 @@ class SolariumQuerier extends AbstractQuerier
     protected function appendHiddenFilters(): self
     {
         $hidden = $this->query->getFiltersQueryHidden();
-        if ($hidden) {
-            $this->processFilters($hidden);
+        if (!$hidden) {
+            return $this;
+        }
+
+        // Hidden filters may mix two shapes per field:
+        // - flat values  : ['field' => [val1, val2, ...]]              → processFilters
+        // - filter rows  : ['field' => [['join','type','val',...], ]]  → processAdvancedFilters
+        // Split before dispatch to keep both shapes supported.
+        $flat = [];
+        $advanced = [];
+        foreach ($hidden as $field => $values) {
+            if (!is_array($values)) {
+                $flat[$field] = $values;
+                continue;
+            }
+            // The whole keyed structure of "numeric" is one arg.
+            if ($field === 'numeric') {
+                $flat['numeric'] = $values;
+                continue;
+            }
+            foreach ($values as $value) {
+                if (is_array($value) && !empty($value['type'])) {
+                    $advanced[$field][] = $value;
+                } else {
+                    $flat[$field][] = $value;
+                }
+            }
+        }
+
+        if ($flat) {
+            $this->processFilters($flat);
+        }
+        if ($advanced) {
+            $this->processAdvancedFilters($advanced);
         }
         return $this;
     }
@@ -1464,13 +1907,98 @@ class SolariumQuerier extends AbstractQuerier
                 continue;
             }
 
-            $name = $this->fieldToIndex($fieldName) ?? $fieldName;
+            // Standard args that are not a plain "field = values" filter.
+            if ($fieldName === 'not_item_set_id') {
+                // fieldToIndex: the item set map is scoped to "items", so the
+                // generic-only solrCoreField() cannot resolve it.
+                $itemSetField = $this->fieldToIndex('item_set_id');
+                $ids = array_filter(array_map('intval', is_array($values) ? $values : [$values]));
+                if ($itemSetField && $ids) {
+                    $this->select
+                        ->createFilterQuery('not_item_set_' . ++$this->appendToKey)
+                        ->setQuery("-$itemSetField:(" . implode(' OR ', $ids) . ')');
+                }
+                continue;
+            }
+            // Presence args: the criterion is the existence of a related
+            // index (a boolean arg on a non boolean concept).
+            static $presenceArgs = [
+                'in_sites' => 'site/o:id',
+                'has_asset' => 'asset',
+            ];
+            if (isset($presenceArgs[$fieldName])) {
+                $maps = $this->solrCore->mapsBySource($presenceArgs[$fieldName]);
+                $presenceField = $maps ? (reset($maps))->fieldName() : null;
+                if ($presenceField) {
+                    $value = is_array($values) ? reset($values) : $values;
+                    $this->select
+                        ->createFilterQuery('presence_' . ++$this->appendToKey)
+                        ->setQuery(
+                            filter_var($value, FILTER_VALIDATE_BOOLEAN)
+                                ? "$presenceField:[* TO *]"
+                                : "-$presenceField:[* TO *]"
+                        );
+                } else {
+                    $this->getLogger()->warn(
+                        'Solr: the arg "{arg}" needs a map of the source "{source}"; the filter is ignored.', // @translate
+                        ['arg' => $fieldName, 'source' => $presenceArgs[$fieldName]]
+                    );
+                }
+                continue;
+            }
+            // Known args without solr equivalent: ignored explicitly (the api
+            // itself ignores unknown args), with a log.
+            if (in_array($fieldName, ['sort_ids', 'site_attachments_only'], true)) {
+                $this->getLogger()->warn(
+                    'Solr: the arg "{arg}" is not supported by the solr querier and is ignored.', // @translate
+                    ['arg' => $fieldName]
+                );
+                continue;
+            }
+            if ($fieldName === 'numeric') {
+                $this->processNumericArgs(is_array($values) ? $values : []);
+                continue;
+            }
+            if ($fieldName === 'search') {
+                // Core semantic: match in any property (see
+                // AbstractResourceEntityAdapter). Routed to the aggregated
+                // property values index; tokenization makes it approximate.
+                $this->processAdvancedFilters(['property_values' => [[
+                    'join' => 'and',
+                    'field' => 'property_values',
+                    'type' => 'in',
+                    'val' => $values,
+                ]]]);
+                continue;
+            }
 
-            // A property term (with ":") that was not resolved to
-            // a Solr field means the field is not indexed.
+            $resolved = $this->fieldToIndex($fieldName);
+            $name = $resolved ?? $fieldName;
+
+            // An unknown arg without resolution nor index suffix is ignored
+            // like the api ignores unknown args (a raw filter on a nonexistent
+            // field would match nothing and silently diverge).
+            // A suffix is not enough: a field like "ct_s" would look like an
+            // index and Solr would reject the whole query, so check the schema.
+            if ($resolved === null
+                && strpos($fieldName, ':') === false
+                && !$this->isSchemaField($fieldName)
+            ) {
+                $this->getLogger()->warn(
+                    'Solr: unknown arg "{arg}" ignored.', // @translate
+                    ['arg' => $fieldName]
+                );
+                continue;
+            }
+
+            // A property term (with ":") that was not resolved to a Solr field
+            // means the field is not indexed.
             if (strpos($name, ':') !== false) {
-                $this->services->get('Omeka\Logger')
-                    ->err('Solr: skipped filter on unmapped field "{field}".', ['field' => $fieldName]); // @translate
+                $this->getLogger()
+                    ->err(
+                        'Solr: skipped filter on unmapped field "{field}".', // @translate
+                        ['field' => $fieldName]
+                    );
                 $this->select->createFilterQuery('unmapped_' . ++$this->appendToKey)
                     ->setQuery('-*:*');
                 return;
@@ -1495,29 +2023,183 @@ class SolariumQuerier extends AbstractQuerier
                 continue;
             }
 
-            // Avoid issue with basic direct hidden quey filter like "resource_template_id_i=1".
+            // Avoid issue with basic direct hidden quey filter like
+            // "resource_template_id_i=1".
 
             $values = is_array($values) ? $values : [$values];
 
+            $scalars = [];
             foreach ($values as $v) {
                 if (is_array($v)) {
                     // Skip date range queries (for hidden queries).
-                    if (isset($v['from']) || isset($v['to'])
-                        || isset($v['joiner']) || isset($v['type']) || isset($v['text'])
-                        || isset($v['join']) || isset($v['val']) || isset($v['value'])
-                    ) {
-                        continue;
-                    }
+                    continue;
                 }
-
                 if (is_scalar($v) && strlen((string) $v)) {
-                    $escaped = $this->escapePhraseValue($v, 'OR');
-                    $this->select
-                        ->createFilterQuery($name . '_' . ++$this->appendToKey)
-                        ->setQuery("$name:$escaped");
+                    $scalars[] = $v;
                 }
             }
+            if (!$scalars) {
+                continue;
+            }
+
+            $scalars = $this->convertStandardFilterValues($fieldName, $name, $scalars);
+
+            // Multiple values of one arg mean "any of them" (like the api), so
+            // they are joined in a single filter query with OR.
+            $escaped = $this->escapePhraseValue($scalars, 'OR');
+            if (strlen($escaped)) {
+                $this->select
+                    ->createFilterQuery($name . '_' . ++$this->appendToKey)
+                    ->setQuery("$name:$escaped");
+            }
         }
+    }
+
+    /**
+     * Convert the values of a standard arg to what the Solr field stores.
+     *
+     * The api uses numeric ids for classes and templates while the mapped Solr
+     * fields store the term or the label; boolean fields store true/false.
+     */
+    /**
+     * Translate the arg "numeric" of the module NumericDataTypes into range
+     * filter queries on the mapped fields of each property: timestamps need a
+     * date map (suffix _dt) or, in fallback, a year map (suffix _year_is);
+     * integers need an integer map (suffix _i or _is). Durations and
+     * intervals are not translated and are logged.
+     */
+    protected function processNumericArgs(array $numeric): void
+    {
+        $fieldFor = function (int $pid, array $suffixes, array $exclude = []): ?string {
+            $term = $this->easyMeta->propertyTerm($pid);
+            if (!$term) {
+                return null;
+            }
+            $base = strtr($term, ':', '_') . '_';
+            foreach ($this->usedSolrFields([], $suffixes, []) as $field) {
+                if (strncmp($field, $base, strlen($base)) !== 0) {
+                    continue;
+                }
+                foreach ($exclude as $suffix) {
+                    if (str_ends_with($field, $suffix)) {
+                        continue 2;
+                    }
+                }
+                return $field;
+            }
+            return null;
+        };
+
+        // Bounds of a partial date, via the edtf formatter (fallback parser
+        // included when the edtf-php library is missing).
+        $dateBound = function (string $value, bool $isMax): ?string {
+            static $formatters = [];
+            $key = $isMax ? 'max' : 'min';
+            if (!isset($formatters[$key])) {
+                $formatters[$key] = $this->services
+                    ->get('SearchSolr\ValueFormatterManager')
+                    ->get('date');
+                $formatters[$key]->setSettings(['part' => $key]);
+            }
+            $result = $formatters[$key]->format($value);
+            return $result ? (string) reset($result) : null;
+        };
+
+        foreach ($numeric['ts'] ?? [] as $operator => $row) {
+            $pid = (int) ($row['pid'] ?? 0);
+            $value = trim((string) ($row['val'] ?? ''));
+            if (!$pid || $value === '' || !in_array($operator, ['gt', 'gte', 'lt', 'lte'], true)) {
+                continue;
+            }
+            $isUpperBound = in_array($operator, ['gt', 'lte'], true);
+            $bound = $dateBound($value, $isUpperBound);
+            if ($bound === null) {
+                continue;
+            }
+            $dateField = $fieldFor($pid, ['_dt', '_dts'], []);
+            if ($dateField) {
+                $iso = $this->normalizeDate($bound);
+                $ranges = [
+                    'gt' => '{' . $iso . ' TO *]',
+                    'gte' => '[' . $iso . ' TO *]',
+                    'lt' => '[* TO ' . $iso . '}',
+                    'lte' => '[* TO ' . $iso . ']',
+                ];
+                $this->select
+                    ->createFilterQuery('numeric_ts_' . ++$this->appendToKey)
+                    ->setQuery($dateField . ':' . $ranges[$operator]);
+                continue;
+            }
+            // Fallback on the year index, with a year precision.
+            $yearField = $fieldFor($pid, ['_year_is', '_year_i'], []);
+            if ($yearField) {
+                $year = (int) explode('-', ltrim($bound, '-'), 2)[0] * (strncmp($bound, '-', 1) === 0 ? -1 : 1);
+                $ranges = [
+                    'gt' => '{' . $year . ' TO *]',
+                    'gte' => '[' . $year . ' TO *]',
+                    'lt' => '[* TO ' . $year . '}',
+                    'lte' => '[* TO ' . $year . ']',
+                ];
+                $this->select
+                    ->createFilterQuery('numeric_ts_' . ++$this->appendToKey)
+                    ->setQuery($yearField . ':' . $ranges[$operator]);
+                continue;
+            }
+            $this->getLogger()->warn(
+                'Solr: the numeric timestamp filter needs a date map (suffix _dt) or a year map (suffix _year_is) of the property #{property}; the filter is ignored.', // @translate
+                ['property' => $pid]
+            );
+        }
+
+        foreach ($numeric['int'] ?? [] as $operator => $row) {
+            $pid = (int) ($row['pid'] ?? 0);
+            $value = $row['val'] ?? '';
+            if (!$pid || !is_numeric($value) || !in_array($operator, ['gt', 'lt'], true)) {
+                continue;
+            }
+            $intField = $fieldFor($pid, ['_i', '_is'], ['_link_is', '_year_is', '_min_i', '_max_i']);
+            if (!$intField) {
+                $this->getLogger()->warn(
+                    'Solr: the numeric integer filter needs an integer map (suffix _i) of the property #{property}; the filter is ignored.', // @translate
+                    ['property' => $pid]
+                );
+                continue;
+            }
+            $int = (int) $value;
+            $this->select
+                ->createFilterQuery('numeric_int_' . ++$this->appendToKey)
+                ->setQuery($intField . ':' . ($operator === 'gt' ? '{' . $int . ' TO *]' : '[* TO ' . $int . '}'));
+        }
+
+        foreach (['dur', 'ivl'] as $unsupported) {
+            if (!empty($numeric[$unsupported])) {
+                $this->getLogger()->warn(
+                    'Solr: the numeric arg "{arg}" is not supported by the solr querier and is ignored.', // @translate
+                    ['arg' => $unsupported]
+                );
+            }
+        }
+    }
+
+    protected function convertStandardFilterValues(string $fieldName, string $solrField, array $values): array
+    {
+        if ($fieldName === 'resource_class_id') {
+            return array_values(array_filter(
+                array_map(fn ($v) => $this->easyMeta->resourceClassTerm(is_numeric($v) ? (int) $v : $v), $values)
+            ));
+        }
+        if ($fieldName === 'resource_template_id') {
+            return array_values(array_filter(
+                array_map(fn ($v) => $this->easyMeta->resourceTemplateLabel(is_numeric($v) ? (int) $v : $v), $values)
+            ));
+        }
+        if ($this->fieldIsBool($solrField)) {
+            return array_map(
+                fn ($v) => filter_var($v, FILTER_VALIDATE_BOOLEAN) ? 'true' : 'false',
+                $values
+            );
+        }
+        return $values;
     }
 
     protected function processDateRangeFilters(array $filters): void
@@ -1608,14 +2290,25 @@ class SolariumQuerier extends AbstractQuerier
             ]
         );
 
+        // Accumulate all rows of all fields in a single filter query, like the
+        // api does with its single where: a per-field filter query would make
+        // "or" between rows of different fields structurally impossible
+        // (filter queries are always joined with AND by Solr). The api where is
+        // a flat sql string, so it follows the sql precedence (AND binds
+        // tighter than OR); Solr has no such precedence, so the chain is
+        // encoded explicitly as AND-groups joined with OR: "A AND B OR C"
+        // becomes "(A AND B) OR (C)".
+        $orGroups = [];
+        $andGroup = [];
+        $first = true;
+
         foreach ($filters as $field => $filterList) {
-            // Avoid issue with basic direct hidden quey filter like "resource_template_id_i=1".
+            // Avoid issue with basic direct hidden quey filter like
+            // "resource_template_id_i=1".
             if (!is_array($filterList)) {
                 continue;
             }
 
-            $fq = '';
-            $first = true;
             $name = null;
             $nameAny = null;
             $nameInteger = null;
@@ -1696,6 +2389,11 @@ class SolariumQuerier extends AbstractQuerier
                 // Check joiner and invert the query type for joiner "not".
 
                 if ($first) {
+                    // A leading "not" keeps its negation even without a
+                    // previous condition to join with.
+                    if ($joiner === 'not') {
+                        $type = SearchResources::FIELD_QUERY['reciprocal'][$type];
+                    }
                     $joiner = '';
                     $first = false;
                 } elseif ($joiner) {
@@ -1712,39 +2410,103 @@ class SolariumQuerier extends AbstractQuerier
                 }
 
                 $requireInteger = in_array($type, SearchResources::FIELD_QUERY['value_integer']);
-                if ($requireInteger) {
-                    $nameInteger ??= $this->fieldToIndexNumeric($field) ?? $nameAny ?? ($nameAny = ($this->fieldToIndex($field) ?? $field));
-                    $name = $nameInteger;
-                } else {
-                    $nameAny ??= $this->fieldToIndex($field) ?? $field;
-                    $name = $nameAny;
-                }
-                // A property term (with ":") not resolved to a
-                // Solr field means the field is not indexed.
-                if (strpos($name, ':') !== false) {
-                    $this->services->get('Omeka\Logger')
-                        ->err('Solr: skipped filter on unmapped field "{field}".', ['field' => $field]); // @translate
-                    $this->select->createFilterQuery('unmapped_' . ++$this->appendToKey)
-                        ->setQuery('-*:*');
-                    return;
-                }
 
-                // "AND/NOT" cannot be used as first.
-                // TODO Will be simplified in a future version.
+                // A row may hold several fields (aggregated alias): the api
+                // combines them in one predicate with OR, so the sub-clauses
+                // are OR-joined inside a single clause of the chain.
+                $rowFields = isset($f['fields']) && is_array($f['fields']) && $f['fields']
+                    ? array_values(array_unique(array_filter($f['fields'], 'is_string')))
+                    : [$field];
+
                 $isNegative = substr($type, 0, 1) === 'n';
                 $wrap = $isNegative ? '(NOT ' : '(';
                 $end = ')';
+                $isAbsence = in_array($type, ['nex', 'nexs', 'nexm'], true);
 
-                $query = $this->buildAdvancedFilterQuery($type, $val, $name, $wrap, $end);
-                if ($query) {
-                    $fq .= " $joiner $query";
+                $isYearType = in_array($type, ['yreq', 'nyreq', 'yrgte', 'yrlte', 'yrgt', 'yrlt'], true);
+
+                $subClauses = [];
+                foreach ($rowFields as $rowField) {
+                    $resolved = $requireInteger
+                        ? ($this->fieldToIndexNumeric($rowField) ?? $this->fieldToIndex($rowField))
+                        : $this->fieldToIndex($rowField);
+                    // An arg that is neither an alias nor a map is used only
+                    // when it is a real field of the schema: a query arg that
+                    // is not a field, like the tracking parameter of a mailing
+                    // ("?ct=EMAIL_CAMPAIGN"), would build a filter on an
+                    // undefined field and Solr would reject the whole query.
+                    if ($resolved === null && !$this->isSchemaField($rowField)) {
+                        $this->getLogger()->warn(
+                            'Solr: unknown arg "{arg}" ignored in the advanced filters.', // @translate
+                            ['arg' => $rowField]
+                        );
+                        continue;
+                    }
+                    $name = $resolved ?? $rowField;
+                    // The year types target the year index of the field
+                    // (suffix _year_is, formatter edtf_year), when mapped.
+                    if ($isYearType) {
+                        $name = $this->fieldToIndexYear($rowField) ?? $name;
+                    }
+                    // Alphabetical comparisons follow the collation when a
+                    // folded variant of the field exists.
+                    if (in_array($type, ['lt', 'lte', 'gte', 'gt', '<', '≤', '≥', '>'], true)) {
+                        $name = $this->preferFoldedField($name);
+                    }
+                    // A property term (with ":") not resolved to a Solr field
+                    // means the field is not indexed. The clause is adapted
+                    // locally: a positive condition on a missing field matches
+                    // nothing, an absence condition (nex…) matches everything.
+                    // A local clause keeps the other branches of an "or" chain
+                    // working, unlike a global -*:*.
+                    if (strpos($name, ':') !== false) {
+                        $this->getLogger()
+                            ->err(
+                                'Solr: no index for the field "{field}", filter adapted.', // @translate
+                                ['field' => $rowField]
+                            );
+                        if ($isAbsence) {
+                            $subClauses[] = '*:*';
+                        }
+                        continue;
+                    }
+                    $subClause = $this->buildAdvancedFilterQuery($type, $val, $name, $wrap, $end);
+                    if ($subClause) {
+                        $subClauses[] = $subClause;
+                    }
                 }
-            }
 
-            if ($fq) {
-                $this->select->createFilterQuery($name . '_fq_' . ++$this->appendToKey)
-                ->setQuery(ltrim($fq));
+                if ($subClauses) {
+                    $query = count($subClauses) === 1
+                        ? reset($subClauses)
+                        : '(' . implode(' OR ', $subClauses) . ')';
+                } elseif ($isAbsence || $isNegative) {
+                    // No resolvable field: an absence or a negative condition
+                    // (nex, neq…) is true on a missing field.
+                    $query = '*:*';
+                } else {
+                    // A positive condition on a missing field matches nothing.
+                    $query = '(NOT *:*)';
+                }
+
+                if ($joiner === 'OR') {
+                    $orGroups[] = $andGroup;
+                    $andGroup = [];
+                }
+                $andGroup[] = $query;
             }
+        }
+
+        if ($andGroup) {
+            $orGroups[] = $andGroup;
+        }
+        $orGroups = array_filter($orGroups);
+        if ($orGroups) {
+            $this->select->createFilterQuery('adv_fq_' . ++$this->appendToKey)
+                ->setQuery(implode(' OR ', array_map(
+                    fn ($group) => '(' . implode(' AND ', $group) . ')',
+                    $orGroups
+                )));
         }
     }
 
@@ -1769,8 +2531,8 @@ class SolariumQuerier extends AbstractQuerier
      */
     protected function buildAdvancedFilterQuery(string $type, $val, string $field, string $wrap, string $end): string
     {
-        // Equal.
         switch ($type) {
+            // Equal.
             case 'neq':
             case 'eq':
             // list/nlist are deprecated, since eq/neq supports array.
@@ -1787,8 +2549,10 @@ class SolariumQuerier extends AbstractQuerier
             case 'nin':
             case 'in':
                 if ($this->fieldIsString($field)) {
-                    // $value = $this->->escapeTermOrPhrase($value);
-                    $val = $this->escape($val, '.*', '.*');
+                    // A string field is not tokenized, so "contains" needs a
+                    // regex; escape() quoted the value, so the ".*" was
+                    // searched literally and never matched (like sw/ew).
+                    $val = $this->regexValue($val, '.*', '.*');
                 } else {
                     $val = $this->escapePhraseValue($val, 'AND');
                 }
@@ -1798,7 +2562,7 @@ class SolariumQuerier extends AbstractQuerier
             case 'nsw':
             case 'sw':
                 if ($this->fieldIsString($field)) {
-                    $val = $this->escape($val, '', '.*');
+                    $val = $this->regexValue($val, '', '.*');
                 } else {
                     $val = $this->escapePhraseValue($val, 'AND');
                 }
@@ -1808,7 +2572,7 @@ class SolariumQuerier extends AbstractQuerier
             case 'new':
             case 'ew':
                 if ($this->fieldIsString($field)) {
-                    $val = $this->escape($val, '.*', '');
+                    $val = $this->regexValue($val, '.*', '');
                 } else {
                     $val = $this->escapePhraseValue($val, 'AND');
                 }
@@ -1817,12 +2581,26 @@ class SolariumQuerier extends AbstractQuerier
             // Matches.
             case 'nma':
             case 'ma':
-                // Matches is already an regular expression, so just set it.
-                // Note that Solr can manage only a small part of regex and
-                // anchors are added by default.
-                // TODO Add // or not?
-                // TODO Escape regex for regexes…
-                $val = $this->fieldIsString($field) ? $val : $this->escapePhraseValue($val, 'OR');
+                // The value is a user regex with sql semantics (partial match,
+                // ^/$ anchors); a Lucene regex is anchored on the full value
+                // and has no ^/$, so the anchors are translated and the rest is
+                // wrapped with ".*". Dialects differ beyond that, so exotic
+                // patterns stay approximate. Regex requires a string field.
+                if (!$this->fieldIsString($field)) {
+                    return '';
+                }
+                $vals = array_filter(array_map('strval', is_array($val) ? $val : [$val]), 'strlen');
+                if (!$vals) {
+                    return '';
+                }
+                $regexes = array_map(function ($v) {
+                    $pre = str_starts_with($v, '^') ? '' : '.*';
+                    $post = str_ends_with($v, '$') && !str_ends_with($v, '\$') ? '' : '.*';
+                    $v = preg_replace('~^\^~', '', $v);
+                    $v = preg_replace('~(?<!\\\\)\$$~', '', $v);
+                    return '/' . $pre . str_replace('/', '\/', $v) . $post . '/';
+                }, $vals);
+                $val = count($regexes) === 1 ? reset($regexes) : '(' . implode(' OR ', $regexes) . ')';
                 return "$field:$wrap$val$end";
 
             // Greater/lower.
@@ -1856,23 +2634,27 @@ class SolariumQuerier extends AbstractQuerier
                         natcasesort($val);
                     }
                 }
+                // A folded field stores lowercased ascii terms, so the
+                // bounds are folded the same way.
+                if (str_ends_with($field, '_fold_s')) {
+                    $val = array_map(fn ($v) => mb_strtolower($this->removeDiacritics((string) $v)), $val);
+                }
                 // TODO Manage uri and resources with lt, lte, gte, gt (it has a meaning at least for resource ids, but separate).
+                // Strict bounds use the exclusive range brackets of Solr:
+                // the previous string decrement/increment was a no-op on
+                // strings, making lt/gt inclusive.
                 if ($type === 'lt') {
-                    $val = reset($val);
-                    $val = $this->escapePhrase(--$val);
-                    return "$field:[* TO $val]";
+                    $val = $this->escapePhrase(reset($val));
+                    return "$field:[* TO $val}";
                 } elseif ($type === 'lte') {
-                    $val = reset($val);
-                    $val = $this->escapePhrase($val);
+                    $val = $this->escapePhrase(reset($val));
                     return "$field:[* TO $val]";
                 } elseif ($type === 'gte') {
-                    $val = array_pop($val);
-                    $val = $this->escapePhrase($val);
+                    $val = $this->escapePhrase(array_pop($val));
                     return "$field:[$val TO *]";
                 } elseif ($type === 'gt') {
-                    $val = array_pop($val);
-                    $val = $this->escapePhrase(++$val);
-                    return "$field:[$val TO *]";
+                    $val = $this->escapePhrase(array_pop($val));
+                    return $field . ':{' . $val . ' TO *]';
                 }
                 break;
 
@@ -1906,6 +2688,8 @@ class SolariumQuerier extends AbstractQuerier
                 $val = ($type === '<' || $type === '>') ? (($type === '<') ? --$val : ++$val) : $val;
                 return ($type === '<' || $type === '≤') ? "$field:[* TO $val]" : "$field:[$val TO *]";
 
+            // Specific check for years.
+            // TODO Check if query types for year are still useful (yreq, yrite, yrgt…).
             case 'nyreq':
             case 'yreq':
                 // The casting to integer is the simplest way to get the year:
@@ -1944,17 +2728,27 @@ class SolariumQuerier extends AbstractQuerier
                     $fqValues = implode(' OR ', array_map('intval', $fqValues));
                     return "$field:$wrap($fqValues)$end";
                 }
-                // Fallback for string field (_link_ss).
+                // Fallback for string field: only meaningful when the field
+                // stores the linked resource ids as strings; a "_link_ss" of
+                // titles cannot match ids, so a dedicated "_link_is" map is
+                // required for res/nres.
+                if (!str_ends_with($field, '_link_ss')) {
+                    $this->getLogger()->warn(
+                        'Solr: the type res/nres on "{field}" compares ids as strings; run the maps sync to create the integer index of the linked resource ids (_link_is).', // @translate
+                        ['field' => $field]
+                    );
+                }
                 $fqValues = $this->escapePhraseValue(array_map('strval', $fqValues), 'OR');
                 return "$field:$wrap$fqValues$end";
 
-            // Exists (has a value).
+            // Exists (has a value). These types have no value ($val is null),
+            // so the previous phrase escaping produced field:"" that never
+            // matched. The existence is the open range on the field; the
+            // absence embeds *:* so the clause stays valid inside OR groups.
             case 'nex':
-                $val = $this->escapePhraseValue($val, 'OR');
-                return "(-$field:$val)";
+                return "(*:* NOT $field:[* TO *])";
             case 'ex':
-                $val = $this->escapePhraseValue($val, 'OR');
-                return "(+$field:$val)";
+                return "$field:[* TO *]";
 
             default:
                 return '';
@@ -2088,6 +2882,13 @@ class SolariumQuerier extends AbstractQuerier
             return is_array($result) ? reset($result) : $result;
         }
 
+        if (isset(self::SYSTEM_SOURCES[$field])) {
+            $maps = $this->solrCore->mapsBySource(self::SYSTEM_SOURCES[$field]);
+            if ($maps) {
+                return reset($maps)->fieldName();
+            }
+        }
+
         // Handle special selection fields.
         if ($field === 'selection_id' || $field === 'selection_public_id') {
             return $this->getSelectionIdFieldName($field);
@@ -2111,6 +2912,61 @@ class SolariumQuerier extends AbstractQuerier
         }
 
         return $this->selectBestIndex($indices);
+    }
+
+    /**
+     * Resolve a configured field to its Solr index, or null when it is a
+     * property term not mapped to any Solr field.
+     *
+     * An unmapped term must be skipped instead of being sent raw to Solr, which
+     * would raise an "undefined field" error or match nothing.
+     */
+    protected function resolveFieldOrNull(string $field): ?string
+    {
+        $name = $this->fieldToIndex($field);
+
+        // Not an alias and not a map: keep the argument only when it is a real
+        // field of the schema. Else a query argument that is not a field, like
+        // the tracking parameter of a mailing ("?ct=EMAIL_CAMPAIGN"), would
+        // build a filter on an undefined field and Solr would reject the whole
+        // query, so the page would fail.
+        if ($name === null) {
+            if (!$this->isSchemaField($field)) {
+                return null;
+            }
+            $name = $field;
+        }
+
+        return strpos($name, ':') === false ? $name : null;
+    }
+
+    /**
+     * Check if a name is a field of the schema, static or dynamic.
+     *
+     * When the schema is not available, no field can be checked, so none is
+     * used: an invalid field would make the whole query fail anyway.
+     */
+    protected function isSchemaField(string $field): bool
+    {
+        if ($field === '' || strpos($field, ':') !== false) {
+            return false;
+        }
+
+        // Schema::getField() returns null when the schema is unavailable, like
+        // when Solr restarts, so check the schema itself first: else every
+        // field would look unknown and all the facets and the filters would be
+        // removed from a page that works.
+        try {
+            $this->getSolrCore()->schema()->getSchema();
+        } catch (\Throwable $e) {
+            return true;
+        }
+
+        try {
+            return (bool) $this->getSchemaField($field);
+        } catch (\Throwable $e) {
+            return true;
+        }
     }
 
     /**
@@ -2248,22 +3104,24 @@ class SolariumQuerier extends AbstractQuerier
 
     protected function getFieldPriority(string $field): int
     {
-        if (str_ends_with($field, '_link_ss')) {
-            return 0;
-        }
-        if (str_ends_with($field, '_ss')) {
-            return 1;
+        // Value indexes first: the "_link_*" variants store the titles of the
+        // linked resources, not the own values of the resource, so they must
+        // never win for a plain value filter or sort. Linked-resource query
+        // types resolve through fieldToIndexNumeric(), which has its own
+        // priority with "_link_is" first.
+        if (str_ends_with($field, '_link_ss') || str_ends_with($field, '_link')) {
+            return 9;
         }
         if (str_ends_with($field, '_ss_lower')) {
-            return 2;
+            return 1;
         }
-        if (str_ends_with($field, '_link')) {
-            return 3;
+        if (str_ends_with($field, '_ss')) {
+            return 0;
         }
         if (str_starts_with($field, 'sm_')) {
-            return 4;
+            return 2;
         }
-        return 5;
+        return 3;
     }
 
     protected function getFieldPriorityNumeric(string $field): int
@@ -2287,6 +3145,11 @@ class SolariumQuerier extends AbstractQuerier
     {
         if (!array_key_exists($source, $this->solrCoreFieldCache)) {
             $maps = $this->solrCore->mapsBySource($source, 'generic');
+            // When several maps share a source (e.g. during the is_public_i →
+            // is_public_b transition), pick the oldest one deterministically:
+            // it is the field currently populated, so the switch to the new
+            // field happens only once the legacy map is removed.
+            usort($maps, fn ($a, $b) => $a->id() <=> $b->id());
             $this->solrCoreFieldCache[$source] = $maps
                 ? (reset($maps))->fieldName()
                 : null;
@@ -2295,8 +3158,101 @@ class SolariumQuerier extends AbstractQuerier
     }
 
     /**
+     * Solr clause matching resources reserved to a group of the current user.
+     *
+     * Returns null (no widening, public only) when module Group is inactive, no
+     * group field is mapped, the user is anonymous, or the user belongs to no
+     * group. The clause only ever adds the user's own group ids, so it cannot
+     * widen visibility beyond the user's groups.
+     */
+    protected function groupVisibilityClause(): ?string
+    {
+        if (!class_exists(\Group\Module::class, false)) {
+            return null;
+        }
+        $field = $this->solrCoreField('group_id');
+        if (!$field) {
+            return null;
+        }
+        $user = $this->services->get('Omeka\AuthenticationService')->getIdentity();
+        if (!$user) {
+            return null;
+        }
+        $connection = $this->services->get('Omeka\Connection');
+        $groupIds = $connection->executeQuery(
+            'SELECT `group_id` FROM `group_user` WHERE `user_id` = :id',
+            ['id' => $user->getId()]
+        )->fetchFirstColumn();
+        return $this->buildGroupClause($field, $groupIds);
+    }
+
+    /**
+     * Whether module Access hides "protected"/"forbidden" resources from public
+     * lists, i.e. its Doctrine filter "access_level" is registered and enabled.
+     * When it is not (notice stays listed, only the file is gated), the Solr
+     * count must keep these resources, so the caller skips the access filter.
+     */
+    protected function isAccessLevelFilterEnabled(): bool
+    {
+        if (!class_exists(\Access\Module::class, false)) {
+            return false;
+        }
+        $filters = $this->services->get('Omeka\EntityManager')->getFilters();
+        return $filters->isEnabled('access_level');
+    }
+
+    /**
+     * Build the Solr clause "field:(id OR id ...)" from a list of group ids.
+     *
+     * Returns null when there is no field or no valid id, so the visibility
+     * filter stays restricted to public resources (no leak).
+     *
+     * @param int[]|string[] $groupIds
+     */
+    protected function buildGroupClause(?string $field, array $groupIds): ?string
+    {
+        $groupIds = array_values(array_unique(array_filter(array_map('intval', $groupIds))));
+        if (!$field || !$groupIds) {
+            return null;
+        }
+        return $field . ':(' . implode(' OR ', $groupIds) . ')';
+    }
+
+    /**
      * @todo Replace by a single regex?
      */
+    /**
+     * Resolve a field to its year index (suffix _year_is or _year_i), if any.
+     */
+    protected function fieldToIndexYear(string $field): ?string
+    {
+        $term = $this->easyMeta->propertyTerm($field) ?? $field;
+        $base = strtr($term, ':', '_') . '_';
+        $candidates = array_filter(
+            $this->usedSolrFields([], ['_year_is', '_year_i'], []),
+            fn ($v) => strncmp($v, $base, strlen($base)) === 0
+        );
+        return $candidates ? reset($candidates) : null;
+    }
+
+    /**
+     * Prefer the folded variant of a string field, when it is mapped: sorts
+     * and alphabetical comparisons then follow the database collation (case
+     * and diacritics insensitive) instead of the byte order.
+     */
+    protected function preferFoldedField(string $name): string
+    {
+        if (str_ends_with($name, '_fold_s')
+            || !preg_match('~_(ss|s)$~', $name)
+        ) {
+            return $name;
+        }
+        $candidate = preg_replace('~_(ss|s)$~', '_fold_s', $name);
+        return in_array($candidate, $this->usedSolrFields([], ['_fold_s'], []))
+            ? $candidate
+            : $name;
+    }
+
     protected function usedSolrFields(array $prefixes, array $suffixes, array $contains): array
     {
         // Cache all field names on first call to avoid repeated API queries.
@@ -2408,6 +3364,39 @@ class SolariumQuerier extends AbstractQuerier
     }
 
     /**
+     * Build a Solr regex term (or OR-list) for "starts/ends with" on a string
+     * field.
+     *
+     * Each value is wrapped as /<pre><escaped value><post>/, where $pre and
+     * $post are raw regex fragments (".*"), and the value's own regex
+     * metacharacters are escaped so it matches literally. The previous code
+     * used escape() (escapePhrase), which quoted the value: the ".*" was then
+     * searched as a literal phrase and never matched anything.
+     */
+    protected function regexValue($val, string $pre, string $post): string
+    {
+        $vals = is_array($val) ? $val : [$val];
+        $vals = array_filter(array_map('strval', $vals), 'strlen');
+        if (!$vals) {
+            return '';
+        }
+        $escaped = array_map(
+            fn ($v) => '/' . $pre . $this->escapeRegexChars($v) . $post . '/',
+            $vals
+        );
+        return implode(' OR ', $escaped);
+    }
+
+    /**
+     * Escape Lucene regex metacharacters so the value is matched literally
+     * inside a Solr "/.../" regex query.
+     */
+    protected function escapeRegexChars(string $s): string
+    {
+        return preg_replace('~([.\\\\+*?()\[\]{}|^$/"@<>#&\x7e])~', '\\\\$1', $s);
+    }
+
+    /**
      * Escape a string to query keeping meaning of solr special characters.
      *
      * @see https://solr.apache.org/guide/solr/latest/query-guide/standard-query-parser.html#escaping-special-characters
@@ -2415,6 +3404,19 @@ class SolariumQuerier extends AbstractQuerier
      * @uses \Solarium\Core\Query\Helper::escapeTerm()
      * @uses \Solarium\Core\Query\Helper::escapePhrase()
      */
+    /**
+     * Minimum literal characters before the first user wildcard ("*"/"?") for
+     * it to be kept active, so the term enumeration is anchored on a prefix
+     * (never a leading wildcard scanning the whole term dictionary).
+     */
+    const WILDCARD_MIN_PREFIX = 3;
+
+    /**
+     * Maximum number of wildcard terms kept per query, to bound the per-field
+     * expansion done by edismax. Extra wildcards are escaped to literals.
+     */
+    const WILDCARD_MAX_TERMS = 3;
+
     protected function escapeTermOrPhrase(string $string): string
     {
         $string = trim($string);
@@ -2427,25 +3429,15 @@ class SolariumQuerier extends AbstractQuerier
             // Google-like search: escape each word individually and prefix with
             // "+" to require all terms (like refine behavior).
             $words = preg_split('/\s+/', $string, -1, PREG_SPLIT_NO_EMPTY);
+            $wildcardCount = 0;
             if (count($words) > 1) {
-                $escaped = array_map(function ($w) {
-                    // Structured identifiers (ark, doi, url…) with ":" or "/"
-                    // must be treated as phrases, not escaped terms, because
-                    // edismax + copyField analyzers strip these separators,
-                    // making backslash-escaped terms unmatchable.
-                    // Other characters like "." have no issue.
-                    if (strpbrk($w, ':/') !== false) {
-                        return '+' . $this->escapePhrase($w);
-                    }
-                    return '+' . $this->select->getHelper()->escapeTerm($w);
-                }, $words);
+                $escaped = [];
+                foreach ($words as $w) {
+                    $escaped[] = '+' . $this->escapeWord($w, $wildcardCount);
+                }
                 return implode(' ', $escaped);
             }
-            // Single word with structured separators: use phrase.
-            if (strpbrk($string, ':/') !== false) {
-                return $this->escapePhrase($string);
-            }
-            return $this->select->getHelper()->escapeTerm($string);
+            return $this->escapeWord($string, $wildcardCount);
         }
 
         $output = [];
@@ -2459,6 +3451,45 @@ class SolariumQuerier extends AbstractQuerier
             }
         }
         return implode(' AND ', $output);
+    }
+
+    /**
+     * Escape one query word, keeping an explicit user wildcard ("*"/"?") only
+     * when it is safe.
+     *
+     * A wildcard is kept active only when at least {@see WILDCARD_MIN_PREFIX}
+     * literal characters precede the first one (so the term lookup is anchored
+     * on a prefix, never a leading wildcard scanning the whole dictionary) and
+     * within {@see WILDCARD_MAX_TERMS} wildcard terms per query. Position of
+     * the wildcard (middle or end) does not matter, only the leading prefix.
+     * Otherwise "*"/"?" are escaped to literals. Structured identifiers (with
+     * ":" or "/") are kept as phrases.
+     */
+    protected function escapeWord(string $w, int &$wildcardCount): string
+    {
+        if (strpbrk($w, ':/') !== false) {
+            return $this->escapePhrase($w);
+        }
+
+        $firstWildcard = strcspn($w, '*?');
+        $hasWildcard = $firstWildcard < strlen($w);
+        $prefixLength = $hasWildcard
+            ? mb_strlen(substr($w, 0, $firstWildcard))
+            : 0;
+        if ($hasWildcard
+            && $prefixLength >= self::WILDCARD_MIN_PREFIX
+            && $wildcardCount < self::WILDCARD_MAX_TERMS
+        ) {
+            ++$wildcardCount;
+            // Escape every special character, then re-enable the wildcards.
+            return str_replace(
+                ['\\*', '\\?'],
+                ['*', '?'],
+                $this->select->getHelper()->escapeTerm($w)
+            );
+        }
+
+        return $this->select->getHelper()->escapeTerm($w);
     }
 
     /**
@@ -2628,14 +3659,12 @@ class SolariumQuerier extends AbstractQuerier
         return $this;
     }
 
-    protected function getSolrCore(): SolrCoreRepresentation
+    protected function getSolrCore(): \SearchSolr\Stdlib\SolrCore
     {
         if (!isset($this->solrCore)) {
-            $solrCoreId = $this->searchEngine->settingEngineAdapter('solr_core_id');
-            if ($solrCoreId) {
-                $api = $this->services->get('Omeka\ApiManager');
-                // Automatically throw an exception when empty.
-                $this->solrCore = $api->read('solr_cores', $solrCoreId)->getContent();
+            if ($this->searchEngine) {
+                // The core is a facet of the engine.
+                $this->solrCore = new \SearchSolr\Stdlib\SolrCore($this->searchEngine, $this->services);
                 $this->solariumClient = $this->solrCore->solariumClient();
                 $clientSettings = $this->solrCore->clientSettings();
                 if (($clientSettings['http_request_type'] ?? 'post') !== 'get') {

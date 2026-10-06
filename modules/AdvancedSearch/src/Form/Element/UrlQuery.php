@@ -13,7 +13,7 @@ class UrlQuery extends Text implements InputProviderInterface
         return $this;
     }
 
-    public function getInputSpecification(): array
+    public function getInputSpecification()
     {
         return [
             'name' => $this->getName(),

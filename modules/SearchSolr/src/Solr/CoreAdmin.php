@@ -1,0 +1,204 @@
+<?php declare(strict_types=1);
+
+namespace SearchSolr\Solr;
+
+use Laminas\Log\LoggerInterface;
+
+/**
+ * Server-level administration of Solr cores and collections.
+ *
+ * Operates on a connection (base url + optional basic auth), not on a stored
+ * SolrCore entity, so a core can be created before any core is registered in
+ * Omeka. The connection array uses the keys "scheme", "host", "port",
+ * "username" and "password", as returned by SolrCoreRepresentation::
+ * clientSettings(); the target core name is always passed explicitly.
+ */
+class CoreAdmin
+{
+    /**
+     * @var LoggerInterface
+     */
+    protected $logger;
+
+    public function __construct(LoggerInterface $logger)
+    {
+        $this->logger = $logger;
+    }
+
+    /**
+     * Detect the Solr server mode through the system info api.
+     *
+     * @return string|null "cloud", "standalone", or null when unreachable.
+     */
+    public function serverMode(array $connection): ?string
+    {
+        $result = $this->httpGet($connection, '/solr/admin/info/system?wt=json');
+        if ($result === null) {
+            return null;
+        }
+        return ($result['mode'] ?? '') === 'solrcloud' ? 'cloud' : 'standalone';
+    }
+
+    /**
+     * Whether a core or collection of this name already exists on the server.
+     */
+    public function coreExists(array $connection, string $coreName): bool
+    {
+        if ($coreName === '') {
+            return false;
+        }
+        $result = $this->httpGet($connection, '/solr/admin/cores?action=STATUS'
+            . '&core=' . urlencode($coreName) . '&wt=json');
+        // An existing core has a non-empty status block (e.g. instanceDir),
+        // while an absent one returns an empty object.
+        return !empty($result['status'][$coreName]);
+    }
+
+    /**
+     * Create a core (standalone) or collection (cloud) on the Solr server.
+     *
+     * Standalone uses the CoreAdmin api with a config set (default "_default",
+     * which must exist in SOLR_HOME/configsets on the server, providing a
+     * managed schema and the dynamic fields used by the module). SolrCloud uses
+     * the Collections api, where the config set must already be uploaded to
+     * ZooKeeper. When a core of the same name already exists, nothing is
+     * created and true is returned, so an externally provisioned core is simply
+     * reused. The schema field types and the maps are provisioned by the
+     * caller.
+     */
+    public function createCore(array $connection, string $coreName, string $configSet = '_default'): bool
+    {
+        if ($coreName === '') {
+            $this->logger->err('SearchSolr: Cannot create core: no core name.'); // @translate
+            return false;
+        }
+
+        $mode = $this->serverMode($connection);
+        if ($mode === null) {
+            $this->logger->err('SearchSolr: Cannot create core: Solr server is unreachable.'); // @translate
+            return false;
+        }
+
+        // A core created manually on the server is reused as is.
+        if ($this->coreExists($connection, $coreName)) {
+            $this->logger->info(
+                'SearchSolr: Core "{core}" already exists on the server; reused without creation.', // @translate
+                ['core' => $coreName]
+            );
+            return true;
+        }
+
+        if ($mode === 'cloud') {
+            $path = '/solr/admin/collections?action=CREATE'
+                . '&name=' . urlencode($coreName)
+                . '&collection.configName=' . urlencode($configSet)
+                . '&numShards=1&replicationFactor=1&wt=json';
+        } else {
+            $path = '/solr/admin/cores?action=CREATE'
+                . '&name=' . urlencode($coreName)
+                . '&configSet=' . urlencode($configSet)
+                . '&wt=json';
+        }
+
+        $result = $this->httpGet($connection, $path);
+        if ($result === null || !empty($result['error'])) {
+            $this->logger->err(
+                'SearchSolr: Core "{core}" creation failed: {error}', // @translate
+                ['core' => $coreName, 'error' => $result['error']['msg'] ?? 'unreachable']
+            );
+            return false;
+        }
+
+        $this->logger->info(
+            'SearchSolr: Core "{core}" created on the {mode} server.', // @translate
+            ['core' => $coreName, 'mode' => $mode]
+        );
+        return true;
+    }
+
+    /**
+     * Delete a core (standalone) or collection (cloud) on the Solr server.
+     *
+     * Standalone unloads the core, optionally deleting its index, data and
+     * instance directories; SolrCloud deletes the collection (always removing
+     * its data). Returns false when the server is unreachable or on api error.
+     */
+    public function deleteCore(array $connection, string $coreName, bool $deleteFiles = true): bool
+    {
+        if ($coreName === '') {
+            $this->logger->err('SearchSolr: Cannot delete core: no core name.'); // @translate
+            return false;
+        }
+
+        $mode = $this->serverMode($connection);
+        if ($mode === null) {
+            $this->logger->err('SearchSolr: Cannot delete core: Solr server is unreachable.'); // @translate
+            return false;
+        }
+
+        if ($mode === 'cloud') {
+            $path = '/solr/admin/collections?action=DELETE'
+                . '&name=' . urlencode($coreName) . '&wt=json';
+        } else {
+            $path = '/solr/admin/cores?action=UNLOAD'
+                . '&core=' . urlencode($coreName);
+            if ($deleteFiles) {
+                $path .= '&deleteIndex=true&deleteDataDir=true&deleteInstanceDir=true';
+            }
+            $path .= '&wt=json';
+        }
+
+        $result = $this->httpGet($connection, $path);
+        if ($result === null || !empty($result['error'])) {
+            $this->logger->err(
+                'SearchSolr: Core "{core}" deletion failed: {error}', // @translate
+                ['core' => $coreName, 'error' => $result['error']['msg'] ?? 'unreachable']
+            );
+            return false;
+        }
+
+        $this->logger->info(
+            'SearchSolr: Core "{core}" deleted on the {mode} server.', // @translate
+            ['core' => $coreName, 'mode' => $mode]
+        );
+        return true;
+    }
+
+    /**
+     * GET a Solr admin api path on the connection and decode the json response.
+     *
+     * @return array|null Decoded response, or null when the request failed.
+     */
+    protected function httpGet(array $connection, string $path): ?array
+    {
+        $base = ($connection['scheme'] ?? 'http') . '://'
+            . ($connection['host'] ?? 'localhost') . ':'
+            . ($connection['port'] ?? 8983);
+        // Core operations need admin rights, so prefer the dedicated admin
+        // credentials and fall back to the query user (often read-only).
+        if (!empty($connection['admin_username'])) {
+            $user = $connection['admin_username'];
+            $pass = $connection['admin_password'] ?? '';
+        } else {
+            $user = $connection['username'] ?? '';
+            $pass = $connection['password'] ?? '';
+        }
+        $header = null;
+        if (!empty($user)) {
+            $header = 'Authorization: Basic ' . base64_encode($user . ':' . $pass);
+        }
+        $context = stream_context_create([
+            'http' => [
+                'method' => 'GET',
+                'header' => $header,
+                'timeout' => 60,
+                'ignore_errors' => true,
+            ],
+        ]);
+        $response = @file_get_contents($base . $path, false, $context);
+        if ($response === false) {
+            return null;
+        }
+        return json_decode($response, true) ?: null;
+    }
+}

@@ -41,6 +41,7 @@ class GetSearchConfig extends AbstractHelper
             'item_sets' => 'advancedsearch_item_sets_config',
             'annotations' => 'advancedsearch_annotations_config',
             'value_annotations' => 'advancedsearch_value_annotations_config',
+            'digital_objects' => 'advancedsearch_digital_objects_config',
         ];
 
         $originalCacheKey = $cacheKey;
@@ -106,6 +107,9 @@ class GetSearchConfig extends AbstractHelper
                 ->getContent();
             $searchConfigs[$originalCacheKey] = $searchConfigs[$cacheKey];
         } catch (\Omeka\Api\Exception\NotFoundException $e) {
+            return null;
+        } catch (\Omeka\Api\Exception\PermissionDeniedException $e) {
+            // The search config may be unavailable during a rest api request.
             return null;
         }
 

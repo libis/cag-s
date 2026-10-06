@@ -17,12 +17,44 @@ class FacetActives extends AbstractFacet
      */
     protected function prepareActiveFacetData(array $activeFacets, array $options): array
     {
-        // $isFacetModeDirect = in_array($options['mode'] ?? null, ['link', 'js']);
+        // $isFacetModeDirect = in_array($options['mode'] ?? null, ['link',
+        // 'js']);
+
+        // Prepend the "Refine search" query as an active facet so users can see
+        // and clear it like any other filter.
+        $refineValue = isset($this->queryBase['refine']) ? trim((string) $this->queryBase['refine']) : '';
+        if ($refineValue !== '') {
+            $refineQuery = $this->queryBase;
+            unset($refineQuery['refine']);
+            $refineLabel = !empty($options['label_refine'])
+                ? (string) $this->translate->__invoke($options['label_refine'])
+                : (string) $this->translate->__invoke('Refine search'); // @translate
+            $activeFacets = ['refine' => ['' => [
+                'value' => $refineValue,
+                'count' => null,
+                'label' => $refineValue,
+                'active' => true,
+                'url' => $this->urlHelper->__invoke($this->route, $this->params, ['query' => $refineQuery]),
+                'fieldLabel' => $refineLabel,
+            ]]] + $activeFacets;
+        }
 
         foreach ($activeFacets as $facetName => &$facetValues) {
+            if ($facetName === 'refine') {
+                continue;
+            }
             $facetFieldLabel = $options['facets'][$facetName]['label'] ?? $facetName;
+            $valueLabels = \AdvancedSearch\Stdlib\SearchResources::resolveValueLabels(
+                $options['facets'][$facetName] ?? [],
+                $this->api
+            );
             foreach ($facetValues as $facetKey => &$facetValue) {
-                $facetValueLabel = (string) $this->facetValueLabel($facetName, $facetValue);
+                $facetValueValue = (string) $facetValue;
+                if (array_key_exists($facetValueValue, $valueLabels) && $valueLabels[$facetValueValue] !== '') {
+                    $facetValueLabel = (string) $this->translate->__invoke($valueLabels[$facetValueValue]);
+                } else {
+                    $facetValueLabel = (string) $this->facetValueLabel($facetName, $facetValue);
+                }
                 if (!strlen($facetValueLabel)) {
                     unset($activeFacets[$facetName][$facetKey]);
                     continue;

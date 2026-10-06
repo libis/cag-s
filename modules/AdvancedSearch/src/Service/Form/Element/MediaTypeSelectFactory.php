@@ -12,7 +12,7 @@ class MediaTypeSelectFactory implements FactoryInterface
     {
         $list = $this->listMediaTypes($services);
 
-        $element = new MediaTypeSelect(null, $options ?? []);
+        $element = new MediaTypeSelect;
         $element->setValueOptions($list);
         $element->setEmptyOption('Select media type…'); // @translate
         return $element;
@@ -27,7 +27,7 @@ SELECT DISTINCT(media_type)
 FROM media
 WHERE media_type IS NOT NULL
     AND media_type != ""
-ORDER BY media_type ASC;
+ORDER BY media_type;
 SQL;
         $result = $connection->executeQuery($sql)->fetchFirstColumn();
         return array_combine($result, $result);

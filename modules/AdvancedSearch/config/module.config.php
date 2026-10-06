@@ -2,40 +2,36 @@
 
 namespace AdvancedSearch;
 
-// The constant is not available during upgrade.
-/** @see \AdvancedSearch\Stdlib\SearchResources::FIELD_QUERY['labels'] */
-$allFilterTypes = [
-    'eq', 'neq', 'in', 'nin',
-    'sw', 'nsw', 'ew', 'new',
-    'near', 'nnear', 'ma', 'nma',
-    'lt', 'lte', 'gte', 'gt',
-    '<', '≤', '≥', '>',
-    'yreq', 'nyreq', 'yrgte', 'yrlte', 'yrgt', 'yrlt',
-    'res', 'nres', 'resq', 'nresq',
-    'lex', 'nlex', 'lres', 'nlres', 'lkq', 'nlkq',
-    'ex', 'nex', 'exs', 'nexs', 'exm', 'nexm',
-    'dtp', 'ndtp', 'tp', 'ntp',
-    'tpl', 'ntpl', 'tpr', 'ntpr', 'tpu', 'ntpu',
-    'dup', 'ndup', 'dupt', 'ndupt', 'dupl', 'ndupl',
-    'duptl', 'nduptl',
-    'dupv', 'ndupv', 'dupvt', 'ndupvt', 'dupvl', 'ndupvl',
-    'dupvtl', 'ndupvtl',
-    'dupr', 'ndupr', 'duprt', 'nduprt', 'duprl', 'nduprl',
-    'duprtl', 'nduprtl',
-    'dupu', 'ndupu', 'duput', 'nduput', 'dupul', 'ndupul',
-    'duputl', 'nduputl',
+/**
+ * The constant is not available during upgrade.
+ *
+ * @see \AdvancedSearch\Stdlib\SearchResources::FIELD_QUERY['labels']
+ * @see \AdvancedSearch\Stdlib\SearchResources::filterTypesDisplayed()
+ */
+$displayedFilterTypes = [
+    'eq', 'in',
+    'sw', 'ew',
+    'near', 'ma',
+    'lt', 'lte', 'gte', 'gt', '<', '≤', '≥', '>',
+    'yreq', 'yrgte', 'yrlte', 'yrgt', 'yrlt',
+    'res', 'resq', 'lex', 'lres', 'lkq',
+    'ex', 'exs', 'exm',
+    'dtp', 'tp', 'tpl', 'tpr', 'tpu',
+    'dup', 'dupv', 'dupr', 'dupu',
+    't', 'l', 'tl',
 ];
 
-/** @see \AdvancedSearch\Stdlib\SearchResources::FIELD_QUERY['default'] */
+/**
+ * The types displayed by default in the sites, simpler than admin side.
+ *
+ * @see \AdvancedSearch\Stdlib\SearchResources::FIELD_QUERY['default']
+ */
 $defaultFilterTypes = [
-    'eq', 'neq', 'in', 'nin',
-    'sw', 'nsw', 'ew', 'new',
+    'eq', 'in',
+    'sw', 'ew',
     'lt', 'lte', 'gte', 'gt',
-    'yreq', 'nyreq', 'yrgte', 'yrlte',
-    'res', 'nres',
-    'lex', 'nlex',
-    'ex', 'nex', 'exs', 'nexs', 'exm', 'nexm',
-    'dtp', 'ndtp', 'tp', 'ntp',
+    'yreq', 'yrgte', 'yrlte',
+    'ex',
 ];
 
 $defaultAutosuggestBlacklist = [
@@ -118,6 +114,7 @@ return [
             'hiddenInputsFromFilteredQuery' => View\Helper\HiddenInputsFromFilteredQuery::class,
             'searchFilters' => View\Helper\SearchFilters::class,
             'searchingFilters' => View\Helper\SearchingFilters::class,
+            'searchQuickReplacement' => View\Helper\SearchQuickReplacement::class,
             'searchingForm' => View\Helper\SearchingForm::class,
             'searchingUrl' => View\Helper\SearchingUrl::class,
             'searchingValue' => View\Helper\SearchingValue::class,
@@ -174,14 +171,13 @@ return [
             Form\Element\TextExact::class => Form\Element\TextExact::class,
         ],
         'factories' => [
-            Form\Admin\ApiFormConfigFieldset::class => Service\Form\ApiFormConfigFieldsetFactory::class,
             Form\Admin\SearchConfigConfigureForm::class => Service\Form\SearchConfigConfigureFormFactory::class,
             Form\Admin\SearchConfigFacetFieldset::class => \Common\Service\Form\GenericFormFactory::class,
             Form\Admin\SearchConfigFilterFieldset::class => \Common\Service\Form\GenericFormFactory::class,
             Form\Admin\SearchConfigSettingsFieldset::class => Service\Form\SearchConfigSettingsFieldsetFactory::class,
             Form\Admin\SearchConfigSitesFieldset::class => Service\Form\SearchConfigSitesFieldsetFactory::class,
-            Form\Admin\SearchConfigSortFieldset::class => \Common\Service\Form\GenericFormFactory::class,
             Form\Admin\SearchConfigForm::class => Service\Form\SearchConfigFormFactory::class,
+            Form\Admin\SearchConfigImportForm::class => \Common\Service\Form\GenericFormFactory::class,
             Form\Admin\SearchEngineConfigureForm::class => \Common\Service\Form\GenericFormFactory::class,
             Form\Admin\SearchEngineForm::class => Service\Form\SearchEngineFormFactory::class,
             Form\Admin\SearchSuggesterForm::class => Service\Form\SearchSuggesterFormFactory::class,
@@ -414,7 +410,6 @@ return [
             'main' => FormAdapter\MainFormAdapter::class,
         ],
         'factories' => [
-            'api' => Service\FormAdapter\ApiFormAdapterFactory::class,
         ],
     ],
     'advancedsearch' => [
@@ -444,12 +439,14 @@ return [
                 'common/advanced-search/data-type-geography',
                 'common/numeric-data-types-advanced-search',
             ],
-            'advancedsearch_filter_types' => $allFilterTypes,
+            'advancedsearch_filter_types' => $displayedFilterTypes,
             'advancedsearch_filter_value_autosuggest_whitelist' => ['all'],
             'advancedsearch_filter_value_autosuggest_blacklist' => $defaultAutosuggestBlacklist,
             'advancedsearch_filter_joiner_not' => true,
             'advancedsearch_fulltextsearch_alto' => false,
             'advancedsearch_main_config' => 1,
+            'advancedsearch_main_config_replace_quick' => false,
+            'advancedsearch_main_config_advanced_link' => 'dialog',
             'advancedsearch_api_config' => '',
             // Hidden value.
             'advancedsearch_all_configs' => [1 => 'find'],
@@ -486,6 +483,9 @@ return [
             'advancedsearch_filter_joiner_not' => true,
             'advancedsearch_configs' => [1],
             'advancedsearch_main_config' => 1,
+            'advancedsearch_main_config_replace_quick' => false,
+            'advancedsearch_main_config_advanced_link' => 'dialog',
+            'advancedsearch_hidden_query_filters_per_config' => [],
             'advancedsearch_items_config' => 1,
             'advancedsearch_items_template_form' => null,
             'advancedsearch_media_config' => 1,
@@ -493,10 +493,6 @@ return [
             'advancedsearch_item_sets_config' => 1,
             'advancedsearch_item_sets_template_form' => null,
             'advancedsearch_item_sets_scope' => 0,
-            'advancedsearch_item_sets_redirect_browse' => ['all'],
-            'advancedsearch_item_sets_redirect_search' => [],
-            'advancedsearch_item_sets_redirect_search_first' => [],
-            'advancedsearch_item_sets_redirect_page_url' => [],
             'advancedsearch_item_sets_browse_config' => 0,
             'advancedsearch_item_sets_browse_page' => '',
             'advancedsearch_items_browse_config' => 0,
@@ -504,6 +500,8 @@ return [
                 'search',
                 'collection',
                 'selection',
+                'series',
+                'featured',
             ],
             'advancedsearch_resource_nav_limit' => 25,
             'advancedsearch_resource_nav_fallback_item_set' => '',
@@ -514,10 +512,8 @@ return [
             ],
             // Hidden options.
             // This option is a merge of the previous ones for simplicity.
-            'advancedsearch_item_sets_redirects' => [],
+            'advancedsearch_item_sets_redirects' => ['default' => 'browse'],
             // The old options are not removed for now for compatibility with old themes (search, links).
-            'advancedsearch_redirect_itemsets' => [],
-            'advancedsearch_redirect_itemset' => 'browse',
         ],
         'block_settings' => [
             'searchingForm' => [
@@ -705,6 +701,13 @@ return [
                 'resource_type' => ['item_sets', 'items', 'media'],
                 'default_admin' => true,
                 'default_site' => false,
+            ],
+
+            // From module Data Type EDTF.
+            'common/data-type-edtf-advanced-search' => [
+                'module' => 'DataTypeEdtf',
+                'label' => 'Extended date time format', // @translate
+                'resource_type' => ['item_sets', 'items', 'media'],
             ],
 
             // From module Data Type Geometry.

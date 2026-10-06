@@ -35,7 +35,7 @@ use AdvancedSearch\Indexer\IndexerInterface;
 use AdvancedSearch\Query;
 use Exception;
 use Omeka\Api\Representation\AbstractResourceRepresentation;
-use SearchSolr\Api\Representation\SolrCoreRepresentation;
+use SearchSolr\Stdlib\SolrCore as SolrCoreRepresentation;
 use SearchSolr\Api\Representation\SolrMapRepresentation;
 use Solarium\Client as SolariumClient;
 use Solarium\QueryType\Update\Query\Document as SolariumInputDocument;
@@ -90,6 +90,13 @@ class SolariumIndexer extends AbstractIndexer
      * @var array
      */
     protected $isSingleValuedFields = [];
+
+    /**
+     * Fields of the maps that are not in the schema of the Solr core.
+     *
+     * @var array
+     */
+    protected $unknownFields = [];
 
     /**
      * @var int[]
@@ -153,6 +160,14 @@ class SolariumIndexer extends AbstractIndexer
     protected $mapsByResourceNameCache = [];
 
     /**
+     * Byte limit of a value in an exact-value string field (lazy, from
+     * config).
+     *
+     * @var int|null
+     */
+    protected $stringValueMaxBytes;
+
+    /**
      * Counter for soft commit threshold.
      *
      * @var int
@@ -173,7 +188,7 @@ class SolariumIndexer extends AbstractIndexer
             ->has($resourceName);
     }
 
-    public function clearIndex(?Query $query = null): IndexerInterface
+    public function clearIndex(?Query $query = null, bool $all = false): IndexerInterface
     {
         // Solr does not use the same query format than the one used for select:
         // filter queries cannot be used directly. So use them as query part.
@@ -202,6 +217,9 @@ class SolariumIndexer extends AbstractIndexer
                     $query = mb_substr($query, 8);
                 }
             }
+        } elseif ($all) {
+            // Shared core: clear all indexes, included externally managed ones.
+            $query = '*:*';
         } else {
             $query = $this->indexField
                 ? "$this->indexField:$this->indexName"
@@ -360,8 +378,14 @@ class SolariumIndexer extends AbstractIndexer
                     }
                 }
             } else {
+                // When a document is rejected (generally invalid value for a
+                // typed field), a batch flush fails as a whole, so reindex
+                // documents one by one to skip only the offending ones instead
+                // of losing the whole batch.
+                $savedDocs = $this->buffer->getDocuments();
                 $this->solrError($e);
                 $this->buffer->clear();
+                $this->flushDocumentsOneByOne($savedDocs);
             }
         }
 
@@ -370,6 +394,29 @@ class SolariumIndexer extends AbstractIndexer
         // costly segment merges during bulk indexing.
 
         return $this;
+    }
+
+    /**
+     * Re-index documents individually to skip only the ones Solr rejects.
+     *
+     * A batch flush fails as a whole when a single document is invalid, so this
+     * isolates the offending documents and keeps every valid one indexed.
+     */
+    protected function flushDocumentsOneByOne(array $documents): void
+    {
+        foreach ($documents as $document) {
+            try {
+                $this->buffer->addDocument($document);
+                $this->buffer->flush();
+            } catch (Exception $e) {
+                $this->buffer->clear();
+                $fields = $document->getFields();
+                $this->getLogger()->err(
+                    'Document {id} rejected by Solr and skipped: {message}', // @translate
+                    ['id' => $fields['id'] ?? '?', 'message' => $e->getMessage()]
+                );
+            }
+        }
     }
 
     /**
@@ -421,6 +468,48 @@ class SolariumIndexer extends AbstractIndexer
         }
 
         $this->documentCount = 0;
+        return $this;
+    }
+
+    /**
+     * Called by the indexing job after a full reindex, to finalize pending
+     * migrations of this core.
+     *
+     * Finalizes the is_public_i → is_public_b transition: the full reindex has
+     * cleared the core and repopulated every document with both fields, so the
+     * legacy integer map can be dropped and the querier switches to the boolean
+     * field. Guarded by a doc count so nothing is removed when is_public_b was
+     * not actually populated (e.g. Solr unreachable) or coverage is partial.
+     */
+    public function onFullReindexed(): self
+    {
+        $solrCore = $this->getSolrCore();
+
+        $isPublicI = null;
+        $hasIsPublicB = false;
+        foreach ($solrCore->mapsBySource('is_public', 'generic') as $map) {
+            if ($map->fieldName() === 'is_public_i') {
+                $isPublicI = $map;
+            } elseif ($map->fieldName() === 'is_public_b') {
+                $hasIsPublicB = true;
+            }
+        }
+        if (!$isPublicI || !$hasIsPublicB) {
+            return $this;
+        }
+        // Only drop the legacy map once every document carrying is_public_i
+        // also carries is_public_b (full coverage), so nothing is hidden.
+        $docsB = $solrCore->fieldDocCount('is_public_b');
+        $docsI = $solrCore->fieldDocCount('is_public_i');
+        if ($docsB === null || $docsI === null || $docsB <= 0 || $docsB < $docsI) {
+            return $this;
+        }
+
+        $this->getServiceLocator()->get('Omeka\ApiManager')->delete('solr_maps', $isPublicI->id());
+        $this->getLogger()->info(
+            'SearchSolr: Visibility migration finalized: legacy map "is_public_i" removed after full reindex.' // @translate
+        );
+
         return $this;
     }
 
@@ -548,6 +637,13 @@ class SolariumIndexer extends AbstractIndexer
         /** @var \SearchSolr\Api\Representation\SolrMapRepresentation $solrMap */
         foreach ($this->getMapsByResourceName($resourceName) as $solrMap) {
             $solrField = $solrMap->fieldName();
+
+            // A field that is not in the schema would make Solr reject the
+            // whole document, so skip it. It is logged one time for all the
+            // documents, when the fields are prepared.
+            if (isset($this->unknownFields[$solrField])) {
+                continue;
+            }
             $source = $solrMap->source();
 
             // Required fields (resource name, visibility, etc.) are already
@@ -605,6 +701,15 @@ class SolariumIndexer extends AbstractIndexer
             }
 
             $formattedValues = $this->formatValues($extractedValues, $solrMap);
+            if (!count($formattedValues)) {
+                continue;
+            }
+
+            // An oversized value in an exact-value string field would make
+            // Solr reject the whole document (docValues limit): skip the
+            // single value, with a log; the document and its other fields,
+            // in particular the full text _txt, are kept.
+            $formattedValues = $this->skipOversizedStringValues($resource, $solrField, $formattedValues);
             if (!count($formattedValues)) {
                 continue;
             }
@@ -811,10 +916,46 @@ class SolariumIndexer extends AbstractIndexer
         return $this->serverId;
     }
 
+    /**
+     * Skip the values too large for an exact-value string field, with a log.
+     *
+     * An exact value has no use beyond the configured limit, and Solr rejects
+     * the whole document beyond 32766 bytes (docValues): the single value is
+     * skipped instead, so the document and its other fields (in particular
+     * the full text _txt) are kept.
+     */
+    protected function skipOversizedStringValues($resource, string $solrField, array $values): array
+    {
+        if (!preg_match('~_(ss|s|fold_s|link_ss)$~', $solrField)) {
+            return $values;
+        }
+        if ($this->stringValueMaxBytes === null) {
+            $config = $this->getServiceLocator()->get('Config')['searchsolr']['config'] ?? [];
+            $this->stringValueMaxBytes = (int) ($config['searchsolr_string_value_max_bytes'] ?? 1000);
+        }
+        $max = $this->stringValueMaxBytes;
+        foreach ($values as $key => $value) {
+            if (is_string($value) && strlen($value) > $max) {
+                unset($values[$key]);
+                $this->getLogger()->warn(
+                    'Indexing resource {resource_name} #{resource_id}: value of {bytes} bytes skipped for the field "{field}" (limit {max} bytes); the full text fields are kept.', // @translate
+                    [
+                        'resource_name' => $resource->resourceName(),
+                        'resource_id' => $resource->id(),
+                        'bytes' => strlen($value),
+                        'field' => $solrField,
+                        'max' => $max,
+                    ]
+                );
+            }
+        }
+        return array_values($values);
+    }
+
     protected function prepareIndexFieldAndName()
     {
         $fields = $this->getSolrCore()->mapsBySource('search_index', 'generic') ?: [];
-        $name = $this->searchEngine->settingEngineAdapter('index_name') ?: false;
+        $name = $this->getSolrCore()->setting('index_name') ?: false;
         if ($fields && $name) {
             $this->indexField = reset($fields);
             $this->indexField = $this->indexField->fieldName();
@@ -867,11 +1008,32 @@ class SolariumIndexer extends AbstractIndexer
     protected function prepareSingleValuedFields(): void
     {
         $schema = $this->getSolrCore()->schema();
+
+        // Without the schema, every field would look unknown and multivalued,
+        // so the documents would be sent with multiple values to single valued
+        // fields and Solr would reject them: the index would be silently
+        // incomplete. So let the exception stop the indexation.
+        $schema->getSchema();
+
         $this->isSingleValuedFields = [];
+        $this->unknownFields = [];
         foreach ($this->getSolrCore()->maps() as $solrMap) {
             $solrField = $solrMap->fieldName();
             $schemaField = $schema->getField($solrField);
-            $this->isSingleValuedFields[$solrField] = $schemaField && !$schemaField->isMultivalued();
+            if (!$schemaField) {
+                // A field that is neither in the schema nor matched by a
+                // dynamic field would make Solr reject the whole document.
+                $this->unknownFields[$solrField] = true;
+                continue;
+            }
+            $this->isSingleValuedFields[$solrField] = !$schemaField->isMultivalued();
+        }
+
+        if ($this->unknownFields) {
+            $this->logger->warn(
+                'These fields are not in the schema of the Solr core, so they are not indexed: {fields}. Check the maps of the core.', // @translate
+                ['fields' => implode(', ', array_keys($this->unknownFields))]
+            );
         }
     }
 
@@ -1059,11 +1221,9 @@ class SolariumIndexer extends AbstractIndexer
     protected function getSolrCore(): SolrCoreRepresentation
     {
         if (!isset($this->solrCore)) {
-            $solrCoreId = $this->searchEngine->settingEngineAdapter('solr_core_id');
-            if ($solrCoreId) {
-                // Automatically throw an exception when empty.
-                $this->solrCore = $this->getServiceLocator()->get('Omeka\ApiManager')
-                    ->read('solr_cores', $solrCoreId)->getContent();
+            if ($this->searchEngine) {
+                // The core is a facet of the engine.
+                $this->solrCore = new \SearchSolr\Stdlib\SolrCore($this->searchEngine, $this->getServiceLocator());
                 $this->solariumClient = $this->solrCore->solariumClient();
             }
         }

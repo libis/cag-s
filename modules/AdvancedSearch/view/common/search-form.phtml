@@ -1,0 +1,45 @@
+<?php
+/**
+ * Override of the standard search form of Omeka, rendered by the layout of the
+ * themes.
+ *
+ * When the site is set to replace it, the form of the main search page is
+ * displayed instead, with its filters and its autosuggestion. Else the standard
+ * form is rendered, exactly like the core one.
+ *
+ * A theme that overrides this partial should call the helper too, else the
+ * option has no effect on it.
+ *
+ * @see \AdvancedSearch\View\Helper\SearchQuickReplacement
+ *
+ * @var \Laminas\View\Renderer\PhpRenderer $this
+ */
+
+$plugins = $this->getHelperPluginManager();
+$translate = $plugins->get('translate');
+$escape = $plugins->get('escapeHtml');
+$siteSetting = $plugins->get('siteSetting');
+
+$replacement = $this->searchQuickReplacement();
+if ($replacement) {
+    echo $replacement;
+    return;
+}
+
+$searchType = $siteSetting('search_type', 'sitewide');
+switch ($searchType) {
+    case 'cross-site':
+        $searchAction = $this->url('site/cross-site-search', ['action' => 'results'], true);
+        break;
+    case 'sitewide':
+    default:
+        $searchAction = $this->url('site/resource', ['controller' => 'index', 'action' => 'search'], true);
+}
+$searchValue = $escape($this->params()->fromQuery('fulltext_search', ''));
+?>
+
+<form action="<?= $escape($searchAction) ?>" id="search-form" aria-label="<?= $translate('Search') ?>" role="search">
+    <input type="text" id="fulltext-search" name="fulltext_search" value="<?= $searchValue ?>"
+        aria-label="<?= $translate('Query') ?>" aria-labelledby="search-form fulltext-search">
+    <button id="search-submit" type="submit" aria-label="<?= $translate('Submit') ?>" title="<?= $translate('Submit') ?>"><span class="o-icon-search" aria-hidden="true"></span></button>
+</form>

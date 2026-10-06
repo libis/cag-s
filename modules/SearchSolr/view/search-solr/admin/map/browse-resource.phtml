@@ -1,7 +1,7 @@
 <?php
 /*
  * Copyright BibLibre, 2017
- * Copyright Daniel Berthereau, 2017-2023
+ * Copyright Daniel Berthereau, 2017-2026
  *
  * This software is governed by the CeCILL license under French law and abiding
  * by the rules of distribution of free software.  You can use, modify and/ or
@@ -35,64 +35,54 @@
  */
 
 $plugins = $this->getHelperPluginManager();
+$url = $plugins->get('url');
+$assetUrl = $plugins->get('assetUrl');
 $escape = $plugins->get('escapeHtml');
 $translate = $plugins->get('translate');
 $hyperlink = $plugins->get('hyperlink');
+$escapeAttr = $plugins->get('escapeHtmlAttr');
 
-$this->headLink()->appendStylesheet($this->assetUrl('css/search-solr-admin.css', 'SearchSolr'));
+$this->headLink()
+    ->appendStylesheet($assetUrl('css/search-solr-admin.css', 'SearchSolr'));
 
-$this->htmlElement('body')->appendAttribute('class', 'solr-map browse');
+$this->htmlElement('body')->appendAttribute('class', 'solr-cores solr-map browse');
 ?>
 
-<?= $this->pageTitle(sprintf($translate('Solr maps for "%s"'), $resourceName)) ?>
+<?= $this->pageTitle($translate('Solr indices'), 1, $translate('Solr core')) ?>
 
 <div id="page-actions">
-    <?php $addUrl = $this->url('admin/search/solr/core-id-map-resource', [
-        'coreId' => $solrCore->id(),
-        'resourceName' => $resourceName,
-        'action' => 'add',
-    ]); ?>
-    <a class="button" href="<?= $addUrl ;?>"><?= $translate('Add new map') ?></a>
-    <?php $completeUrl = $this->url('admin/search/solr/core-id-map-resource', [
-        'coreId' => $solrCore->id(),
-        'resourceName' => $resourceName,
-        'action' => 'complete',
-    ]); ?>
-    <a class="button" href="<?= $completeUrl ?>" title="<?= $translate('Add a text index to all missing and used properties.') ?>"><?= $translate('Map all used properties') ?></a>
-    <?php $cleanUrl = $this->url('admin/search/solr/core-id-map-resource', [
-        'coreId' => $solrCore->id(),
-        'resourceName' => $resourceName,
-        'action' => 'clean',
-    ]); ?>
-    <a class="button" href="<?= $cleanUrl ?>" title="<?= $translate('Remove maps of properties that are not used.') ?>"><?= $translate('Remove unused properties') ?></a>
+    <a class="button" href="<?= $solrCore->resourceMapUrl($resourceName, 'add') ?>"><?= $translate('Add new map') ?></a>
+    <a class="button" href="<?= $solrCore->resourceMapUrl($resourceName, 'complete') ?>" title="<?= $translate('Add a text index to all missing and used properties.') ?>"><?= $translate('Map all used properties') ?></a>
+    <a class="button" href="<?= $solrCore->resourceMapUrl($resourceName, 'clean') ?>" title="<?= $translate('Remove maps of properties that are not used.') ?>"><?= $translate('Remove unused properties') ?></a>
 </div>
 
 <nav class="breadcrumbs">
-    <?php
-    echo $hyperlink($translate('Search'), $this->url('admin/search'));
-    echo $hyperlink($translate('Solr cores'), $this->url('admin/search/solr'));
-    echo $hyperlink(sprintf($translate('Resources list for core "%s"'), $solrCore->name()), $this->url('admin/search/solr/core-id-map', [], true));
-    ?><span><?php
-    echo sprintf($translate('Maps for "%s"'), $resourceName);
-    ?></span>
+    <?= $hyperlink($translate('Search'), $url('admin/search')) ?>
+    <?= $hyperlink($translate('Solr cores'), $url('admin/search/solr')) ?>
+    <?= $hyperlink($solrCore->name(), $solrCore->adminUrl()) ?>
+    <span><?= sprintf($translate('Indices for "%s"'), $resourceName) ?></span>
 </nav>
 
 <?php if (count($maps)): ?>
-    <table class="tablesaw" data-tablesaw-mode="stack">
+    <?php // Adapted in core/show. ?>
+    <table aria-label="<?= $escapeAttr($translate('Maps')) ?>" class="tablesaw" data-tablesaw-mode="stack">
         <thead>
             <tr>
-                <th><?= $translate('Solr field') ?></th>
-                <th><?= $translate('Source') ?></th>
-                <th><?= $translate('Pool') ?></th>
-                <th><?= $translate('Translated default label') ?></th>
+                <th><?= $translate('Source Omeka') ?></th>
+                <th><?= $translate('Pool / Filter') ?></th>
+                <th><?= $translate('Index Solr') ?></th>
+                <th><?= $translate('Format') ?></th>
+                <?php // This is the default translated label. ?>
+                <th><?= $translate('Label') ?></th>
             </tr>
         </thead>
         <tbody>
-            <?php foreach ($maps as $map): ?>
-                <?php $mapSettings = $map->settings(); ?>
+            <?php foreach ($maps as $map):
+                $mapSettings = $map->settings();
+                ?>
                 <tr>
                     <td>
-                        <span><?= $map->fieldName() ?></span>
+                        <span><?= $map->source() ?></span>
                         <div></div>
                         <ul class="actions">
                         <?php if ($map->resourceName() !== $resourceName): ?>
@@ -115,7 +105,6 @@ $this->htmlElement('body')->appendAttribute('class', 'solr-map browse');
                             </li>
                         </ul>
                     </td>
-                    <td><?= $map->source() ?></td>
                     <td><?php
                         $filterValues = $map->pool('filter_values');
                         $filterUris = $map->pool('filter_uris');
@@ -140,8 +129,8 @@ $this->htmlElement('body')->appendAttribute('class', 'solr-map browse');
                         <?php endif; ?>
                         <?php if ($dataTypes || $dataTypesExclude): ?>
                         <dl>
-                            <?php if ($dataTypes) echo '<dt>' . $translate('Data types') . '</dt><dd>' . implode('</dd><dd>', $dataTypes) . '</dd>'; ?>
-                            <?php if ($dataTypesExclude) echo '<dt>' . $translate('Excluded data types') . '</dt><dd>' . implode('</dd><dd>', $dataTypesExclude) . '</dd>'; ?>
+                            <?= $dataTypes ? '<dt>' . $translate('Data types') . '</dt><dd>' . implode('</dd><dd>', $dataTypes) . '</dd>' : '' ?>
+                            <?= $dataTypesExclude ? '<dt>' . $translate('Excluded data types') . '</dt><dd>' . implode('</dd><dd>', $dataTypesExclude) . '</dd>' : '' ?>
                         </dl>
                         <?php endif; ?>
                         <?php if ($filterLanguages): ?>
@@ -156,7 +145,17 @@ $this->htmlElement('body')->appendAttribute('class', 'solr-map browse');
                         <div><?= $translate('Filtered by visibility Private') ?></div>
                         <?php endif; ?>
                     </td>
-                    <td><?php if (!empty($mapSettings['label'])) echo $translate($mapSettings['label']); ?></td>
+                    <td>
+                        <?= $map->fieldName() ?>
+                        <?php if ($map->alias()): ?>
+                        <span class="map-aliases"><span class="map-alias"><?= $escape($map->alias()) ?></span></span>
+                        <?php endif; ?>
+                    </td>
+                    <td>
+                        <?= $formatter = $mapSettings['formatter'] ?? '' ?>
+                        <?= $formatter === 'table' ? $mapSettings['table'] ?? '' : '' ?>
+                    </td>
+                    <td><?= !empty($mapSettings['label']) ? $translate($mapSettings['label']) : '' ?></td>
                 </tr>
             <?php endforeach; ?>
         </tbody>
@@ -164,7 +163,7 @@ $this->htmlElement('body')->appendAttribute('class', 'solr-map browse');
 <?php else: ?>
     <p>
         <?= $translate('There is no maps defined yet.') ?>
-        <a href="<?= $escape($addUrl) ?>"><?= $translate('Add a new map') ?></a>
+        <a href="<?= $escapeAttr($solrCore->resourceMapUrl($resourceName, 'add')) ?>"><?= $translate('Add a new map') ?></a>
     </p>
 <?php endif; ?>
 

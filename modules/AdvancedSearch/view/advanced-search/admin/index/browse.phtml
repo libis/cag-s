@@ -32,13 +32,18 @@
  * @var \AdvancedSearch\Api\Representation\SearchEngineRepresentation[] $searchEngines
  * @var \AdvancedSearch\Api\Representation\SearchConfigRepresentation[] $searchConfigs
  * @var \AdvancedSearch\Api\Representation\SearchSuggesterRepresentation[] $suggesters
+ * @var array $runningJobs
+ * @var array $searchConfigDefaults Config id => admin default roles.
+ * @var array $searchConfigSiteDefaults Config id => slugs of the sites using it
+ * by default.
+ * @var array $searchConfigSites Config id => site slugs exposing it.
  */
 
 $plugins = $this->getHelperPluginManager();
 $url = $plugins->get('url');
 $escape = $plugins->get('escapeHtml');
-$translate = $plugins->get('translate');
 $assetUrl = $plugins->get('assetUrl');
+$translate = $plugins->get('translate');
 $escapeAttr = $plugins->get('escapeHtmlAttr');
 
 $this->headLink()
@@ -54,10 +59,27 @@ $this->htmlElement('body')->appendAttribute('class', 'search-admin resource brow
 
 <?= $this->pageTitle($translate('Search'), 1, $translate('Search manager')) ?>
 
+<?php
+// An engine is a real backend: the sql database (single internal engine) or a
+// Solr core (adding a core creates its engine).
+$hasSolrForActions = class_exists(\SearchSolr\Module::class, false);
+$hasInternalEngine = false;
+foreach ($searchEngines as $engineRow) {
+    if ($engineRow->engineAdapterName() === 'internal') {
+        $hasInternalEngine = true;
+        break;
+    }
+}
+?>
 <div id="page-actions">
-    <a class="button" href="<?= $url('admin/search-manager/engine', ['action' => 'add']) ?>"><?= $translate('Add search engine') ?></a>
+    <?php if (!$hasInternalEngine): ?>
+    <a class="button" href="<?= $url('admin/search-manager/engine', ['action' => 'add-internal']) ?>"><?= $translate('Create an internal engine') ?></a>
+    <?php endif; ?>
+    <?php if ($hasSolrForActions): ?>
+    <a class="button" href="<?= $url('admin/search-manager/solr/core', ['action' => 'add']) ?>" title="<?= $translate('A new Solr backend: the core is created with its engine.') ?>"><?= $translate('Add Solr core') ?></a>
+    <?php endif; ?>
     <?php if (!empty($searchEngines)): ?>
-        <a class="button" href="<?= $url('admin/search-manager/config', ['action' => 'add']) ?>"><?= $translate('Add page') ?></a>
+        <a class="button" href="<?= $url('admin/search-manager/config', ['action' => 'add']) ?>"><?= $translate('Add search page') ?></a>
         <a class="button" href="<?= $url('admin/search-manager/suggester', ['action' => 'add']) ?>"><?= $translate('Add suggester') ?></a>
     <?php endif; ?>
 </div>
@@ -68,22 +90,44 @@ $hasLog = $hasJobState || class_exists('Log\Module', false);
 $jobStateCssJsIncluded = false;
 $runningEngineJobs = $runningJobs['engines'] ?? [];
 $runningSuggesterJobs = $runningJobs['suggesters'] ?? [];
+
+// Module SearchSolr, when present, adds a Solr core column to the engines and
+// lets the manage link resolve; guarded so AdvancedSearch does not depend on
+// it.
+$hasSolr = class_exists(\SearchSolr\Module::class, false);
+
+// Group the search pages and the suggesters by their engine, so the relation to
+// the engine is readable at a glance in the tables below.
+$byEngineName = fn ($a, $b) => [$a->searchEngine()->name(), $a->name()] <=> [$b->searchEngine()->name(), $b->name()];
+usort($searchConfigs, $byEngineName);
+usort($suggesters, $byEngineName);
+
+// Modules fill columns (url, status) and actions of each engine, without a
+// dependency of this module on them (e.g. SearchSolr for solarium engines).
+// Structure: engine id => ['url' => html, 'status' => html, 'actions' => html
+// "<li>" list].
+$engineDetails = $this->trigger('view.browse.engine_details', ['searchEngines' => $searchEngines, 'details' => []], true)['details'] ?? [];
 ?>
 
-<h3 id="table-caption-engines"><?= $translate('Search engines') ?></h3>
+<h2><?= $translate('Indexing') ?></h2>
 
 <?php if (count($searchEngines) > 0): ?>
-    <table aria-labelledby="table-caption-engines" class="tablesaw" data-tablesaw-mode="stack">
+    <table aria-label="<?= $escapeAttr($translate('Search engines')) ?>" class="tablesaw" data-tablesaw-mode="stack">
         <thead>
             <tr>
                 <th><?= $translate('Name') ?></th>
                 <th><?= $translate('Engine adapter') ?></th>
+                <?php if ($hasSolr): ?>
+                <th><?= $translate('Solr core') ?></th>
+                <?php endif; ?>
+                <th><?= $translate('Status') ?></th>
             </tr>
         </thead>
         <tbody>
             <?php foreach ($searchEngines as $searchEngine): ?>
                 <?php $engineAdapter = $searchEngine->engineAdapter();
-                $isInternal = $engineAdapter && $engineAdapter instanceof \AdvancedSearch\EngineAdapter\Internal;
+                    $isInternal = $engineAdapter && $engineAdapter instanceof \AdvancedSearch\EngineAdapter\Internal;
+                    $isIndexingEnabled = filter_var($searchEngine->setting('is_indexing_enabled', true), FILTER_VALIDATE_BOOLEAN);
                 ?>
                 <tr>
                     <td>
@@ -138,46 +182,130 @@ $runningSuggesterJobs = $runningJobs['suggesters'] ?? [];
                                 title="<?= $escape($translate('Delete')) ?>"></a>
                             </li>
                         </ul>
+                        <?php if (!empty($engineDetails[$searchEngine->id()]['actions'])): ?>
+                        <ul class="actions">
+                            <?= implode("\n", $engineDetails[$searchEngine->id()]['actions']) ?>
+                        </ul>
+                        <?php endif; ?>
                     </td>
                     <td><?= $escape($searchEngine->engineAdapterLabel()) ?></td>
+                    <?php if ($hasSolr): ?>
+                    <td>
+                        <?php if ($searchEngine->engineAdapterName() === 'solarium'):
+                            $solrClient = (array) ($searchEngine->setting('solr')['client'] ?? []);
+                            $physicalCore = (string) ($solrClient['core'] ?? '');
+                        ?>
+                        <a href="<?= $escape($url('admin/search-manager/solr/core-id', ['id' => $searchEngine->id(), 'action' => 'show'])) ?>"><?= $escape($physicalCore !== '' ? $physicalCore : $translate('(connection not configured)')) ?></a>
+                        <?php
+                            // The indexing visibility of the core, when capped.
+                            $visibility = (string) $searchEngine->setting('visibility');
+                        ?>
+                        <?php if (in_array($visibility, ['public', 'private'], true)): ?>
+                        <span class="field-generic"><?= $escape($translate($visibility)) ?></span>
+                        <?php endif; ?>
+                        <?php endif; ?>
+                    </td>
+                    <?php endif; ?>
+                    <td>
+                        <?= $engineDetails[$searchEngine->id()]['url'] ?? '' ?>
+                        <?php if (!empty($engineDetails[$searchEngine->id()]['status'])): ?>
+                        <div class="engine-status"><?= sprintf($translate('Status: %s'), $engineDetails[$searchEngine->id()]['status']) ?></div>
+                        <?php endif; ?>
+                        <?php if (!$isIndexingEnabled): ?>
+                            <span
+                                class="o-icon- fa fa-exclamation-triangle warning-notice"
+                                aria-label="<?= $escape($translate('Indexing is disabled for this search engine')) ?>"
+                                title="<?= $escape($translate('Indexing is disabled for this search engine')) ?>">
+                                <?= $escape($translate('Indexing is disabled for this search engine')) ?>
+                            </span>
+                        <?php endif; ?>
+                    </td>
                 </tr>
             <?php endforeach; ?>
         </tbody>
     </table>
 <?php else: ?>
-    <p><?= $translate('No search engines created yet.') ?></p>
+    <div class="no-resources">
+        <p><?= $translate('A search engine indexes your resources; every search page and suggester relies on one.') ?></p>
+        <p>
+            <a class="button" href="<?= $escape($url('admin/search-manager/engine', ['action' => 'add-internal'])) ?>"><?= $translate('Create an internal engine') ?></a>
+            <span><?= $translate('SQL based, no configuration.') ?></span>
+        </p>
+        <p>
+            <a href="<?= $escape($url('admin/search-manager/engine', ['action' => 'add'])) ?>"><?= $translate('Or add another search engine (e.g. Solr)…') ?></a>
+        </p>
+    </div>
 <?php endif; ?>
 
-<h3 id="table-caption-configs"><?= $translate('Page configs') ?></h3>
+<?php // Modules can append content inside the Indexing section here. ?>
+<?php $this->trigger('view.browse.engines.after'); ?>
+
+<h2><?= $translate('Search') ?></h2>
+
+<h3 id="table-caption-configs"><?= $translate('Search pages') ?></h3>
 
 <?php if (count($searchConfigs) > 0): ?>
     <table aria-labelledby="table-caption-configs" class="tablesaw" data-tablesaw-mode="stack">
         <thead>
             <tr>
                 <th><?= $translate('Name') ?></th>
-                <th><?= $translate('Slug') ?></th>
                 <th><?= $translate('Search engine') ?></th>
-                <th><?= $translate('Form') ?></th>
+                <th><?= $translate('Slug') ?></th>
+                <th><?= $translate('Sites') ?></th>
             </tr>
         </thead>
         <tbody>
             <?php foreach ($searchConfigs as $searchConfig): ?>
+                <?php
+                    $configId = $searchConfig->id();
+                    $defaults = $searchConfigDefaults[$configId] ?? [];
+                    $sites = $searchConfigSites[$configId] ?? [];
+                    $siteDefaults = $searchConfigSiteDefaults[$configId] ?? [];
+                    // A site may use a page by default without listing it as
+                    // available, so display it anyway: this is a real use.
+                    $sites = array_values(array_unique(array_merge($sites, $siteDefaults)));
+                    // Open the search page in a new tab: the admin page if the
+                    // config is enabled there (its route exists), else the
+                    // front-end page of the first site exposing it.
+                    $openUrl = null;
+                    try {
+                        $openUrl = $searchConfig->adminSearchUrl();
+                    } catch (\Exception $e) {
+                        if ($sites) {
+                            try {
+                                $openUrl = $searchConfig->siteUrl(reset($sites));
+                            } catch (\Exception $e) {
+                            }
+                        }
+                    }
+                ?>
                 <tr>
                     <td>
                         <span><?= $searchConfig->name() ?></span>
                         <ul class="actions">
+                            <?php if ($openUrl): ?>
                             <li>
-                                <?= $searchConfig->link('', 'edit', [
-                                    'class' => 'o-icon-edit',
-                                    'title' => $translate('Edit'),
-                                ]) ?>
+                                <a href="<?= $escape($openUrl) ?>"
+                                    class="o-icon-external"
+                                    target="_blank"
+                                    rel="noopener"
+                                    aria-label="<?= $escape($translate('Open in a new tab')) ?>"
+                                    title="<?= $escape($translate('Open in a new tab')) ?>"></a>
                             </li>
+                            <?php endif; ?>
                             <li>
                                 <?= $searchConfig->link('', 'copy', [
                                     'class' => 'o-icon- far fa-copy copy-search-config',
                                     'aria-label' => $translate('Copy'),
                                     'title' => $translate('Copy'),
                                     'data-confirm-message' => $translate('Are you sure you want to copy this search page?'),
+                                ]) ?>
+                            </li>
+                            <li>
+                                <?= $searchConfig->link('', 'edit', [
+                                    'class' => 'o-icon-edit',
+                                    'aria-label' => $translate('Edit'),
+                                    'title' => $translate('Edit'),
                                 ]) ?>
                             </li>
                             <li>
@@ -189,24 +317,33 @@ $runningSuggesterJobs = $runningJobs['suggesters'] ?? [];
                             </li>
                         </ul>
                     </td>
+                    <td><?= $escape($searchConfig->searchEngine()->name()) ?></td>
                     <td><?= $searchConfig->slug() ?></td>
-                    <td><?= $searchConfig->searchEngine()->name() ?></td>
                     <td>
                         <?php
-                            $formAdapter = $searchConfig->formAdapter();
-                            if ($formAdapter) {
-                                echo $escape($formAdapter->getLabel());
-                            } else {
-                                echo $searchConfig->formAdapterName();
+                        if ($sites) {
+                            $siteLabels = [];
+                            foreach ($sites as $siteSlug) {
+                                $siteLabels[] = $escape($siteSlug)
+                                    . (in_array($siteSlug, $siteDefaults)
+                                        ? '<span class="search-config-default" title="' . $escapeAttr($translate('Default search page of this site')) . '">' . $escape($translate('default')) . '</span>'
+                                        : '');
                             }
+                            echo implode(', ', $siteLabels);
+                        } else {
+                            echo '<span class="warning-notice">' . $escape($translate('none')) . '</span>';
+                        }
                         ?>
+                        <?php foreach ($defaults as $role): ?>
+                        <span class="search-config-default" title="<?= $escapeAttr($translate('Default search page for this scope')) ?>"><?= $escape(sprintf($translate('default: %s'), $translate($role))) ?></span>
+                        <?php endforeach; ?>
                     </td>
                 </tr>
             <?php endforeach; ?>
         </tbody>
     </table>
 <?php else: ?>
-    <p><?= $translate('No search page configs created yet.') ?></p>
+    <p><?= $translate('No search pages created yet.') ?></p>
 <?php endif; ?>
 
 <h3 id="table-caption-suggesters"><?= $translate('Suggesters') ?></h3>
@@ -250,11 +387,14 @@ $runningSuggesterJobs = $runningJobs['suggesters'] ?? [];
                             <?php if ($engineAdapter): ?>
                                 <?= $suggester->link('', 'edit', [
                                     'class' => 'o-icon-edit',
+                                    'aria-label' => $translate('Edit'),
                                     'title' => $translate('Edit'),
                                 ]) ?>
                             <?php else: ?>
                                 <?= $this->hyperlink('', '#', [
                                     'class' => 'o-icon-edit disabled',
+                                    'aria-label' => $translate('Edit disabled: search adapter not available'),
+                                    'aria-disabled' => 'true',
                                     'title' => $translate('Edit disabled: search adapter not available'),
                                 ]) ?>
                             <?php endif; ?>
@@ -286,10 +426,44 @@ $runningSuggesterJobs = $runningJobs['suggesters'] ?? [];
 
 <?php $this->trigger('view.browse.after'); ?>
 
-<div class="sidebar">
+<div class="sidebar" role="dialog" aria-label="<?= $escape($translate('Confirmation')) ?>">
     <a href="#"
         class="sidebar-close o-icon-close"
         aria-label="<?= $escape($translate('Close')) ?>"
         title="<?= $escape($translate('Close')) ?>"></a>
     <div class="sidebar-content"></div>
 </div>
+
+<?php
+// One-shot recommendation after saving a config bound to a Solr engine: sync
+// the core maps then reindex, so the fields used by the config are indexed.
+$sessionAdvancedSearch = new \Laminas\Session\Container('AdvancedSearch');
+$recommendSync = $sessionAdvancedSearch->recommendSync ?? null;
+unset($sessionAdvancedSearch->recommendSync);
+if ($recommendSync && class_exists(\SearchSolr\Module::class, false)):
+    $syncUrl = $url('admin/search-manager/solr/core-id', ['id' => $recommendSync['solr_core_id'], 'action' => 'sync-maps']);
+    $reindexUrl = $url('admin/search-manager/engine-id', ['id' => $recommendSync['search_engine_id'], 'action' => 'index-confirm']);
+?>
+<div class="sidebar active" id="recommend-sync-sidebar" role="dialog" aria-label="<?= $escape($translate('Recommendation')) ?>">
+    <a href="#"
+        class="sidebar-close o-icon-close"
+        aria-label="<?= $escape($translate('Close')) ?>"
+        title="<?= $escape($translate('Close')) ?>"></a>
+    <div class="sidebar-content">
+        <h2><?= $escape($translate('Search index to update')) ?></h2>
+        <p><?= $escape(sprintf($translate('The page "%s" was saved. If fields were added or removed, align the maps of the Solr core, then reindex.'), $recommendSync['search_config_name'])) ?></p>
+        <p>
+            <a href="#"
+                class="button sidebar-content"
+                data-sidebar-selector="#recommend-sync-sidebar"
+                data-sidebar-content-url="<?= $escape($syncUrl) ?>"><?= $escape($translate('Align the maps…')) ?></a>
+        </p>
+        <p>
+            <a href="#"
+                class="button sidebar-content"
+                data-sidebar-selector="#recommend-sync-sidebar"
+                data-sidebar-content-url="<?= $escape($reindexUrl) ?>"><?= $escape($translate('Reindex…')) ?></a>
+        </p>
+    </div>
+</div>
+<?php endif; ?>

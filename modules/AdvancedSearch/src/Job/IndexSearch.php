@@ -139,6 +139,18 @@ class IndexSearch extends AbstractJob
         $referenceIdProcessor->setReferenceId('search/index/job_' . $this->job->getId());
         $this->logger->addProcessor($referenceIdProcessor);
 
+        // The job indexes the resources the owner of the job can view, so an
+        // owner without the right to view the private ones would build an
+        // index amputed of them, without any error.
+        $acl = $services->get('Omeka\Acl');
+        if (!$acl->userIsAllowed(\Omeka\Entity\Resource::class, 'view-all')) {
+            $message = 'The owner of the job cannot view all resources, so the index would be partial. Run the indexation as a global admin.'; // @translate
+            $this->logger->err($message);
+            // Fail the job: a partial index is worse than no indexation, since
+            // nothing would tell that resources are missing.
+            throw new \Omeka\Job\Exception\RuntimeException($message);
+        }
+
         $searchEngineIds = $this->getArg('search_engine_ids');
 
         $this->resourceIds = $this->getArg('resource_ids', []) ?: [];
@@ -309,6 +321,7 @@ class IndexSearch extends AbstractJob
         $indexer = $searchEngine->indexer();
 
         $clearIndex = (bool) $this->getArg('clear_index');
+        $clearFullIndex = (bool) $this->getArg('clear_full_index');
 
         $engineResourceTypes = $searchEngine->setting('resource_types', []);
         $resourceTypes = $this->resourceTypes
@@ -347,7 +360,12 @@ class IndexSearch extends AbstractJob
             ['search_engine_id' => $searchEngine->id(), 'name' => $searchEngine->name()]
         );
 
-        if ($clearIndex) {
+        if ($clearFullIndex) {
+            $indexer->clearIndex(null, true);
+            $this->logger->info(
+                'All indexes of the shared core are cleared, included the ones managed externally.' // @translate
+            );
+        } elseif ($clearIndex) {
             $indexer->clearIndex();
             $this->logger->info(
                 'Search index is fully cleared.' // @translate
@@ -537,6 +555,20 @@ class IndexSearch extends AbstractJob
                 // 'memory_usage' => round(memory_get_usage(true) / 1024 / 1024, 2),
             ]
         );
+
+        // After a full reindex, let the indexer finalize any pending migration
+        // (e.g. drop a renamed field once every document carries the new one).
+        // The default implementation does nothing.
+        if ($clearFullIndex) {
+            try {
+                $indexer->onFullReindexed();
+            } catch (\Throwable $e) {
+                $this->logger->warn(
+                    'Post-reindex finalization failed: {message}', // @translate
+                    ['message' => $e->getMessage()]
+                );
+            }
+        }
     }
 
     protected function logStopMessage(
@@ -627,6 +659,8 @@ class IndexSearch extends AbstractJob
             'items' => 'item',
             'item_sets' => 'item_set',
             'media' => 'media',
+            'digital_objects' => 'digital_object',
+            'concepts' => 'concept',
         ];
 
         $table = $resourceTypeToTable[$resourceType] ?? null;
@@ -702,8 +736,7 @@ class IndexSearch extends AbstractJob
         $memory = round(memory_get_usage(true) / 1024 / 1024, 1);
 
         $this->logger->info(
-            'Indexing {resource_type}: {indexed}/{total} ({percent}%). ' // @translate
-                . 'Memory: {memory} MB.',
+            'Indexing {resource_type}: {indexed}/{total} ({percent}%). Memory: {memory} MB.', // @translate
             [
                 'resource_type' => $resourceType,
                 'indexed' => $indexed,

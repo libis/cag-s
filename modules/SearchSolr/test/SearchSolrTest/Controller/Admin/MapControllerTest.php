@@ -2,7 +2,7 @@
 
 namespace SearchSolrTest\Controller\Admin;
 
-use SolrTest\Controller\SolrControllerTestCase;
+use SearchSolrTest\Controller\SolrControllerTestCase;
 
 class MapControllerTest extends SolrControllerTestCase
 {
@@ -12,12 +12,6 @@ class MapControllerTest extends SolrControllerTestCase
 
         $schema = $this->solrCore->schema();
         $schema->setSchema([]);
-    }
-
-    public function testBrowseAction(): void
-    {
-        $this->dispatch($this->solrCore->mapUrl('browse'));
-        $this->assertResponseStatusCode(200);
     }
 
     public function testResourceBrowseAction(): void

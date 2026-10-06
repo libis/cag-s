@@ -30,7 +30,7 @@ class ArrayText extends Text implements InputProviderInterface
         return $this;
     }
 
-    public function getInputSpecification(): array
+    public function getInputSpecification()
     {
         return [
             'name' => $this->getName(),
@@ -60,7 +60,7 @@ class ArrayText extends Text implements InputProviderInterface
             return $string;
         }
         // Warning: explode('=', '') is not an empty array.
-        $string = trim((string) $string);
+        $string = trim($string);
         return strlen($string)
             ? array_map('trim', explode($this->valueSeparator, $string))
             : [];

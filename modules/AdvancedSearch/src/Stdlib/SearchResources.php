@@ -483,6 +483,26 @@ class SearchResources
     ];
 
     /**
+     * Resource-level fields usable in a filter row like a property, so the
+     * filter is not limited to properties: collections, owners, classes,
+     * templates, etc. (design intent of filter[]).
+     *
+     * @see self::buildSystemFieldClause()
+     */
+    const FIELD_QUERY_SYSTEM_FIELDS = [
+        'id',
+        'owner_id',
+        'site_id',
+        'item_set_id',
+        'resource_class_id',
+        'resource_class_term',
+        'resource_template_id',
+        'resource_template_label',
+        'is_public',
+        'has_media',
+    ];
+
+    /**
      * The adapter used to build the query.
      *
      * @var \Omeka\Api\Adapter\AbstractResourceEntityAdapter
@@ -593,6 +613,15 @@ class SearchResources
         // The query is cleaned first to simplify checks.
         $query = $this->cleanQuery($query);
 
+        // The improved form uses a multiple select for the media types, so the
+        // argument is an array, that the core cannot handle: it expects a
+        // single string and throws a type error on it. The argument keeps its
+        // name, singular like in core, and is managed here during the query.
+        if (isset($query['media_type']) && is_array($query['media_type'])) {
+            $override['media_type'] = $query['media_type'];
+            unset($query['media_type']);
+        }
+
         if (isset($query['owner_id'])) {
             $override['owner_id'] = $query['owner_id'];
             unset($query['owner_id']);
@@ -651,6 +680,11 @@ class SearchResources
         if (isset($override['property'])) {
             $query['property'] = $override['property'];
         }
+        // The media types are restored before the filters of the module, that
+        // run later on the same event: they read the argument themselves.
+        if (isset($override['media_type'])) {
+            $query['media_type'] = $override['media_type'];
+        }
 
         return $query;
     }
@@ -703,6 +737,184 @@ class SearchResources
     }
 
     /**
+     * Resolve the per-value labels mapping for a facet or a filter config,
+     * combining an optional reference to a Table (module Table) and inline
+     * "value_labels" overrides. Inline keys take precedence over the table.
+     *
+     * @param array $options Facet or filter config; may carry "value_labels"
+     *   (associative array code => label) and/or "value_labels_table" (Table
+     *   slug or id).
+     * @param \Omeka\Api\Manager|\Omeka\View\Helper\Api|null $api Either the
+     *   ApiManager service or the equivalent view helper; both expose
+     *   search($resource, $query)->getContent(). Required only when
+     *   value_labels_table is used. When null, only inline value_labels are
+     *   returned.
+     * @return array Associative map code => label. Empty if nothing defined or
+     *   the referenced table is missing.
+     */
+    public static function resolveValueLabels(array $options, $api = null): array
+    {
+        static $tableCache = [];
+
+        $inline = $options['value_labels'] ?? [];
+        if (!is_array($inline)) {
+            $inline = [];
+        }
+
+        $tableRef = trim((string) ($options['value_labels_table'] ?? ''));
+        if ($tableRef === '' || $api === null || !is_object($api) || !method_exists($api, 'search')) {
+            return $inline;
+        }
+
+        if (!array_key_exists($tableRef, $tableCache)) {
+            $tableCache[$tableRef] = [];
+            try {
+                $query = is_numeric($tableRef) ? ['id' => (int) $tableRef] : ['slug' => $tableRef];
+                $results = $api->search('tables', $query)->getContent();
+                if ($results) {
+                    /** @var \Table\Api\Representation\TableRepresentation $table */
+                    $table = reset($results);
+                    if (method_exists($table, 'codesAssociative')) {
+                        $tableCache[$tableRef] = $table->codesAssociative();
+                    }
+                }
+            } catch (\Throwable $e) {
+                // Module Table absent or table missing: silently fall back to
+                // inline mapping.
+            }
+        }
+
+        // Inline labels override the table entries.
+        return $inline + $tableCache[$tableRef];
+    }
+
+    /**
+     * Normalize hidden query filters from the legacy Omeka URL shape to a flat
+     * shape consumable by both InternalQuerier and SolariumQuerier.
+     *
+     * Two output shapes are produced per field, both supported by both queriers:
+     * - Shape A: [<field> => [val1, val2, ...]] for simple "eq" filters with
+     *   default join, no except/lang/datatype. Consumed by
+     *   InternalQuerier::filterQueryAny() default case and by
+     *   SolariumQuerier::processFilters().
+     * - Shape B: [<field> => [{join, type, val, ...}, ...]] for any other type
+     *   or when extra options are set. Consumed by
+     *   InternalQuerier::filterQueryAny() case "!isSimpleValue" and by
+     *   SolariumQuerier::processAdvancedFilters() (via the dispatch added in
+     *   SolariumQuerier::appendHiddenFilters()).
+     *
+     * Inputs converted:
+     * - property[N][property|type|text|joiner|except|lang|datatype]
+     * - filter[N][field|type|val|join|except|lang|datatype]
+     *
+     * Other top-level keys (resource_type, direct field names, etc.) are kept
+     * as-is. Idempotent on already-normalized inputs.
+     */
+    public static function normalizeHiddenQueryFilters(array $filters): array
+    {
+        $convertRows = function (array $rows, string $fieldKey, string $valKey) use (&$filters): void {
+            // When any row chains with "or" or "not", the whole list is kept as
+            // rows: flattening one of them into a simple filter would detach it
+            // from the linear accumulation and change the logic ("A or B" would
+            // become "A and B").
+            $hasChain = false;
+            $chainBucket = null;
+            foreach ($rows as $row) {
+                $rowJoin = is_array($row) ? ($row['join'] ?? $row['joiner'] ?? 'and') : 'and';
+                if ($rowJoin === 'or' || $rowJoin === 'not') {
+                    $hasChain = true;
+                    break;
+                }
+            }
+            foreach ($rows as $row) {
+                if (!is_array($row) || empty($row['type'])) {
+                    continue;
+                }
+                $type = $row['type'];
+                $join = $row['join'] ?? $row['joiner'] ?? 'and';
+                $val = $row[$valKey] ?? null;
+                // A row without field means "any property" (like the api arg
+                // "search"): route it to the pseudo-field "property_values",
+                // resolved by each querier (aggregated values index in Solr).
+                $fields = empty($row[$fieldKey])
+                    ? ['property_values']
+                    : (is_array($row[$fieldKey]) ? $row[$fieldKey] : [$row[$fieldKey]]);
+
+                $fields = array_values(array_filter($fields, fn ($v) => is_string($v) && $v !== ''));
+                if (!$fields) {
+                    continue;
+                }
+
+                // A multi-field row is one predicate (OR on the fields, like
+                // the api "in" on several properties), so it must stay a single
+                // row: duplicating it per field would join the fields with AND.
+                $isSimple = !$hasChain
+                    && count($fields) === 1
+                    && $type === 'eq'
+                    && $join === 'and'
+                    && empty($row['except'])
+                    && empty($row['lang'])
+                    && empty($row['datatype']);
+
+                if ($isSimple) {
+                    if (is_array($val)) {
+                        $vals = array_values(array_filter(array_map(fn ($v) => is_scalar($v) ? trim((string) $v) : '', $val), 'strlen'));
+                    } else {
+                        $vals = is_scalar($val) && strlen((string) $val) ? [(string) $val] : [];
+                    }
+                    if (!$vals) {
+                        continue;
+                    }
+                    foreach ($fields as $field) {
+                        if (!is_string($field) || $field === '') {
+                            continue;
+                        }
+                        $existing = isset($filters[$field]) && is_array($filters[$field]) ? $filters[$field] : [];
+                        $filters[$field] = array_values(array_unique(array_merge($existing, $vals)));
+                    }
+                } else {
+                    $entry = ['join' => $join, 'type' => $type, 'val' => $val];
+                    if (!empty($row['except'])) {
+                        $entry['except'] = $row['except'];
+                    }
+                    if (!empty($row['lang'])) {
+                        $entry['lang'] = $row['lang'];
+                    }
+                    if (!empty($row['datatype'])) {
+                        $entry['datatype'] = $row['datatype'];
+                    }
+                    // One predicate: registered once, with the full field list
+                    // carried by the entry for the querier. A chained list is
+                    // kept in a single ordered bucket (keyed by the first
+                    // field of the chain): grouping by field would lose the
+                    // order of the rows across fields, so "(A and B) or C"
+                    // would become "A and (B or C)" when B is another field.
+                    if ($hasChain || count($fields) > 1) {
+                        $entry['fields'] = $fields;
+                    }
+                    if ($hasChain) {
+                        $chainBucket ??= reset($fields);
+                        $filters[$chainBucket][] = $entry;
+                    } else {
+                        $filters[reset($fields)][] = $entry;
+                    }
+                }
+            }
+        };
+
+        if (!empty($filters['property']) && is_array($filters['property'])) {
+            $convertRows($filters['property'], 'property', 'text');
+            unset($filters['property']);
+        }
+        if (!empty($filters['filter']) && is_array($filters['filter'])) {
+            $convertRows($filters['filter'], 'field', 'val');
+            unset($filters['filter']);
+        }
+
+        return $filters;
+    }
+
+    /**
      * Clear useless keys of a query.
      *
      * The advanced search form returns all keys, so clear useless ones and
@@ -713,6 +925,130 @@ class SearchResources
      *
      * @todo Improve cleaning query.
      */
+    /**
+     * The families of duplicate types and their variants, that are a product.
+     *
+     * The 32 curation types are the combination of four families, four
+     * variants and the negative form, so they are managed as 4 + 3 checkboxes.
+     */
+    const FILTER_TYPE_DUPLICATES = [
+        'families' => [
+            'dup' => 'values', // @translate
+            'dupv' => 'simple values', // @translate
+            'dupr' => 'linked resources', // @translate
+            'dupu' => 'uris', // @translate
+        ],
+        'variants' => [
+            't' => 'with type', // @translate
+            'l' => 'with language', // @translate
+            'tl' => 'with type and language', // @translate
+        ],
+    ];
+
+    /**
+     * List the filter types displayed in the settings: 39 instead of 84.
+     *
+     * The negative types are derived and the duplicates are families and
+     * variants.
+     */
+    public static function filterTypesDisplayed(): array
+    {
+        $negative = array_flip(self::FIELD_QUERY['negative']);
+        $families = self::FILTER_TYPE_DUPLICATES['families'];
+        $variants = self::FILTER_TYPE_DUPLICATES['variants'];
+
+        $result = [];
+        foreach (array_keys(self::FIELD_QUERY['labels']) as $type) {
+            if (isset($negative[$type])) {
+                continue;
+            }
+            $isVariant = false;
+            foreach (array_keys($families) as $family) {
+                $variant = mb_substr($type, mb_strlen($family));
+                if (mb_strpos($type, $family) === 0 && isset($variants[$variant])) {
+                    $isVariant = true;
+                    break;
+                }
+            }
+            if (!$isVariant) {
+                $result[] = $type;
+            }
+        }
+
+        return array_merge($result, array_keys($variants));
+    }
+
+    /**
+     * Expand the filter types selected in the settings into all real types.
+     *
+     * The negative types are derived from their positive one, and the four
+     * families of duplicates are combined with the selected variants, so the
+     * settings store a short list instead of the 84 types.
+     */
+    public static function expandFilterTypes(array $types): array
+    {
+        $families = array_keys(self::FILTER_TYPE_DUPLICATES['families']);
+        $variants = array_keys(self::FILTER_TYPE_DUPLICATES['variants']);
+
+        // The variants are selected once for all the families.
+        $selectedVariants = array_values(array_intersect($variants, $types));
+        $types = array_diff($types, $variants);
+
+        $result = [];
+        foreach ($types as $type) {
+            $result[] = $type;
+            if (in_array($type, $families, true)) {
+                foreach ($selectedVariants as $variant) {
+                    $result[] = $type . $variant;
+                }
+            }
+        }
+
+        // Each positive type implies its negative one.
+        $reciprocal = self::FIELD_QUERY['reciprocal'];
+        foreach ($result as $type) {
+            if (isset($reciprocal[$type])) {
+                $result[] = $reciprocal[$type];
+            }
+        }
+
+        $labels = self::FIELD_QUERY['labels'];
+        return array_values(array_intersect(array_keys($labels), array_unique($result)));
+    }
+
+    /**
+     * Reduce all real filter types to the ones displayed in the settings.
+     */
+    public static function collapseFilterTypes(array $types): array
+    {
+        $families = array_keys(self::FILTER_TYPE_DUPLICATES['families']);
+        $variants = array_keys(self::FILTER_TYPE_DUPLICATES['variants']);
+        $negative = array_flip(self::FIELD_QUERY['negative']);
+
+        $result = [];
+        $usedVariants = [];
+        foreach ($types as $type) {
+            if (isset($negative[$type])) {
+                continue;
+            }
+            foreach ($families as $family) {
+                if ($type === $family) {
+                    $result[] = $family;
+                    continue 2;
+                }
+                $variant = mb_substr($type, mb_strlen($family));
+                if ($family . $variant === $type && in_array($variant, $variants, true)) {
+                    $result[] = $family;
+                    $usedVariants[] = $variant;
+                    continue 2;
+                }
+            }
+            $result[] = $type;
+        }
+
+        return array_values(array_unique(array_merge($result, $usedVariants)));
+    }
+
     public function cleanQuery(array $query): array
     {
         // Most of the time, there is only one query, but it can be used for
@@ -736,7 +1072,7 @@ class SearchResources
 
         // Quick clean for most of the cases.
         // TODO Check if the quick clean is enough.
-        // "0" is a valid value.
+        // "0" is a valid value, and the same for 0 and false.
         $arrayFilterRecursiveEmpty = null;
         $arrayFilterRecursiveEmpty = function (array &$array) use (&$arrayFilterRecursiveEmpty): array {
             foreach ($array as $key => $value) {
@@ -2095,6 +2431,132 @@ class SearchResources
      * linked with a public and a private resource.
      * A private linked resource is not linked for an anonymous.
      */
+    /**
+     * Build the dql clause of a filter row on a resource-level field.
+     *
+     * The clause is the positive form ($queryType is already reciprocal for a
+     * negative row; the caller wraps with NOT). Returns null when the query
+     * type has no meaning for the field, in which case the clause matches
+     * nothing. The supported types are eq/list (membership), ex (existence)
+     * and, for the id, the numeric comparisons.
+     */
+    protected function buildSystemFieldClause(QueryBuilder $qb, string $field, string $queryType, $value): ?string
+    {
+        $expr = $qb->expr();
+        $values = is_array($value) ? array_values($value) : ($value === null ? [] : [$value]);
+
+        $isMembership = in_array($queryType, ['eq', 'list'], true);
+        $isExistence = $queryType === 'ex';
+        $isComparison = in_array($queryType, ['lt', 'lte', 'gte', 'gt', '<', '≤', '≥', '>'], true);
+
+        // Membership on ids, with conversion of terms and labels.
+        $idsFor = function (array $values, ?callable $mapper) {
+            $ids = $mapper
+                ? array_values(array_filter($mapper($values)))
+                : array_values(array_unique(array_map('intval', array_filter($values, 'is_numeric'))));
+            return $ids ?: null;
+        };
+
+        switch ($field) {
+            case 'id':
+                if ($isExistence) {
+                    return '1 = 1';
+                }
+                if ($isComparison) {
+                    $val = reset($values);
+                    if (!is_numeric($val)) {
+                        return null;
+                    }
+                    $operators = ['lt' => '<', 'lte' => '<=', 'gte' => '>=', 'gt' => '>', '<' => '<', '≤' => '<=', '≥' => '>=', '>' => '>'];
+                    return 'omeka_root.id ' . $operators[$queryType] . ' ' . $this->adapter->createNamedParameter($qb, (int) $val);
+                }
+                $ids = $isMembership ? $idsFor($values, null) : null;
+                return $ids
+                    ? (string) $expr->in('omeka_root.id', $this->adapter->createNamedParameter($qb, $ids))
+                    : null;
+
+            case 'owner_id':
+                if ($isExistence) {
+                    return 'omeka_root.owner IS NOT NULL';
+                }
+                $ids = $isMembership ? $idsFor($values, null) : null;
+                return $ids
+                    ? (string) $expr->in('omeka_root.owner', $this->adapter->createNamedParameter($qb, $ids))
+                    : null;
+
+            case 'resource_class_id':
+            case 'resource_class_term':
+                if ($isExistence) {
+                    return 'omeka_root.resourceClass IS NOT NULL';
+                }
+                $ids = $isMembership ? $idsFor($values, fn ($v) => $this->easyMeta->resourceClassIds($v)) : null;
+                return $ids
+                    ? (string) $expr->in('omeka_root.resourceClass', $this->adapter->createNamedParameter($qb, $ids))
+                    : null;
+
+            case 'resource_template_id':
+            case 'resource_template_label':
+                if ($isExistence) {
+                    return 'omeka_root.resourceTemplate IS NOT NULL';
+                }
+                $ids = $isMembership ? $idsFor($values, fn ($v) => $this->easyMeta->resourceTemplateIds($v)) : null;
+                return $ids
+                    ? (string) $expr->in('omeka_root.resourceTemplate', $this->adapter->createNamedParameter($qb, $ids))
+                    : null;
+
+            case 'item_set_id':
+                $alias = $this->adapter->createAlias();
+                $aliasSet = $this->adapter->createAlias();
+                $subQuery = "SELECT $alias.id FROM " . \Omeka\Entity\Item::class . " $alias JOIN $alias.itemSets $aliasSet";
+                if ($isExistence) {
+                    return "omeka_root.id IN ($subQuery)";
+                }
+                $ids = $isMembership ? $idsFor($values, null) : null;
+                return $ids
+                    ? "omeka_root.id IN ($subQuery WHERE $aliasSet.id IN (" . $this->adapter->createNamedParameter($qb, $ids) . '))'
+                    : null;
+
+            case 'site_id':
+                $alias = $this->adapter->createAlias();
+                $aliasSite = $this->adapter->createAlias();
+                $subQuery = "SELECT $alias.id FROM " . \Omeka\Entity\Item::class . " $alias JOIN $alias.sites $aliasSite";
+                if ($isExistence) {
+                    return "omeka_root.id IN ($subQuery)";
+                }
+                $ids = $isMembership ? $idsFor($values, null) : null;
+                return $ids
+                    ? "omeka_root.id IN ($subQuery WHERE $aliasSite.id IN (" . $this->adapter->createNamedParameter($qb, $ids) . '))'
+                    : null;
+
+            case 'is_public':
+                if ($isExistence) {
+                    return '1 = 1';
+                }
+                if (!$isMembership || !count($values)) {
+                    return null;
+                }
+                $bool = filter_var(reset($values), FILTER_VALIDATE_BOOLEAN);
+                return 'omeka_root.isPublic = ' . ($bool ? 'true' : 'false');
+
+            case 'has_media':
+                $alias = $this->adapter->createAlias();
+                $subQuery = 'SELECT IDENTITY(' . $alias . '.item) FROM ' . \Omeka\Entity\Media::class . " $alias";
+                if ($isExistence) {
+                    return "omeka_root.id IN ($subQuery)";
+                }
+                if (!$isMembership || !count($values)) {
+                    return null;
+                }
+                $bool = filter_var(reset($values), FILTER_VALIDATE_BOOLEAN);
+                return $bool
+                    ? "omeka_root.id IN ($subQuery)"
+                    : "omeka_root.id NOT IN ($subQuery)";
+
+            default:
+                return null;
+        }
+    }
+
     protected function buildQueryForRow(QueryBuilder $qb, array $vars, bool $isPropertyQuery): ?array
     {
         /**
@@ -2210,6 +2672,44 @@ class SearchResources
             $queryType = self::FIELD_QUERY['reciprocal'][$queryType];
         } else {
             $positive = true;
+        }
+
+        // A filter is not limited to properties (design intent): a row whose
+        // fields are resource-level metadata (collections, owners, classes,
+        // templates…) filters them like the api args do. The clause joins the
+        // same linear where, so it composes with or/and like any row. A row
+        // mixing properties and system fields is not managed and falls through
+        // to the property logic.
+        $rowFields = is_array($propertyIds)
+            ? array_values(array_filter($propertyIds, 'strlen'))
+            : (strlen((string) $propertyIds) ? [(string) $propertyIds] : []);
+        if ($rowFields
+            && !array_diff($rowFields, self::FIELD_QUERY_SYSTEM_FIELDS)
+        ) {
+            $clauses = [];
+            foreach ($rowFields as $rowField) {
+                $clauses[] = $this->buildSystemFieldClause($qb, $rowField, $queryType, $value)
+                    // An unbuildable clause matches nothing, so a negative row
+                    // matches everything, like the solr querier.
+                    ?? '1 = 0';
+            }
+            $clause = count($clauses) > 1
+                ? '(' . implode(' OR ', $clauses) . ')'
+                : reset($clauses);
+            if (!$positive) {
+                $clause = 'NOT (' . $clause . ')';
+            }
+            $whereClause = '(' . $clause . ')';
+            if ($where == '') {
+                $where = $whereClause;
+            } elseif ($joiner === 'or') {
+                $where .= " OR $whereClause";
+            } else {
+                $where .= " AND $whereClause";
+            }
+            // Reset the consecutive OR optimization: the next row cannot reuse
+            // a values join alias through a system clause.
+            return [$where, null, null, null, false];
         }
 
         // Narrow to specific properties, if one or more are selected.
@@ -3265,9 +3765,13 @@ class SearchResources
         $hasThumbnails = isset($query['has_thumbnails']) && (string) $query['has_thumbnails'] !== ''
             ? (bool) $query['has_thumbnails']
             : null;
-        $mediaTypes = isset($query['media_types'])
-            ? array_filter(array_map('trim', is_array($query['media_types']) ? $query['media_types'] : [$query['media_types']]))
-            : null;
+        // The key "media_type" is the argument of the core, that supports a
+        // single string; the module supports a list too, here and in the key
+        // "media_types", kept for compatibility.
+        $mediaTypesQuery = $query['media_type'] ?? $query['media_types'] ?? null;
+        $mediaTypes = $mediaTypesQuery === null
+            ? null
+            : array_filter(array_map('trim', is_array($mediaTypesQuery) ? $mediaTypesQuery : [$mediaTypesQuery]));
 
         if ($hasOriginal === null && $hasThumbnails === null && !$mediaTypes) {
             return $this;
@@ -3361,13 +3865,18 @@ class SearchResources
      */
     protected function searchByMediaType(QueryBuilder $qb, array $query): self
     {
-        if (!isset($query['media_types'])) {
+        $mediaTypesQuery = $query['media_types'] ?? null;
+        // The core manages a single string, so only a list is managed here.
+        if ($mediaTypesQuery === null && isset($query['media_type']) && is_array($query['media_type'])) {
+            $mediaTypesQuery = $query['media_type'];
+        }
+        if ($mediaTypesQuery === null) {
             return $this;
         }
 
-        $values = is_array($query['media_types'])
-            ? $query['media_types']
-            : [$query['media_types']];
+        $values = is_array($mediaTypesQuery)
+            ? $mediaTypesQuery
+            : [$mediaTypesQuery];
         $values = array_filter(array_map('trim', $values));
         if (empty($values)) {
             return $this;

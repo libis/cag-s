@@ -29,7 +29,7 @@
 
 /**
  * @var \Laminas\View\Renderer\PhpRenderer $this
- * @var \SearchSolr\Api\Representation\SolrCoreRepresentation $solrCore
+ * @var \SearchSolr\Stdlib\SolrCore $solrCore
  * @var \SearchSolr\Api\Representation\SolrMapRepresentation $map
  * @var string $resourceName
  * @var \SearchSolr\Form\Admin\SolrMapForm $form
@@ -49,13 +49,6 @@ $this->headLink()
 $this->htmlElement('body')->appendAttribute('class', 'solr-cores solr-map create edit');
 ?>
 
-<?= $this->pageTitle($translate('Edit index'), 1, $translate('Solr core')) ?>
-
-<nav class="breadcrumbs">
-    <?= $hyperlink($translate('Search'), $url('admin/search')) ?>
-    <?= $hyperlink($translate('Solr cores'), $url('admin/search/solr')) ?>
-    <?= $hyperlink($solrCore->name(), $solrCore->adminUrl()) ?>
-    <span><?= $translate('Edit') ?></span>
-</nav>
+<?= $this->pageTitle($translate('Edit map'), 1, $translate('Solr core')) ?>
 
 <?= $this->partial('search-solr/admin/map/form') ?>

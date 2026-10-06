@@ -46,99 +46,127 @@
         height: 36px;
     }
 
-    /* Quick filter next to main search field */
-    .form-search select.quick-filter {
-        max-width: 100%;
+    /* Inline radios and checkboxes. */
+    .form-search .field .inputs > label {
+        display: inline-flex;
+        align-items: baseline;
+        gap: 0.35em;
+        margin-right: 1em;
     }
-    .form-search .quick-filter,
-    .form-search .quick-filter + .chosen-container {
-        min-width: 120px;
-        max-width: 200px;
+    .form-search .field .inputs > label:last-child {
+        margin-right: 0;
     }
-    .form-search .quick-filter + .chosen-container .chosen-single {
-        height: 36px;
+    .form-search .field .inputs > label > input[type=radio],
+    .form-search .field .inputs > label > input[type=checkbox] {
+        flex: 0 0 auto;
+        margin: 0;
+    }
+
+    /* A text input fills the width of its column. */
+    .form-search .field .inputs > input[type=text],
+    .form-search .field .inputs > input[type=search] {
+        width: 100%;
     }
 
     /* Search form filters */
 
-    #search-filters {
-        display: flex;
-        flex-direction: column;
-        margin-bottom: 6px;
+    /* The advanced filters follow the grid of the default theme. */
+    .search-filters-advanced {
+        --search-filter-label-width: 30%;
+        --search-filter-inputs-padding: 30px;
+        --search-filter-gap: 6px;
+        --search-filter-button-size: max(24px, 45px);
+        position: relative;
+        margin: 30px 0;
     }
-    #search-filters > .search-filter-action {
-        display: inline-block;
-        align-self: flex-end;
-        order: 2;
-        width: fit-content;
-        margin: 6px 6px 0 0;
+    .search-filters-advanced > legend {
+        float: left;
+        width: var(--search-filter-label-width);
+        padding: 7.5px 45px 7.5px 0;
+        /* A legend is bold and bigger by default: it is a label of a field
+           like the other ones. */
+        font-size: inherit;
+        font-weight: inherit;
     }
-    #search-filters > .search-filter-action::before {
-        content: "+";
-        font-size: larger;
-        font-size: bolder;
-    }
-    #search-filters .filter {
-        display: flex;
-        justify-content: space-between;
-        margin-bottom: 0;
-        /*
-        margin-left: 30%;
-        padding-bottom: 6px;
-        padding-left: 1.69492%;
-        */
-        padding: 6px;
-    }
-    #search-filters .filter[hidden] {
+    .search-filters-advanced > legend[hidden] {
         display: none;
     }
-    #search-filters .filter:first-of-type {
-        padding-top: 0.4em;
+    .search-filters-advanced .filter {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: var(--search-filter-gap);
+        margin-left: var(--search-filter-label-width);
+        margin-bottom: var(--search-filter-gap);
+        padding-left: var(--search-filter-inputs-padding);
+        width: calc(100% - var(--search-filter-label-width));
     }
-    #search-filters:not(.has-joiner-not) .filter:first-of-type select[name$="[join]"] {
+    .search-filters-advanced .filter[hidden] {
         display: none;
     }
-    #search-filters .filter select,
-    #search-filters .filter input {
-        margin-top: 0;
-        margin-right: 6px;
-        margin-left: 6px;
-        min-width: 0;
+    .search-filters-advanced:not(.has-joiner-not) .filter:first-of-type select[name$="[join]"] {
+        display: none;
     }
-    #search-filters .filter select:nth-of-type(1) {
-        min-width: 3.5em;
-        margin-left: 0;
-    }
-    #search-filters .filter select:nth-of-type(2) {
-        min-width: 8em;
-    }
-    #search-filters .filter select:nth-of-type(3) {
-        min-width: 8em;
-    }
-    #search-filters .filter input {
-        width: calc( 100% - 200px );
-        margin-right: 0;
-    }
-    /* Buttons remove/add a filter. */
-    #search-filters .filter .field {
-        background-color: inherit;
-        padding: 0;
-        margin: 0 0 0 6px;
+    .search-filters-advanced .filter > select {
+        flex: 0 0 auto;
         width: auto;
     }
-    #search-filters .filter .field .field-meta {
+    /* The text input takes all the remaining width. */
+    .search-filters-advanced .filter > input[type=text] {
+        flex: 1 1 12em;
+        width: 100%;
+        min-width: 0;
+    }
+    .search-filters-advanced .filter .field {
+        display: contents;
+    }
+    .search-filters-advanced .filter .field .field-meta {
         display: none;
     }
-    #search-filters .filter > input[type=text] {
-        margin-right: 6px;
+    .search-filters-advanced .filter .field .inputs {
+        flex: 0 0 auto;
+        width: auto;
+        padding: 0;
     }
-    #search-filters .filter .field .inputs button {
-        margin: 0;
+    /* The buttons are square, as high as the input next to them. */
+    .search-filters-advanced .search-filter-action {
+        flex: 0 0 auto;
+        width: var(--search-filter-button-size);
+        height: var(--search-filter-button-size);
+        aspect-ratio: 1;
+        min-width: 24px;
+        min-height: 24px;
+        padding: 0;
+        line-height: 1;
+        text-align: center;
     }
-    #search-filters .filter .field .inputs button::before {
-        content: "−";
-        font-size: larger;
-        font-size: bolder;
+    .search-filters-advanced > .search-filter-plus {
+        position: absolute;
+        top: 0;
+        right: calc(100% - var(--search-filter-label-width));
+    }
+    .search-filters-advanced .search-filter-plus::before {
+        content: "+";
+    }
+    .search-filters-advanced .search-filter-minus::before {
+        content: "\2212";
+    }
+
+    @media screen and (max-width: 799px) {
+        .search-filters-advanced {
+            --search-filter-label-width: 100%;
+            --search-filter-inputs-padding: 0;
+        }
+        .search-filters-advanced > legend {
+            float: none;
+            padding-right: calc(var(--search-filter-button-size) + var(--search-filter-gap));
+        }
+        .search-filters-advanced .filter {
+            margin-left: 0;
+        }
+        .search-filters-advanced > .search-filter-plus {
+            right: 0;
+        }
     }
 
     /* Search results */
@@ -163,7 +191,47 @@
     .search-results-footer {
         display: flex;
         justify-content: space-between;
+        align-items: center;
         flex-wrap: wrap;
+        gap: 12px 18px;
+    }
+    .search-results-header > *,
+    .search-results-footer > * {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        flex-wrap: nowrap;
+        white-space: nowrap;
+    }
+    /* Search filters chips block keeps multi-line wrapping (full row). */
+    .search-results-header .search-filters,
+    .search-results-footer .search-filters,
+    .search-results-header .facets-active,
+    .search-results-footer .facets-active {
+        display: block;
+        white-space: normal;
+        flex-wrap: wrap;
+    }
+    .search-pagination-per-page,
+    .search-sort {
+        flex-wrap: nowrap;
+        white-space: nowrap;
+    }
+    .search-pagination-per-page label,
+    .search-sort label {
+        white-space: nowrap;
+    }
+    /* Pagination arrows and page indicator stay aligned. */
+    .search-results-count {
+        flex-wrap: nowrap;
+        white-space: nowrap;
+    }
+    .search-results-count .pagination,
+    .search-results-count nav.pagination {
+        display: inline-flex;
+        align-items: center;
+        flex-wrap: nowrap;
+        gap: 4px;
     }
 
     .search-results .search-filters {
@@ -175,10 +243,7 @@
         color: inherit;
     }
     .search-results .search-filters .filter a::after {
-        content: "🗙";
-        color: inherit;
-        font-weight: bold;
-        margin: -3px 6px auto;
+        content: none;
     }
 
     .search-view-type.active {
@@ -225,6 +290,12 @@
     .search-results .resource-list.list .resource-body {
         flex-basis: 100%;
     }
+    .search-results .resource-list.grid .only-list,
+    .search-results .resource-list.list .only-grid,
+    .search-results .resource-list .hidden-both {
+        display: none;
+    }
+
     /* Search results (grid) */
     .search-results .resource-list.grid {
         display: flex;
@@ -297,11 +368,20 @@
         padding: 0 6px;
         color: inherit;
     }
-    .facets-active .facet-active .facet-active-value::after {
-        content: "🗙";
-        color: inherit;
+    .facets-active .facet-active .facet-active-remove,
+    .search-results .search-filters .filter a.filter-remove,
+    .search-results .search-filters .filter a.filter-value + a.filter-remove {
         font-weight: bold;
-        margin: -3px 6px auto;
+        margin-left: 6px;
+        padding: 6px;
+        color: inherit;
+        text-decoration: none;
+    }
+    /* The core admin SCSS adds ", " after every .filter-value:not(:last-child),
+        but the module may add a "x" to close the filter or facet, so fix it. */
+    .search-filters .filter .filter-value:not(:has(+ .filter-value))::after,
+    .facets-active .facet-active .facet-active-value:not(:has(+ .facet-active-value))::after {
+        content: none;
     }
 
     /* Search facets */
@@ -497,9 +577,17 @@
         cursor: default;
     }
     .facet-page-indicator {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.15em;
         font-size: 0.9em;
         padding: 0 0.3em;
         white-space: nowrap;
+        line-height: 1;
+    }
+    .facet-page-indicator .page-count,
+    .facet-page-indicator .facet-page-current {
+        line-height: 1;
     }
     .facet-page-input {
         width: 3.5em;
@@ -649,16 +737,24 @@
         flex-wrap: wrap;
         gap: 1em;
     }
+    .range-double .range-numeric {
+        display: inline-flex;
+        align-items: baseline;
+        gap: 0.4em;
+    }
+    .range-double .range-numeric > input[type=number] {
+        width: auto;
+    }
     .range-double .range-numerics-button {
         gap: 0.4em;
     }
     .range-double input[type=number] {
         border: none;
     }
-    #search-facets .range-double .range-numerics {
+    .facets .range-double .range-numerics {
         flex-wrap: nowrap;
     }
-    #search-facets .range-double .range-numeric input {
+    .facets .range-double .range-numeric input {
         width:  100%;
     }
 
@@ -683,7 +779,7 @@
     margin: 1em 0;
 }
 
-#search-map {
+.search-map {
     width: 100%;
     min-height: 500px;
     border: 1px solid #ddd;

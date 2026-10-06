@@ -29,7 +29,10 @@
 namespace Common;
 
 // Polyfill core PsrMessage classes for Omeka S < 4.2.
-if (version_compare(\Omeka\Module::VERSION, '4.2', '<')) {
+// Check Omeka\Module too because it is not in composer/psr 4 and breaks tests.
+if (class_exists(\Omeka\Module::class, false)
+    && version_compare(\Omeka\Module::VERSION, '4.2', '<')
+) {
     require_once dirname(__DIR__) . '/data/compat/MessageInterface.php';
     require_once dirname(__DIR__) . '/data/compat/PsrInterpolateInterface.php';
     require_once dirname(__DIR__) . '/data/compat/PsrInterpolateTrait.php';
@@ -304,8 +307,14 @@ trait TraitModule
         // When the form declares element groups, render them as sections via
         // the dedicated helper, since the default formCollection() ignores the
         // "element_groups" option.
-        if ($form->getOption('element_groups') && $helpers->has('formCollectionElementGroups')) {
-            return $renderer->formCollectionElementGroups($form);
+        if ($form->getOption('element_groups')) {
+            // The nested renderer keeps the fieldsets that are a real group of
+            // values, unlike the core one that flattens them.
+            foreach (['formCollectionElementGroupsNested', 'formCollectionElementGroups'] as $helper) {
+                if ($helpers->has($helper)) {
+                    return $renderer->$helper($form);
+                }
+            }
         }
 
         return $renderer->formCollection($form);
@@ -1332,6 +1341,30 @@ trait TraitModule
     }
 
     /**
+     * Check if a module is installed, active or not.
+     *
+     * The module manager returns a module for any directory it finds, so the
+     * sole presence of a module says nothing: an archive that was unzipped and
+     * never installed, or a module with a broken ini, is returned like an
+     * installed one. Only the state tells that the module was really installed,
+     * so that its tables, its settings and its data are there, whether it is
+     * currently enabled or not.
+     */
+    protected function isModuleInstalled(string $module): bool
+    {
+        $services = $this->getServiceLocator();
+        /** @var \Omeka\Module\Manager $moduleManager */
+        $moduleManager = $services->get('Omeka\ModuleManager');
+        $module = $moduleManager->getModule($module);
+        return $module
+            && in_array($module->getState(), [
+                ModuleManager::STATE_ACTIVE,
+                ModuleManager::STATE_NOT_ACTIVE,
+                ModuleManager::STATE_NEEDS_UPGRADE,
+            ], true);
+    }
+
+    /**
      * Check the version of a module.
      */
     protected function isModuleVersionAtLeast(string $module, string $version): bool
@@ -1425,48 +1458,17 @@ trait TraitModule
      * existing files can be overwritten: a file may belong to another user even
      * when the directory itself is writeable.
      *
+     * When $protect is true, a "deny all" .htaccess is dropped in the directory
+     * so it is not served directly by Apache. Filesystem access is unaffected.
+     *
      * @param string $dirPath Absolute path of the directory to check.
+     * @param bool $protect Deny direct web access to the directory.
      * @return string|null The dirpath if valid, else null.
      */
-    protected function checkDestinationDir(string $dirPath): ?string
+    protected function checkDestinationDir(string $dirPath, bool $protect = false): ?string
     {
-        // Create the directory if needed, tolerating a concurrent creation
-        // (mkdir then fails but the directory exists). The mkdir mode is
-        // altered by the umask, so group-write is enforced afterwards for
-        // shared/multi-process setups (fails silently when not the owner).
-        if (!file_exists($dirPath)) {
-            if (!@mkdir($dirPath, 0775, true) && !is_dir($dirPath)) {
-                $this->getServiceLocator()->get('Omeka\Logger')->err(
-                    'The directory "{path}" cannot be created: {error}.', // @translate
-                    ['path' => $dirPath, 'error' => error_get_last()['message'] ?? 'unknown error']
-                );
-                return null;
-            }
-            @chmod($dirPath, 0775);
-        }
-
-        // Fast checks first: cheap rejection without touching the filesystem.
-        if (!is_dir($dirPath) || !is_readable($dirPath) || !is_writeable($dirPath)) {
-            $this->getServiceLocator()->get('Omeka\Logger')->err(
-                'The path "{path}" is not a readable and writeable directory.', // @translate
-                ['path' => $dirPath]
-            );
-            return null;
-        }
-
-        // Definitive writability test: is_writeable() does not check the
-        // execute bit nor ACLs, so actually create and remove a probe file.
-        $probe = $dirPath . '/.omeka-write-test-' . getmypid() . '-' . uniqid('', true);
-        if (@file_put_contents($probe, '') === false) {
-            $this->getServiceLocator()->get('Omeka\Logger')->err(
-                'The directory "{path}" is not writeable: {error}.', // @translate
-                ['path' => $dirPath, 'error' => error_get_last()['message'] ?? 'unknown error']
-            );
-            return null;
-        }
-        @unlink($probe);
-
-        return $dirPath;
+        return $this->getServiceLocator()->get('Common\DirectoryManager')
+            ->checkDestinationDir($dirPath, $protect);
     }
 
     /**

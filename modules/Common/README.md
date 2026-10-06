@@ -19,6 +19,7 @@ copy-paste common code between modules.
   - EasyMeta to get ids, terms and labels from properties, classes, templates,
     vocabularies; to get main data types too (literal, resource or uri); to get
     resource api names from any names used in Omeka and modules.
+  - FormatNumber, to get number formatted with the site or omeka locale
   - IsHomePage
   - IsHtml
   - IsXml
@@ -169,9 +170,67 @@ Usage (for developer)
 
 #### Api Adapter: Simple and complete query builder
 
-Just add the trait `CommonAdapterTrait`, the list of query arguments for all
-common queries and a call to `buildQueryFields()`. Then, all queries will work,
-including queries with empty or multiple values and use of operators `<≤=≠≥>`.
+Just add the trait `CommonAdapterTrait`, declare `$queryFields` grouped by type,
+and call `buildQueryFields($qb, $query)` at the start of `buildQuery()`. All
+arguments accept a scalar or an array; empty values (`''`, `[]`, `null`) are
+skipped.
+
+`$queryFields` structure: an array keyed by *type*, each type mapping *query
+argument name* to *entity field name*. Example:
+
+```php
+protected $queryFields = [
+    'id' => [
+        'owner_id' => 'owner',
+        'resource_id' => 'resource',
+        'site_id' => 'site',
+    ],
+    'int' => ['total' => 'total'],
+    'int_operator' => ['count' => 'count'],
+    'string' => ['name' => 'name'],
+    'string_empty' => ['lang' => 'lang'],
+    'string_operator' => ['title' => 'title'],
+    'bool' => ['is_public' => 'isPublic'],
+    'bool_null' => ['reviewed' => 'reviewed'],
+    'datetime' => [
+        'created_before' => ['<', 'created'],
+        'created_after'  => ['>', 'created'],
+    ],
+    'datetime_operator' => ['created' => 'created', 'modified' => 'modified'],
+];
+```
+
+Type reference:
+
+| Type                | Accepts                | Behaviour                                                                                                              |
+|---------------------|------------------------|------------------------------------------------------------------------------------------------------------------------|
+| `id`                | int or int[]           | `<N>` = include, `0` = `IS NULL`, `-N` = exclude id `N`. Values are mixable.                                           |
+| `int`               | int or int[]           | Exact match: `= :x` or `IN (…)`.                                                                                       |
+| `int_empty`         | int or int[]           | Same as `int`, plus `0` means "empty" (`= 0 OR IS NULL`).                                                              |
+| `int_operator`      | scalar or scalar[]     | Value prefixed by an operator among `< ≤ = ≠ ≥ >`. No prefix means `=`. Repeatable per operator.                       |
+| `string`            | string or string[]     | Exact match: `= :x` or `IN (…)`.                                                                                       |
+| `string_empty`      | string or string[]     | Same as `string`, plus the literal `''` (two single quotes) means "empty" (`= '' OR IS NULL`).                         |
+| `string_operator`   | string or string[]     | Value prefixed by `< ≤ = ≠ ≥ >`. No prefix means `=`.                                                                  |
+| `bool`              | scalar                 | Cast to `1`/`0`. Non-scalar produces an always-false where clause.                                                     |
+| `bool_null`         | scalar or `'null'`     | Same as `bool`, plus the literal string `'null'` matches `IS NULL`.                                                    |
+| `datetime`          | date/time-like string  | Declared as `[operator, field]`; one query argument per fixed operator (`<`, `>`, `≤`, `≥`). Historical Omeka pattern. |
+| `datetime_operator` | date/time-like or `[]` | Value prefixed by `< ≤ = ≠ ≥ >`. Limited to years -9999..9999; older dates require the raw integer type on the column. |
+
+Empty-value conventions:
+
+- Empty string, empty array or `null` → argument silently ignored, so unset
+  fields in a search form never filter anything.
+- For `int_empty` / `string_empty`, the empty value (`0` and `''`) allows to
+  search rows whose column is actually empty or null.
+
+Combining arguments: all types add `AND` clauses between arguments. Multiple
+values inside one array argument add `OR` inside that clause (`IN (…)` or
+per-operator groups). For `id`, positive/`0`/negative can be mixed in the same
+array — negatives become a separate `NOT IN … OR IS NULL` clause.
+
+`buildQueryFields()` returns `true` if at least one field was actually applied.
+It accepts an optional entity alias (default `omeka_root`) and an optional
+`$queryFields` override, so it can be reused for joined entities.
 
 #### Api Adapter: Simple hydrator
 
@@ -215,6 +274,45 @@ params merged via the optional callback set as fourth argument.
 Real life implementation can be seen in modules [Bulk Import], [Derivative Media],
 [Easy Admin], [Iiif Server], or [Image Server].
 
+#### Upgrade Job Dispatch
+
+During a module upgrade, the module state in database is `needs_upgrade`, so
+the module is not registered nor autoloaded. Any job dispatched from an upgrade
+script would fail to bootstrap in its spawned CLI process: the job class does
+not exist for the Module Manager, and `Dispatcher::dispatch()` itself checks
+class existence.
+
+The service `Common\UpgradeJobDispatch` works around this: it temporarily writes
+the target version and sets `is_active = 1` in the `module` table, requires the
+job files so `dispatch()` can validate the class, dispatches the job, waits
+briefly for the child process to start, then restores the previous `is_active`
+value. The Module Manager sets the real state and version once `upgrade()`
+returns.
+
+Usage from `data/scripts/upgrade.php`:
+
+```php
+$upgradeJobDispatch = $services->get('Common\UpgradeJobDispatch');
+$jobDir = dirname(__DIR__, 2) . '/src/Job/';
+$job = $upgradeJobDispatch(
+    \MyModule\Job\MyJob::class,
+    ['key' => 'value'],
+    // Absolute paths of the job class and its traits: the module is not
+    // autoloaded yet at this point.
+    [$jobDir . 'MyJob.php'],
+    // Optional; read from module.ini when null.
+    $newVersion
+);
+```
+
+The service returns the `Omeka\Entity\Job` created. When the child process is
+still in `starting` status after the wait, a warning is added via the messenger
+so the operator can relaunch it manually. The module id is inferred from the
+first segment of the job class namespace.
+
+Use this only for jobs that must run as part of an upgrade (data migration,
+long-running conversion). For regular deferred jobs, use `DeferredJobDispatch`.
+
 #### EasyMeta
 
 This service can be used as helper or plugin. It allows to get ids, terms and
@@ -223,6 +321,54 @@ too (literal, resource or uri); to get resource api names from any names used in
 Omeka and modules.
 
 To get methods and more details, use the autocompletion of your IDE.
+
+#### FormatNumber
+
+This view helper formats a number with the grouping and decimal separators of
+the current locale (site or admin).
+
+```php
+// 1 234 567,891 in French, 1,234,567.891 in English, 1’234’567.891 in Swiss German.
+echo $this->formatNumber(1234567.891);
+
+// The number of decimals may be fixed.
+echo $this->formatNumber(1234.5, null, null, null, 2);
+
+// The locale may be forced.
+echo $this->formatNumber(1234.5, null, null, 'de_CH');
+```
+
+The locale is taken automatically from the translator, so it is the one already
+determined by Omeka:
+
+| Page        | Locale                                                   |
+|-------------|----------------------------------------------------------|
+| Public site | locale of the site, else of the user, else of the install |
+| Admin       | locale of the user, else of the install                   |
+
+It is a subclass of the helper `numberFormat` of Laminas, that is available by
+default, and it keeps its arguments (style, type, locale, decimals, text
+attributes). It is registered under another name, because its behavior differs
+on two points:
+
+- The locale is the one of the translator and not `Locale::getDefault()`, that
+  Omeka fills only when the extension intl is loaded.
+- The extension intl is not required. Without it, the class `NumberFormatter`
+  does not exist and the helper of Laminas is a fatal error, so the number is
+  formatted with `number_format()` and a list of separators extracted from icu.
+
+Furthermore, a value that is not a number (`'abc'`, `null`, an array) is
+returned as a string instead of throwing a `TypeError`, so a template never
+breaks on a bad value. A numeric string (`'12'`) and a stringable object holding
+a number are formatted.
+
+The fallback without intl manages the decimal separator and the grouping
+separator, that depend on the language and on the region: `de_DE` is `1.234.567,89`,
+but `de_CH` is `1’234’567.89`. An unlisted region falls back on its language,
+never on its region: so `br_FR` is formatted like `br`, and `ca_FR` follows
+catalan and not french. It is identical to icu for eighty locales, and differs
+for the seven ones that use their own digits (bengali, persian, burmese, nepali)
+or that group by two digits (indian lakh: `12,34,567` for hindi, tamil, telugu).
 
 #### IsHomePage
 
@@ -561,10 +707,8 @@ log. So, if any, the plural message should be prepared before the logging.
 
 ### One-time tasks
 
-Unlike old module Generic, there are two ways to get the one-time features
-inside any module: the trait (recommended) or the abstract class (deprecated).
-
-To use them, replace the following:
+Unlike old module Generic, Common use a trait to include features in module. To
+use it, replace the following:
 
 ```php
 namespace MyModule;
@@ -602,33 +746,10 @@ class Module extends AbstractModule
 }
 ```
 
-The class AbstractModule is still provided, but deprecated. You may extend it:
-
-```php
-if (!class_exists(\Common\AbstractModule::class, false)) {
-    if (file_exists(OMEKA_PATH . '/modules/Common/src/AbstractModule.php')) {
-        require_once OMEKA_PATH . '/modules/Common/src/AbstractModule.php';
-    } elseif (file_exists(OMEKA_PATH . '/composer-addons/modules/Common/src/AbstractModule.php')) {
-        require_once OMEKA_PATH . '/composer-addons/modules/Common/src/AbstractModule.php';
-    } elseif (file_exists(dirname(__DIR__) . '/Common/src/AbstractModule.php')) {
-        require_once dirname(__DIR__) . '/Common/src/AbstractModule.php';
-    }
-}
-
-use Common\AbstractModule;
-
-class Module extends AbstractModule
-{
-    const NAMESPACE = __NAMESPACE__;
-}
-```
-
-**WARNING**: with an abstract class, `parent::method()` in the module calls the
-method of the abstract class (`Common\AbstractModule`), but with a trait,
-`parent::method()` is the method of `Omeka\AbstractModule` if it exists.
-Furthermore, it is not possible to call a method of the trait that is overridden
-by the class Module. This is why there are methods suffixed with "Auto" that can
-be used in such a case.
+**WARNING**: With a trait, `parent::method()` is the method of `Omeka\AbstractModule`
+if it exists. Furthermore, it is not possible to call a method of the trait that
+is overridden by the class Module. This is why some methods are suffixed with
+"Auto" that can be used in such a case.
 
 ### Config form "Apply" button
 
@@ -721,7 +842,7 @@ stored clear.
 to the main settings, site settings, user settings, or theme settings pages:
 `handleAnySettings()` builds the fieldset but calls neither, and there is no
 theme-settings handler at all. A Secret element placed in a `SettingsFieldset`,
-`SiteSettingsFieldset`, `UserSettingsFieldset`, or a theme's settings would
+`SiteSettingsFieldset`, `UserSettingsFieldset`, or a theme settings would
 therefore be rendered with its stored value in the HTML (no blanking) and saved
 as-is (no encryption) — worse than a plain text field. Until this is wired,
 
@@ -817,7 +938,7 @@ Copyright
 [PHP-FIG]: http://www.php-fig.org
 [installing a module]: https://omeka.org/s/docs/user-manual/modules/
 [PR #2412]: https://github.com/omeka/omeka-s/pull/2412
-[Common.zip]: https://github.com/Daniel-KM/Omeka-S-module-Common/releases
+[Common.zip]: https://gitlab.com/Daniel-KM/Omeka-S-module-Common/-/releases
 [jSend]: https://github.com/omniti-labs/jsend
 [Bot Guard]: https://gitlab.com/Daniel-KM/Omeka-S-module-BotGuard
 [Contact Us]: https://gitlab.com/Daniel-KM/Omeka-S-module-ContactUs
@@ -831,7 +952,7 @@ Copyright
 [Iiif Server]: https://gitlab.com/Daniel-KM/Omeka-S-module-IiifServer
 [Image Server]: https://gitlab.com/Daniel-KM/Omeka-S-module-ImageServer
 [jQuery-Autocomplete]: https://github.com/devbridge/jQuery-Autocomplete
-[module issues]: https://gitlab.com/Daniel-KM/Omeka-S-module-Common/-/issues
+[module issues]: https://gitlab.com/Daniel-KM/Omeka-S-module-Common/-/work_items
 [CeCILL v2.1]: https://www.cecill.info/licences/Licence_CeCILL_V2.1-en.html
 [GNU/GPL]: https://www.gnu.org/licenses/gpl-3.0.html
 [FSF]: https://www.fsf.org

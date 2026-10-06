@@ -52,7 +52,95 @@ class IndexController extends AbstractActionController
             'searchConfigs' => $searchConfigs,
             'suggesters' => $suggesters,
             'runningJobs' => $runningJobs,
+            // The default role(s) of each config in the admin board and the
+            // sites exposing it, so the search pages table shows where each
+            // page is actually used.
+            'searchConfigDefaults' => $this->listSearchConfigDefaults(),
+            'searchConfigSites' => $this->listSearchConfigSites(),
+            'searchConfigSiteDefaults' => $this->listSearchConfigSiteDefaults(),
         ]);
+    }
+
+    /**
+     * Map each config id to the admin roles it is the default for.
+     *
+     * @return array [config_id => ['admin', 'items', …]]
+     */
+    protected function listSearchConfigDefaults(): array
+    {
+        $settings = $this->settings();
+        $keys = [
+            'advancedsearch_main_config' => 'admin', // @translate
+            'advancedsearch_items_config' => 'items', // @translate
+            'advancedsearch_media_config' => 'media', // @translate
+            'advancedsearch_item_sets_config' => 'item sets', // @translate
+            'advancedsearch_api_config' => 'api', // @translate
+        ];
+        $result = [];
+        foreach ($keys as $key => $role) {
+            $configId = (int) $settings->get($key);
+            if (!$configId) {
+                continue;
+            }
+            // The api uses the external index only, so tell what it really
+            // does: the setting alone does not say it.
+            if ($key === 'advancedsearch_api_config') {
+                try {
+                    $searchConfig = $this->api()->read('search_configs', ['id' => $configId])->getContent();
+                    $role = $searchConfig->hasExternalIndex()
+                        ? 'api (index)' // @translate
+                        : 'api (database)'; // @translate
+                } catch (\Omeka\Api\Exception\NotFoundException $e) {
+                    // Keep the generic role.
+                }
+            }
+            $result[$configId][] = $role;
+        }
+        return $result;
+    }
+
+    /**
+     * Map each config id to the slugs of the sites exposing it.
+     *
+     * @return array [config_id => ['site-slug', …]]
+     */
+    protected function listSearchConfigSites(): array
+    {
+        $services = $this->getEvent()->getApplication()->getServiceManager();
+        $siteSettings = $services->get('Omeka\Settings\Site');
+        $sites = $this->api()->search('sites', [], ['returnScalar' => 'slug'])->getContent();
+        $result = [];
+        foreach ($sites as $siteId => $slug) {
+            $siteSettings->setTargetId($siteId);
+            $configIds = $siteSettings->get('advancedsearch_configs', []) ?: [];
+            foreach ($configIds as $configId) {
+                $result[(int) $configId][] = $slug;
+            }
+        }
+        return $result;
+    }
+
+    /**
+     * Map each config id to the slugs of the sites using it by default.
+     *
+     * A site may expose many search pages, but only one is its default one.
+     *
+     * @return array [config_id => ['site-slug', …]]
+     */
+    protected function listSearchConfigSiteDefaults(): array
+    {
+        $services = $this->getEvent()->getApplication()->getServiceManager();
+        $siteSettings = $services->get('Omeka\Settings\Site');
+        $sites = $this->api()->search('sites', [], ['returnScalar' => 'slug'])->getContent();
+        $result = [];
+        foreach ($sites as $siteId => $slug) {
+            $siteSettings->setTargetId($siteId);
+            $configId = (int) $siteSettings->get('advancedsearch_main_config');
+            if ($configId) {
+                $result[$configId][] = $slug;
+            }
+        }
+        return $result;
     }
 
     /**

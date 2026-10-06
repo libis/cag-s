@@ -61,8 +61,10 @@ class Advanced extends Fieldset
                 'class' => 'filter',
             ]);
 
-        $joiner = (bool) $this->getOption('field_joiner');
         $joinerNot = (bool) $this->getOption('field_joiner_not');
+        // The joiner "not" is a third option of the joiner, so it implies it:
+        // else the option would have no effect at all.
+        $joiner = $joinerNot || (bool) $this->getOption('field_joiner');
         if ($joiner) {
             $valueOptions = [
                 'and' => 'and', // @translate
@@ -83,6 +85,7 @@ class Advanced extends Fieldset
                     ] + ($filterOptions['join']['options'] ?? []),
                     'attributes' => [
                         'value' => 'and',
+                        'aria-label' => 'Joiner', // @translate
                         // TODO Manage width for chosen select (but useless: the number of options is small).
                         // 'class' => 'chosen-select',
                     ] + ($filterOptions['join']['attributes'] ?? []),
@@ -99,6 +102,7 @@ class Advanced extends Fieldset
                 ] + ($filterOptions['field']['options'] ?? []),
                 'attributes' => [
                     'value' => (string) key($filterFields),
+                    'aria-label' => 'Metadata field', // @translate
                     // TODO Manage width for chosen select (but useless: the number of options is small).
                     // 'class' => 'chosen-select',
                 ] + ($filterOptions['field']['attributes'] ?? []),
@@ -122,6 +126,7 @@ class Advanced extends Fieldset
                     ] + ($filterOptions['type']['options'] ?? []),
                     'attributes' => [
                         'value' => 'in',
+                        'aria-label' => 'Query type', // @translate
                         // TODO Manage width for chosen select (but useless: the number of options is small).
                         // 'class' => 'chosen-select',
                     ] + ($filterOptions['type']['attributes'] ?? []),
@@ -133,7 +138,9 @@ class Advanced extends Fieldset
                 'name' => 'val',
                 'type' => Element\Text::class,
                 'options' => $filterOptions['val']['options'] ?? [],
-                'attributes' => $filterOptions['val']['attributes'] ?? [],
+                'attributes' => [
+                    'aria-label' => 'Query text', // @translate
+                ] + ($filterOptions['val']['attributes'] ?? []),
             ])
 
             ->add([

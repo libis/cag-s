@@ -39,25 +39,27 @@
         include_group_label_in_selected: true,
     };
 
-    // Schema and sourceLabels are set in the form.
-    // var schema = schema || {};
-    // var sourceLabels = sourceLabels || {};
+    // Schema and sourceLabels are set in the form. The schema may be null
+    // when Solr is unreachable: the form works without the schema hints.
+    const schemaData = (typeof schema !== 'undefined' && schema)
+        ? schema
+        : { fieldTypes: [], fields: [], dynamicFields: [] };
 
     var fieldTypesByName = {};
     var fieldsByName = {};
 
-    for (let i in schema.fieldTypes) {
-        var type = schema.fieldTypes[i];
+    for (let i in schemaData.fieldTypes) {
+        var type = schemaData.fieldTypes[i];
         fieldTypesByName[type.name] = type;
     }
 
-    for (let i in schema.fields) {
-        var field = schema.fields[i];
+    for (let i in schemaData.fields) {
+        var field = schemaData.fields[i];
         fieldsByName[field.name] = field;
     }
 
-    for (let i in schema.dynamicFields) {
-        var field = schema.dynamicFields[i];
+    for (let i in schemaData.dynamicFields) {
+        var field = schemaData.dynamicFields[i];
         fieldsByName[field.name] = field;
     }
 
@@ -86,8 +88,8 @@
             source = source.replace(/[^a-zA-Z0-9]/g, '_');
             fieldName = field.replace('*', source);
 
-            var inputIndexForLink = $('input[name="o:settings[index_for_link]"]');
-            if (inputIndexForLink.is(':checked')) {
+            var inputPartsLink = $('input[name="o:settings[parts][]"][value="link"]');
+            if (inputPartsLink.is(':checked')) {
                 var linkInsertPos = indexOfStar + source.length;
                 fieldName = fieldName.slice(0, linkInsertPos) + '_link' + fieldName.slice(linkInsertPos);
             }
@@ -244,14 +246,12 @@
             'data-placeholder': Omeka.jsTranslate('Choose a field…'),
         });
 
-        var inputIndexForLink = $('input[name="o:settings[index_for_link]"]');
-
         var inputParts = $('input[name="o:settings[parts][]"]');
 
         var emptyOption = $('<option>').val('');
         select.append(emptyOption);
 
-        var fields = schema.fields.filter(function(f) {
+        var fields = schemaData.fields.filter(function(f) {
             if (f.name.startsWith('_') && f.name.endsWith('_')) {
                 return false;
             }
@@ -282,7 +282,7 @@
             select.append(fieldsOptGroup);
         }
 
-        var dynamicFields = schema.dynamicFields.filter(function(f) {
+        var dynamicFields = schemaData.dynamicFields.filter(function(f) {
             var type = fieldTypesByName[f.type];
             var indexed = 'indexed' in f ? f.indexed : type.indexed;
             return indexed ? true : false;
@@ -316,11 +316,9 @@
 
         select.chosen(chosenOptions);
 
-        inputIndexForLink.on('change', function() {
+        // The bounce link part drives the "_link" of the generated name.
+        inputParts.filter('[value="link"]').on('change', function() {
             generateFieldName();
-            if ($(this).is(':checked')) {
-                inputParts.filter('[value="link"]').prop('checked', true);
-            }
         });
 
         var timeout = 0;
@@ -359,11 +357,10 @@
         // Display the info for each formatter.
 
         function displayInfoFormatter(){
-            const field = $('fieldset[name="o:settings"] .field .inputs')[0];
-            const selectedRadio = $(field).find('input[type=radio]:checked');
+            const inputs = $('input[name="o:settings[formatter]"]').first().closest('.field').find('.inputs');
+            const selectedRadio = inputs.find('input[type=radio]:checked');
             const msg = selectedRadio.length ? selectedRadio.attr('title') : '';
-            const info = $(field).find('.input-info');
-            info.text(msg);
+            inputs.find('.input-info').text(msg);
         }
 
         $('input[name="o:settings[formatter]"]').on('click', displayInfoFormatter);
@@ -380,7 +377,7 @@
             .on('change', toggleSettingsFormatter);
 
         // On load.
-        $('fieldset[name="o:settings"] .field .inputs').append('<div class="input-info"></div>');
+        $('input[name="o:settings[formatter]"]').first().closest('.field').find('.inputs').append('<div class="input-info"></div>');
         displayInfoFormatter();
 
         toggleSettingsFormatter();
@@ -392,7 +389,8 @@
             // whose normalization checkbox is checked.
             $('[data-normalization]').closest('.field').hide();
             $('input[name="o:settings[normalization][]"]:checked').each(function () {
-                $('[data-normalization="' + $(this).val() + '"]').closest('.field').show();
+                const shown = $('[data-normalization="' + $(this).val() + '"]').closest('.field').show();
+                shown.closest('details:not([open])').prop('open', true);
             });
         }
 
@@ -400,6 +398,30 @@
             .on('change', toggleSettingsNormalization);
 
         toggleSettingsNormalization();
+
+        // The digital objects option only applies to the source "has_media".
+        // The source fieldset may be rebuilt on scope change, so the select
+        // is targeted by name.
+        function toggleIncludeDigitalObject() {
+            const source = $('select[name="o:source[0][source]"]').val() || '';
+            const field = $('#include_digital_object').closest('.field');
+            source === 'has_media' ? field.show() : field.hide();
+        }
+
+        $(document).on('change', 'select[name="o:source[0][source]"]', toggleIncludeDigitalObject);
+
+        toggleIncludeDigitalObject();
+
+        // The "no language" option only makes sense with a language filter.
+        function toggleLanguagesNoLang() {
+            const langs = $('input[name="o:pool[filter_languages]"]').val() || '';
+            const field = $('#filter_languages_no_lang').closest('.field');
+            langs.trim() ? field.show() : field.hide();
+        }
+
+        $(document).on('input', 'input[name="o:pool[filter_languages]"]', toggleLanguagesNoLang);
+
+        toggleLanguagesNoLang();
 
         // On submit.
         $('#solr-map-form').on('submit', function() {

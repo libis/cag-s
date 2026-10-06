@@ -113,6 +113,25 @@ class SearchConfigRepresentation extends AbstractEntityRepresentation
         return $url('search-page-' . $this->slug(), $params, $options);
     }
 
+    /**
+     * Url to the search form alone, used to load it on demand in a dialog.
+     *
+     * @see \AdvancedSearch\Controller\SearchController::formAction()
+     */
+    public function formUrl($siteSlug = null): string
+    {
+        $url = $this->getViewHelper('Url');
+        $status = $this->getServiceLocator()->get('Omeka\Status');
+        if ($status->isAdminRequest()) {
+            return $url('search-admin-page-' . $this->slug() . '/form', [], []);
+        }
+        if (!$siteSlug) {
+            $siteSlug = $this->getServiceLocator()->get('Application')
+                ->getMvcEvent()->getRouteMatch()->getParam('site-slug');
+        }
+        return $url('search-page-' . $this->slug() . '/form', ['site-slug' => $siteSlug], []);
+    }
+
     public function name(): string
     {
         return $this->resource->getName();
@@ -129,6 +148,23 @@ class SearchConfigRepresentation extends AbstractEntityRepresentation
         return $searchEngine
             ? $this->getAdapter('search_engines')->getRepresentation($searchEngine)
             : null;
+    }
+
+    /**
+     * Check if the search engine is an external index, like Solr.
+     *
+     * Only an external index is used by the api and by the modules that
+     * bypass the database, so this is what makes the difference, and not the
+     * engine itself.
+     *
+     * @see \AdvancedSearch\Service\ControllerPlugin\ApiSearchFactory
+     */
+    public function hasExternalIndex(): bool
+    {
+        $engineAdapter = $this->engineAdapter();
+        return $engineAdapter
+            && !$engineAdapter instanceof \AdvancedSearch\EngineAdapter\Internal
+            && !$engineAdapter instanceof \AdvancedSearch\EngineAdapter\Noop;
     }
 
     public function engineAdapter(): ?\AdvancedSearch\EngineAdapter\EngineAdapterInterface
@@ -206,7 +242,50 @@ class SearchConfigRepresentation extends AbstractEntityRepresentation
     public function subSetting(string $mainName, string $name, $default = null)
     {
         [$mainName, $name] = $this->settingCheckName($mainName, $name);
-        return $this->resource->getSettings()[$mainName][$name] ?? $default;
+        $result = $this->resource->getSettings()[$mainName][$name] ?? $default;
+        // The mode is a global option of the facets, added to each facet to
+        // simplify theming.
+        if ($mainName === 'facet' && $name === 'facets' && is_array($result)) {
+            $mode = $this->resource->getSettings()['facet']['mode'] ?? 'button';
+            foreach ($result as &$facet) {
+                if (is_array($facet)) {
+                    $facet['mode'] ??= $mode;
+                }
+            }
+            unset($facet);
+        }
+        return $result;
+    }
+
+    /**
+     * The settings of the advanced filter, stored with the filter of type
+     * "Advanced" (legacy: a separate section "form.advanced").
+     */
+    public function advancedFilterSettings(): array
+    {
+        $settings = $this->resource->getSettings();
+        $filters = $settings['form']['filters'] ?? [];
+        $advanced = [];
+        foreach ($filters as $key => $filter) {
+            if ($key === 'advanced' || ($filter['type'] ?? '') === 'Advanced' || ($filter['field'] ?? '') === 'advanced') {
+                $advanced = $filter;
+                break;
+            }
+        }
+        if (!$advanced) {
+            return [];
+        }
+        // The settings are stored in the options of the filter; the booleans
+        // by element of a row are derived for the readers.
+        $advanced += $advanced['options'] ?? [];
+        unset($advanced['options']);
+        $elements = $advanced['field_elements'] ?? [];
+        $advanced['field_elements'] = $elements;
+        $advanced['field_joiner'] = in_array('joiner', $elements);
+        $advanced['field_joiner_not'] = in_array('joiner_not', $elements);
+        $advanced['field_operator'] = in_array('operator', $elements);
+        $advanced['field_value_autosuggest'] = in_array('autosuggest', $elements);
+        return $advanced;
     }
 
     public function subSubSetting(string $mainName, string $name, string $subName, $default = null)

@@ -148,6 +148,33 @@ class MainSearchForm extends Form
      */
     protected $variant = null;
 
+    /**
+     * Normalize advanced filter "val" from query array form to scalar.
+     *
+     * The URL contract supports "filter[i][val][]=a&filter[i][val][]=b" for
+     * multi-value queries (used by the "in", "eq", "list" operators in
+     * SearchResources). The form element "filter[i][val]" is a Text input
+     * (single scalar), so binding raw query data triggers an "Array to string
+     * conversion" warning and renders value="Array" without this flattening.
+     *
+     * @todo Move this to a dedicated request-to-form normalizer (upstream of
+     * setData) once a single entry point exists for query => form data
+     * conversion. The query semantics (multi-value val[]) and the form display
+     * semantics (single text) legitimately diverge; the bridge belongs to that
+     * normalizer, not to setData itself.
+     */
+    public function setData($data)
+    {
+        if (is_array($data) && !empty($data['filter']) && is_array($data['filter'])) {
+            foreach ($data['filter'] as $k => $f) {
+                if (isset($f['val']) && is_array($f['val'])) {
+                    $data['filter'][$k]['val'] = implode(' ', array_filter(array_map('strval', $f['val']), 'strlen'));
+                }
+            }
+        }
+        return parent::setData($data);
+    }
+
     public function init(): void
     {
         $this->searchConfig = $this->getOption('search_config');
@@ -214,16 +241,20 @@ class MainSearchForm extends Form
 
             $type = ucfirst(strtolower(basename($filter['type'])));
 
-            // Don't create useless elements.
-            // In particular, it allows to skip creation of selects, that is
-            // slow for now in big databases.
+            // Each filter declares the forms it is displayed in: the
+            // advanced search (default), the simple search or both.
+            $displayIn = $filter['display_in'] ?? 'advanced';
             if ($hasVariant
                 // The type may be missing.
                 && !in_array($type, ['Hidden', 'Csrf'])
                 // No need to check the field name here: "q", "rft" and "submit"
                 // are managed separately.
-                // TODO Required elements for "quick" cannot be checked for now.
+                && ($this->variant === 'csrf' || !in_array($displayIn, ['simple', 'both']))
             ) {
+                continue;
+            }
+            // The advanced form skips the filters of the simple search only.
+            if (!$this->variant && $displayIn === 'simple') {
                 continue;
             }
 
@@ -274,18 +305,6 @@ class MainSearchForm extends Form
                     $values = $this->listValues($filter);
                     $element = $this->searchMultiCheckbox($filter, $values);
                     break;
-                case 'Multiselect':
-                    $values = $this->listValues($filter);
-                    $element = $this->searchMultiSelect($filter, $values);
-                    break;
-                case 'Multiselectflat':
-                    $values = $this->listValues($filter);
-                    $element = $this->searchMultiSelectFlat($filter, $values);
-                    break;
-                case 'Multiselectgroup':
-                    $values = $this->listValues($filter);
-                    $element = $this->searchMultiSelectGroup($filter, $values);
-                    break;
                 case 'Multitext':
                     $values = $this->listValues($filter);
                     $element = $this->searchMultiSelectFlat($filter, $values);
@@ -298,6 +317,9 @@ class MainSearchForm extends Form
                     $values = $this->listValues($filter);
                     $element = $this->searchRadio($filter, $values);
                     break;
+                case 'Rft':
+                    $element = $this->searchRft($filter);
+                    break;
                 case 'Range':
                     $values = $this->listValuesAttributesMinMax($filter);
                     $element = $this->searchRange($filter, $values);
@@ -307,16 +329,20 @@ class MainSearchForm extends Form
                     $element = $this->searchRangeDouble($filter, $values);
                     break;
                 case 'Select':
+                    // The select carries its options: multiple choices and
+                    // layout of the values (flat or grouped).
                     $values = $this->listValues($filter);
-                    $element = $this->searchSelect($filter, $values);
-                    break;
-                case 'Selectflat':
-                    $values = $this->listValues($filter);
-                    $element = $this->searchSelectFlat($filter, $values);
-                    break;
-                case 'Selectgroup':
-                    $values = $this->listValues($filter);
-                    $element = $this->searchSelectGroup($filter, $values);
+                    $multiple = !empty($filter['options']['multiple']);
+                    $layout = $filter['options']['value_layout'] ?? '';
+                    if ($multiple) {
+                        $element = $layout === 'flat'
+                            ? $this->searchMultiSelectFlat($filter, $values)
+                            : ($layout === 'group' ? $this->searchMultiSelectGroup($filter, $values) : $this->searchMultiSelect($filter, $values));
+                    } else {
+                        $element = $layout === 'flat'
+                            ? $this->searchSelectFlat($filter, $values)
+                            : ($layout === 'group' ? $this->searchSelectGroup($filter, $values) : $this->searchSelect($filter, $values));
+                    }
                     break;
                 case 'Text':
                     $element = $this->searchText($filter);
@@ -385,9 +411,11 @@ class MainSearchForm extends Form
     /**
      * Add a simple filter to limit search to record or not.
      */
-    protected function appendRecordOrFullText(?string $recordOrFullText): self
+    protected function searchRft(array $filter): ?ElementInterface
     {
-        switch ($recordOrFullText) {
+        // The style of the button: checkbox or radios, record or full text
+        // first.
+        switch ($filter['rft'] ?? 'fulltext_checkbox') {
             case 'fulltext_checkbox':
                 $element = new Element\Checkbox('rft');
                 $element
@@ -398,7 +426,7 @@ class MainSearchForm extends Form
                     ])
                     ->setAttribute('id', 'rft')
                 ;
-                return $this->add($element);
+                return $element;
             case 'record_checkbox':
                 $element = new Element\Checkbox('rft');
                 $element
@@ -409,81 +437,38 @@ class MainSearchForm extends Form
                     ])
                     ->setAttribute('id', 'rft')
                 ;
-                return $this->add($element);
+                return $element;
             case 'fulltext_radio':
                 $element = new CommonElement\OptionalRadio('rft');
                 $element
                     // The empty label allows to have a fieldset wrapping radio.
                     ->setLabel(' ')
                     ->setValueOptions([
-                        'all' => 'Full text', // @ŧranslate
-                        'record' => 'Record only', // @ŧranslate
+                        'all' => 'Full text', // @translate
+                        'record' => 'Record only', // @translate
                     ])
                     ->setAttribute('id', 'rft')
                     ->setValue('all')
                 ;
-                return $this->add($element);
+                return $element;
             case 'record_radio':
                 $element = new CommonElement\OptionalRadio('rft');
                 $element
                     // The empty label allows to have a fieldset wrapping radio.
                     ->setLabel(' ')
                     ->setValueOptions([
-                        'record' => 'Record only', // @ŧranslate
-                        'all' => 'Full text', // @ŧranslate
+                        'record' => 'Record only', // @translate
+                        'all' => 'Full text', // @translate
                     ])
                     ->setAttribute('id', 'rft')
                     ->setValue('record')
                 ;
-                return $this->add($element);
+                return $element;
             default:
-                return $this;
+                return null;
         }
     }
 
-    /**
-     * Add a quick filter select next to the main search field.
-     */
-    protected function appendQuickFilter(string $field, ?string $label = null, ?array $predefinedValues = null): self
-    {
-        // Use predefined values or fetch from search engine.
-        if ($predefinedValues) {
-            $values = $predefinedValues;
-        } else {
-            $filter = [
-                'field' => $field,
-                'label' => $label ?: ' ',
-                'type' => 'Select',
-                'options' => [],
-                'attributes' => $this->elementAttributes,
-            ];
-            $values = $this->listValues($filter);
-        }
-
-        if (!$values) {
-            return $this;
-        }
-
-        $element = new CommonElement\OptionalSelect($field);
-        $element
-            ->setLabel($label ?: ' ')
-            ->setOptions([
-                'value_options' => $values + ['' => ''],
-                'empty_option' => $values[''] ?? '',
-            ])
-            ->setAttributes([
-                'id' => 'quick-filter',
-                // No chosen select here: it should be a short filter.
-                'class' => 'quick-filter',
-                'data-placeholder' => $label ?: ' ',
-            ] + $this->elementAttributes)
-        ;
-
-        // Simplify css.
-        $this->setAttribute('class', trim($this->getAttribute('class') . ' with-quick-filter'));
-
-        return $this->add($element);
-    }
 
     /**
      * Add a default input element, represented as a text input.
@@ -499,12 +484,11 @@ class MainSearchForm extends Form
 
     protected function searchAdvanced(array $filter): ?ElementInterface
     {
-        // TODO Use the advanced settings directly from the search config.
-        if (empty($this->formSettings['form']['advanced'])) {
+        // The settings of the advanced filter are stored with the filter.
+        $advanced = $this->searchConfig ? $this->searchConfig->advancedFilterSettings() : [];
+        if (empty($advanced)) {
             return null;
         }
-
-        $advanced = $this->formSettings['form']['advanced'];
 
         $defaultNumber = isset($advanced['default_number']) ? (int) $advanced['default_number'] : 1;
         $maxNumber = isset($advanced['max_number']) ? (int) $advanced['max_number'] : 10;
@@ -618,12 +602,8 @@ class MainSearchForm extends Form
             return null;
         }
 
-        $queryType = $filter['options']['query_type']
-            ?? $filter['query_type']
-            ?? 'ex';
-        $checkedValue = $filter['options']['checked_value']
-            ?? $filter['checked_value']
-            ?? '1';
+        $queryType = $filter['options']['query_type'] ?? 'ex';
+        $checkedValue = $filter['options']['checked_value'] ?? '1';
 
         $fieldset = new \Laminas\Form\Fieldset('filter');
         $sub = new \Laminas\Form\Fieldset($key);
@@ -809,30 +789,6 @@ class MainSearchForm extends Form
             }
             if (empty($suggester) && !empty($filter['suggest_url_param_name'])) {
                 $filter['attributes']['data-autosuggest-param-name'] = $filter['suggest_url_param_name'];
-            }
-        }
-
-        // Add the button for record or full text search.
-        $recordOrFullText = in_array($this->variant, ['simple', 'csrf'])
-            ? null
-            // Key "fulltext_search" is normally removed.
-            : ($filter['rft'] ?? $filter['fulltext_search'] ?? null);
-        $this->appendRecordOrFullText($recordOrFullText);
-
-        // Add the quick filter select next to the main search field.
-        // Include quick filter in 'simple' variant, but not 'csrf'.
-        // For advanced form, check the option 'quick_filter_advanced'.
-        $quickFilter = $this->variant === 'csrf'
-            ? null
-            : ($filter['quick_filter'] ?? $this->formSettings['form']['quick_filter'] ?? null);
-        if ($quickFilter) {
-            // On advanced form (no variant), only show if option is enabled.
-            $skipOnAdvanced = !$this->variant
-                && empty($this->formSettings['form']['quick_filter_advanced']);
-            if (!$skipOnAdvanced) {
-                $quickFilterLabel = $filter['quick_filter_label'] ?? $this->formSettings['form']['quick_filter_label'] ?? null;
-                $quickFilterValues = $filter['quick_filter_values'] ?? $this->formSettings['form']['quick_filter_values'] ?? null;
-                $this->appendQuickFilter($quickFilter, $quickFilterLabel, $quickFilterValues);
             }
         }
 
@@ -1162,6 +1118,10 @@ class MainSearchForm extends Form
         ]);
         unset($valueOptions['protected']);
 
+        // With only three levels, a radio is more direct than a select; the
+        // option "select" allows to keep a select.
+        $asSelect = !empty($filter['options']['select']);
+        unset($filter['options']['select']);
         $fieldset = new Fieldset('access');
         $fieldset
             ->setAttributes([
@@ -1169,9 +1129,9 @@ class MainSearchForm extends Form
             ])
             ->add([
                 'name' => 'id',
-                'type' => $filter['type'] === 'Radio'
-                    ? CommonElement\OptionalRadio::class
-                    : CommonElement\OptionalSelect::class,
+                'type' => $asSelect
+                    ? CommonElement\OptionalSelect::class
+                    : CommonElement\OptionalRadio::class,
                 'options' => [
                     'label' => $filter['label'],
                     'value_options' => $valueOptions,
@@ -1180,7 +1140,7 @@ class MainSearchForm extends Form
                 'attributes' => [
                     'id' => 'search-access',
                     // 'multiple' => false,
-                    'class' => $filter['type'] === 'Radio' ? '' : 'chosen-select',
+                    'class' => $asSelect ? 'chosen-select' : '',
                     'data-placeholder' => $filter['attributes']['data-placeholder'] ?? 'Select access…', // @translate
                 ] + $filter['attributes'],
             ])
@@ -1222,10 +1182,57 @@ class MainSearchForm extends Form
      */
     protected function listValues(array $filter): array
     {
+        $values = $this->listValuesRaw($filter);
+        return $this->applyValueLabels($values, $filter);
+    }
+
+    /**
+     * Override raw [value => label] options with the admin-defined value_labels
+     * mapping when provided on the filter config. Supports flat and grouped
+     * (multi-level) option arrays. Labels are translated; raw values are kept
+     * for keys not present in the mapping.
+     */
+    protected function applyValueLabels(array $values, array $filter): array
+    {
+        $valueLabels = \AdvancedSearch\Stdlib\SearchResources::resolveValueLabels($filter, $this->api);
+        if (!$valueLabels) {
+            return $values;
+        }
+        $translator = $this->getTranslator();
+        $remap = function (array $options) use (&$remap, $valueLabels, $translator): array {
+            foreach ($options as $key => $value) {
+                if (is_array($value) && isset($value['options']) && is_array($value['options'])) {
+                    $options[$key]['options'] = $remap($value['options']);
+                } elseif (array_key_exists((string) $key, $valueLabels) && $valueLabels[(string) $key] !== '') {
+                    $label = $valueLabels[(string) $key];
+                    $options[$key] = $translator ? $translator->translate($label) : $label;
+                }
+            }
+            return $options;
+        };
+        return $remap($values);
+    }
+
+    protected function listValuesRaw(array $filter): array
+    {
         if ($this->skipValues) {
             return [];
         }
 
+        // The manual list of values, with optional labels.
+        $values = $filter['values'] ?? null;
+        if (is_array($values) && $values) {
+            $result = [];
+            foreach ($values as $value => $label) {
+                $value = (string) $value;
+                if ($value === '') {
+                    continue;
+                }
+                $result[$value] = is_string($label) && $label !== '' ? $label : $value;
+            }
+            return $result;
+        }
+        // Legacy manual list, without labels.
         $valueOptions = $filter['options']['value_options'] ?? null;
         if (is_array($valueOptions)) {
             // Avoid issue with duplicates.
@@ -1233,8 +1240,9 @@ class MainSearchForm extends Form
             return array_combine($valueOptions, $valueOptions);
         }
 
-        // For speed, don't get available fields with variants "simple" and "csrf".
-        $availableFields = in_array($this->variant, ['simple', 'csrf']) ? [] : $this->getAvailableFields();
+        // For speed, don't get available fields with the variant "csrf"; the
+        // variant "simple" may display some filters now.
+        $availableFields = $this->variant === 'csrf' ? [] : $this->getAvailableFields();
         if (!$availableFields) {
             return [];
         }
@@ -1480,6 +1488,7 @@ class MainSearchForm extends Form
             'item_sets',
             'media',
             'annotations',
+            'digital_objects',
         ];
         if ($this->searchConfig) {
             $searchEngine = $this->searchConfig->searchEngine();
@@ -1528,6 +1537,7 @@ class MainSearchForm extends Form
             // Value annotations are not resources.
             // 'value_annotations' => 'Value annotations',
             'annotations' => 'Annotations',
+            'digital_objects' => 'Digital objects',
         ];
         if (!$this->searchConfig) {
             return ['resources'];

@@ -10,8 +10,34 @@ use Laminas\InputFilter\InputFilterProviderInterface;
 
 class SearchConfigFacetFieldset extends Fieldset implements InputFilterProviderInterface
 {
+    use TraitInputTypeOptions;
+    use TraitSharedFieldsetElements;
+
+    /**
+     * The types of facet by group of settings, used by the form and to clean
+     * the settings on save.
+     */
+    const TYPES_LIST = ['Checkbox', 'CheckboxFilter', 'Select', 'Tree', 'Thesaurus'];
+    const TYPES_VALUES = ['Checkbox', 'CheckboxFilter', 'Select', 'Tree', 'Thesaurus', 'HasValue'];
+    const TYPES_LINK = ['Checkbox', 'Tree', 'Thesaurus'];
+    const TYPES_SLIDER = ['RangeDouble'];
+
+    /**
+     * The settings by group, cleaned when the type does not use them.
+     */
+    const SETTINGS_LIST = ['language_site', 'languages', 'order', 'limit', 'state', 'paginate', 'more', 'per_page', 'join'];
+    const SETTINGS_VALUES = ['value_labels_table', 'value_labels', 'display_count'];
+    const SETTINGS_LINK = ['as_link'];
+    const SETTINGS_SLIDER = ['field_end', 'scale_mode', 'scale_breakpoints', 'scale_show_ticks'];
+    const SETTINGS_BOUNDS = ['min', 'max', 'step', 'first_digits'];
+    const SETTINGS_THESAURUS = ['thesaurus'];
+    const TYPES_BOUNDS = ['RangeDouble', 'SelectRange'];
+
     public function init(): void
     {
+        /** @var \Laminas\I18n\Translator\TranslatorInterface $translator */
+        $translator = $this->getOption('translator');
+        $tr = fn (string $string): string => $translator ? $translator->translate($string) : $string;
         // These fields may be overridden by the available fields.
         $availableFacetFields = $this->getAvailableFacetFields();
 
@@ -33,6 +59,7 @@ class SearchConfigFacetFieldset extends Fieldset implements InputFilterProviderI
                 ],
                 'attributes' => [
                     'id' => 'form_facet_field',
+                    'data-common' => '1',
                     'required' => false,
                     'class' => 'chosen-select',
                     'data-placeholder' => 'Set field or index…', // @translate
@@ -49,6 +76,8 @@ class SearchConfigFacetFieldset extends Fieldset implements InputFilterProviderI
                 ],
                 'attributes' => [
                     'id' => 'form_facet_field_end',
+                    'data-filter-types' => implode(' ', self::TYPES_SLIDER),
+                    'data-common' => '1',
                     'required' => false,
                     'class' => 'chosen-select',
                     'data-placeholder' => 'Set interval end field…', // @translate
@@ -62,30 +91,41 @@ class SearchConfigFacetFieldset extends Fieldset implements InputFilterProviderI
                 ],
                 'attributes' => [
                     'id' => 'form_facet_label',
+                    'data-common' => '1',
                     'required' => false,
                 ],
             ])
+            ->add([
+                'name' => 'thesaurus',
+                'type' => CommonElement\OptionalNumber::class,
+                'options' => [
+                    'label' => 'Id of the thesaurus', // @translate
+                ],
+                'attributes' => [
+                    'id' => 'facet_thesaurus',
+                    'data-filter-types' => 'Thesaurus',
+                    'data-advanced-section' => $tr('Values'), // @translate
+                    'required' => false,
+                    'min' => '0',
+                ],
+            ])
+            ->addValueLabelsElements(
+                $tr,
+                'form_facet_',
+                implode(' ', self::TYPES_VALUES),
+                $tr('One pair per line: indexed_value = displayed_label. Replaces the raw value in facet items, "see more" buttons and active facets. Mainly useful for boolean fields (e.g. 1 = Only with image / 0 = Without image) and small enumerations. Overrides the table source above for the listed codes.') // @translate
+            )
             ->add([
                 'name' => 'type',
                 'type' => Element\Select::class,
                 'options' => [
                     'label' => 'Input type', // @translate
-                    'info' => 'The type of facet that will be displayed in the search page.', // @translate
-                    // TODO Convert documentation into help. See application/view/common/form-row.phtml
-                    'documentation' => nl2br(<<<'MARKDOWN'
-                        #"></a><div class="field-description no-link">
-                        - Input types may be Checkbox (default), RangeDouble, Select, SelectRange, Thesaurus, Tree and specific templates for mode "direct" if wanted.
-                        - For "RangeDouble" and "SelectRange", the minimum and maximum should be set as "min" and "max" in "Html attributes", and "step" too. The option "first_digits" is enabled by default to extract the year from dates. Set "first_digits = false" in "Options" to disable it. Set "first_digits = 3" to group by decade (first 3 digits), "first_digits = 2" for century, "first_digits = 1" for millennium.
-                        - With type "Thesaurus", the option "thesaurus" should be set with the id. It requires the module Thesaurus.
-                        - "Tree" can be used for item sets when module Item Sets Tree is enabled and data indexed recursively.
-                        </div><a href="#
-                        MARKDOWN), // @translate
+                    'info' => 'The type of facet displayed in the page of results. Each type has its own settings below; the preview shows what the visitor will see.', // @translate
                     /** @see \AdvancedSearch\Form\MainSearchForm::init() */
-                    'value_options' => [
+                    'value_options' => $this->inputTypeOptions([
                         'Checkbox' => 'Checkbox (default)', // @translate
                         'CheckboxFilter' => 'Checkbox with filter input', // @translate
                         'HasValue' => 'Boolean (has a value / has no value)', // @translate
-                        'Link' => 'Link (fake checkbox for mode "direct")', // @translate
                         'RangeDouble' => 'Slider for a range of values', // @translate
                         // A space is added to avoid an issue with translation.
                         'Select' => 'Select ', // @translate
@@ -94,16 +134,16 @@ class SearchConfigFacetFieldset extends Fieldset implements InputFilterProviderI
                             'label' => 'Modules', // @translate
                             'options' => [
                                 'Tree' => 'Item sets tree', // @translate
-                                'TreeLink' => 'Item sets tree link (fake checkbox)', // @translate
                                 'Thesaurus' => 'Thesaurus', // @translate
-                                'ThesaurusLink' => 'Thesaurus link (fake checkbox)', // @translate
                             ],
                         ],
-                    ],
+                    ]),
                     'empty_option' => '',
                 ],
                 'attributes' => [
                     'id' => 'form_facet_type',
+                    'data-common' => '1',
+                    'data-type-default' => 'Checkbox',
                     'class' => 'chosen-select',
                     'required' => false,
                     'data-placeholder' => 'Set facet type…', // @translate
@@ -123,6 +163,8 @@ class SearchConfigFacetFieldset extends Fieldset implements InputFilterProviderI
                 ],
                 'attributes' => [
                     'id' => 'facet_language_site',
+                    'data-advanced-section' => $tr('Values'), // @translate
+                    'data-filter-types' => implode(' ', self::TYPES_LIST),
                     'required' => false,
                     'value' => '',
                 ],
@@ -139,7 +181,30 @@ class SearchConfigFacetFieldset extends Fieldset implements InputFilterProviderI
                 ],
                 'attributes' => [
                     'id' => 'facet_languages',
+                    'data-advanced-section' => $tr('Values'), // @translate
+                    'data-filter-types' => implode(' ', self::TYPES_LIST),
                     'placeholder' => 'fra|way|apy|',
+                ],
+            ])
+            ->add([
+                'name' => 'join',
+                'type' => CommonElement\OptionalSelect::class,
+                'options' => [
+                    'label' => 'Join the selected values with', // @translate
+                    'info' => 'With "or", a resource matching any of the selected values is kept, so selecting a second value widens the results. With "and", a resource must match all of them, so each new value narrows the results.', // @translate
+                    'value_options' => [
+                        'or' => 'Or (default)', // @translate
+                        'and' => 'And', // @translate
+                    ],
+                    'empty_option' => '',
+                ],
+                'attributes' => [
+                    'id' => 'facet_join',
+                    'data-filter-types' => implode(' ', self::TYPES_LIST),
+                    'data-common' => '1',
+                    'multiple' => false,
+                    'class' => 'chosen-select',
+                    'data-placeholder' => 'Select joiner…', // @translate
                 ],
             ])
             ->add([
@@ -153,13 +218,15 @@ class SearchConfigFacetFieldset extends Fieldset implements InputFilterProviderI
                         'total desc' => 'Total', // @translate
                         'total asc' => 'Total ascendant', // @translate
                         'total_alpha desc' => 'Total then alphabetic for hidden values', // @translate
-                        'values asc' => 'Values (listed below)', // @translate
+                        'values asc' => 'Values (set in the options)', // @translate
                         'values desc' => 'Values descendant', // @translate
                     ],
                     'empty_option' => '',
                 ],
                 'attributes' => [
                     'id' => 'facet_order',
+                    'data-filter-types' => implode(' ', self::TYPES_LIST),
+                    'data-common' => '1',
                     'multiple' => false,
                     'class' => 'chosen-select',
                     'data-placeholder' => 'Select order…', // @translate
@@ -169,10 +236,12 @@ class SearchConfigFacetFieldset extends Fieldset implements InputFilterProviderI
                 'name' => 'limit',
                 'type' => Element\Number::class,
                 'options' => [
-                    'label' => 'Maximum number of facets', // @translate
+                    'label' => 'Maximum number of values', // @translate
                 ],
                 'attributes' => [
                     'id' => 'facet_limit',
+                    'data-filter-types' => implode(' ', self::TYPES_LIST),
+                    'data-common' => '1',
                     'required' => false,
                     'value' => '100',
                 ],
@@ -194,18 +263,36 @@ class SearchConfigFacetFieldset extends Fieldset implements InputFilterProviderI
                 ],
                 'attributes' => [
                     'id' => 'facet_state',
+                    'data-advanced-section' => $tr('Display'), // @translate
+                    'data-filter-types' => implode(' ', self::TYPES_LIST),
                     'required' => false,
                     'value' => 'static',
+                ],
+            ])
+            ->add([
+                'name' => 'paginate',
+                'type' => Element\Checkbox::class,
+                'options' => [
+                    'label' => 'Enable pagination', // @translate
+                    'info' => 'Paginate the facet values with a per page navigation, instead of a "see more" button. Uses "per page" as the page size and ignores "display on load".', // @translate
+                ],
+                'attributes' => [
+                    'id' => 'facet_paginate',
+                    'data-advanced-section' => $tr('Display'), // @translate
+                    'data-filter-types' => implode(' ', self::TYPES_LIST),
                 ],
             ])
             ->add([
                 'name' => 'more',
                 'type' => Element\Number::class,
                 'options' => [
-                    'label' => 'Number of facets to display on load', // @translate
+                    'label' => 'Values displayed on load', // @translate
                 ],
                 'attributes' => [
                     'id' => 'facet_more',
+                    'data-advanced-section' => $tr('Display'), // @translate
+                    'data-inline' => 'pages',
+                    'data-filter-types' => implode(' ', self::TYPES_LIST),
                     'required' => false,
                     'value' => '10',
                 ],
@@ -214,13 +301,30 @@ class SearchConfigFacetFieldset extends Fieldset implements InputFilterProviderI
                 'name' => 'per_page',
                 'type' => Element\Number::class,
                 'options' => [
-                    'label' => 'Number of facets per page on "see more"', // @translate
+                    'label' => 'Values per page (with pagination)', // @translate
                 ],
                 'attributes' => [
                     'id' => 'facet_per_page',
+                    'data-advanced-section' => $tr('Display'), // @translate
+                    'data-inline' => 'pages',
+                    'data-filter-types' => implode(' ', self::TYPES_LIST),
                     'required' => false,
-                    'value' => '0',
+                    'value' => '10',
                     'min' => 0,
+                ],
+            ])
+            ->add([
+                'name' => 'as_link',
+                'type' => Element\Checkbox::class,
+                'options' => [
+                    'label' => 'Display the values as links', // @translate
+                    'info' => 'The values are simple links instead of checkboxes: the facet applies on click, without button.', // @translate
+                ],
+                'attributes' => [
+                    'id' => 'facet_as_link',
+                    'data-filter-types' => implode(' ', self::TYPES_LINK),
+                    'data-advanced-section' => $tr('Display'), // @translate
+                    'required' => false,
                 ],
             ])
             ->add([
@@ -231,6 +335,8 @@ class SearchConfigFacetFieldset extends Fieldset implements InputFilterProviderI
                 ],
                 'attributes' => [
                     'id' => 'facet_display_count',
+                    'data-advanced-section' => $tr('Display'), // @translate
+                    'data-filter-types' => implode(' ', self::TYPES_VALUES),
                     'required' => false,
                 ],
             ])
@@ -249,6 +355,7 @@ class SearchConfigFacetFieldset extends Fieldset implements InputFilterProviderI
                 ],
                 'attributes' => [
                     'id' => 'facet_boolean_filter',
+                    'data-advanced-section' => $tr('Values'), // @translate
                     'required' => false,
                     'value' => '',
                 ],
@@ -258,150 +365,23 @@ class SearchConfigFacetFieldset extends Fieldset implements InputFilterProviderI
             // the default and ignores breakpoints. Mode "piecewise" requires at
             // least two breakpoints with values and positions strictly
             // increasing from 0 to 100.
-            ->add([
-                'name' => 'scale_mode',
-                'type' => CommonElement\OptionalRadio::class,
-                'options' => [
-                    'label' => 'Slider scale (RangeDouble)', // @translate
-                    'value_options' => [
-                        'linear' => 'Linear', // @translate
-                        'log' => 'Logarithmic', // @translate
-                        'piecewise' => 'Piecewise (with breakpoints)', // @translate
-                        'auto' => 'Auto (quartiles from data)', // @translate
-                    ],
-                ],
-                'attributes' => [
-                    'id' => 'form_facet_scale_mode',
-                    'value' => 'linear',
-                ],
-            ])
-            ->add([
-                'name' => 'scale_breakpoints',
-                'type' => OmekaElement\ArrayTextarea::class,
-                'options' => [
-                    'label' => 'Scale breakpoints', // @translate
-                    'info' => 'One pair per line: value = position. Position is a percentage between 0 and 100.', // @translate
-                    'as_key_value' => true,
-                ],
-                'attributes' => [
-                    'id' => 'form_facet_scale_breakpoints',
-                    'required' => false,
-                    'rows' => 5,
-                    'placeholder' => <<<TXT
-                        min = 0
-                        1 = 20
-                        1789 = 50
-                        max = 100
-                        TXT,
-                ],
-            ])
-            ->add([
-                'name' => 'scale_show_ticks',
-                'type' => Element\Checkbox::class,
-                'options' => [
-                    'label' => 'Display ticks at breakpoints', // @translate
-                ],
-                'attributes' => [
-                    'id' => 'form_facet_scale_show_ticks',
-                ],
-            ])
+            ->addBoundsElements($tr, 'form_facet_', 'RangeDouble SelectRange')
+            ->addScaleElements($tr, 'form_facet_', implode(' ', self::TYPES_SLIDER))
 
             // Common fields continued (same order as filters).
 
-            ->add([
-                'type' => CommonElement\IniTextarea::class,
-                'name' => 'options',
-                'options' => [
-                    'label' => 'Options', // @translate
-                    'info' => <<<'HTML'
-                        List of specific options, in ini format, for example:
-                        `thesaurus = 151`,
-                        `languages = "fra|way|apa|"`,
-                        `data_types[] = "valuesuggest:idref:person"`,
-                        `main_types = "resource"`,
-                        `values[] = "Alpha"`,
-                        `first_digits = false`.
-                        Note: "min", "max", "step" should be set in "Html attributes".
-                        HTML, // @translate
-                    'ini_typed_mode' => true,
-                ],
-                'attributes' => [
-                    'id' => 'form_facet_options',
-                    'required' => false,
-                    'placeholder' => '',
-                ],
-            ])
-            ->add([
-                'type' => CommonElement\IniTextarea::class,
-                'name' => 'attributes',
-                'options' => [
-                    'label' => 'Html attributes', // @translate
-                    'info' => 'Attributes to add to the input field, for example `class = "my-specific-class"`, or `min = 1454` for RangeDouble/SelectRange, or max, step, placeholder, data, etc.', // @translate
-                    'ini_typed_mode' => true,
-                ],
-                'attributes' => [
-                    'id' => 'form_facet_attributes',
-                    'required' => false,
-                    'placeholder' => '',
-                ],
-            ])
+            ->addOptionsElement(
+                $tr,
+                'form_facet_options',
+                $tr('List of rarely used options, as key-values pairs. Omeka and Laminas options are accepted. A key set here takes precedence over the dedicated fields above.') // @translate
+            )
+            ->addAttributesElement(
+                $tr,
+                'form_facet_attributes',
+                $tr('Specific attributes to add to the input field, for example `class = "my-specific-class"`, or placeholder, data, etc.') // @translate
+            )
 
             // Action buttons.
-
-            ->add([
-                'name' => 'minus',
-                'type' => Element\Button::class,
-                'options' => [
-                    'label' => ' ',
-                    'label_options' => [
-                        'disable_html_escape' => true,
-                    ],
-                    'label_attributes' => [
-                        'class' => 'config-fieldset-action-label',
-                    ],
-                ],
-                'attributes' => [
-                    // Don't use o-icon-delete.
-                    'class' => 'config-fieldset-action config-fieldset-minus fa fa-minus remove-value button',
-                    'aria-label' => 'Remove this facet', // @translate
-                ],
-            ])
-            ->add([
-                'name' => 'up',
-                'type' => Element\Button::class,
-                'options' => [
-                    'label' => ' ',
-                    'label_options' => [
-                        'disable_html_escape' => true,
-                    ],
-                    'label_attributes' => [
-                        'class' => 'config-fieldset-action-label',
-                    ],
-                ],
-                'attributes' => [
-                    // Don't use o-icon-delete.
-                    'class' => 'config-fieldset-action config-fieldset-up fa fa-arrow-up button',
-                    'aria-label' => 'Move this facet up', // @translate
-                ],
-            ])
-            ->add([
-                'name' => 'down',
-                'type' => Element\Button::class,
-                'options' => [
-                    'label' => ' ',
-                    'label_options' => [
-                        'disable_html_escape' => true,
-                    ],
-                    'label_attributes' => [
-                        'class' => 'config-fieldset-action-label',
-                    ],
-                ],
-                'attributes' => [
-                    // Don't use o-icon-delete.
-                    'class' => 'config-fieldset-action config-fieldset-down fa fa-arrow-down button',
-                    'aria-label' => 'Move this facet down', // @translate
-                ],
-            ])
         ;
     }
 

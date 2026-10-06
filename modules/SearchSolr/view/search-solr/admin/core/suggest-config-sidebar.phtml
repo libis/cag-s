@@ -1,0 +1,67 @@
+<?php
+/**
+ * @var \Laminas\View\Renderer\PhpRenderer $this
+ * @var \SearchSolr\Stdlib\SolrCore $solrCore
+ * @var bool|null $hasSuggestTxt Null when the schema is unreachable.
+ *
+ * Configuration of the suggest field, loaded into the core page sidebar. The
+ * options are laid out like the maps alignment sidebar: one fieldset by option.
+ */
+
+$plugins = $this->getHelperPluginManager();
+$escape = $plugins->get('escapeHtml');
+$translate = $plugins->get('translate');
+$escapeAttr = $plugins->get('escapeHtmlAttr');
+
+$suggest = (array) $solrCore->setting('suggest', []);
+$longTexts = !empty($suggest['long_texts']);
+$diacritics = !empty($suggest['diacritics']);
+?>
+
+<div id="sidebar-confirm">
+    <h3><?= $escape($translate('Suggest configuration')) ?></h3>
+    <p class="explanation"><?= $translate('The field "suggest_txt" feeds the autocompletion from the mapped text fields.') ?></p>
+    <?php if ($hasSuggestTxt === true): ?>
+    <p class="explanation"><strong><?= $translate('Current status: suggest_txt exists.') ?></strong></p>
+    <?php elseif ($hasSuggestTxt === false): ?>
+    <p class="explanation"><strong><?= $translate('Current status: suggest_txt does not exist.') ?></strong></p>
+    <?php else: ?>
+    <p class="explanation"><strong><?= $translate('Current status: unknown (the Solr schema is unreachable).') ?></strong></p>
+    <?php endif; ?>
+
+    <form method="post" action="<?= $escapeAttr($solrCore->adminUrl('create-suggest-field')) ?>">
+        <fieldset>
+            <legend><?= $escape($translate('Long texts')) ?></legend>
+            <p class="explanation"><?= $escape($translate('Include the long-value properties (OCR, descriptions…) in the suggestions.')) ?></p>
+            <div class="inputs">
+                <label>
+                    <input type="radio" name="long_texts" value="0"<?= $longTexts ? '' : ' checked="checked"' ?>/>
+                    <?= $escape($translate('Without')) ?>
+                </label>
+                <label>
+                    <input type="radio" name="long_texts" value="1"<?= $longTexts ? ' checked="checked"' : '' ?>/>
+                    <?= $escape($translate('With')) ?>
+                </label>
+            </div>
+        </fieldset>
+
+        <fieldset>
+            <legend><?= $escape($translate('Diacritics')) ?></legend>
+            <p class="explanation"><?= $escape($translate('Insensitive: "cafe" suggests "café". Sensitive: the accents must match.')) ?></p>
+            <div class="inputs">
+                <label>
+                    <input type="radio" name="diacritics" value="0"<?= $diacritics ? '' : ' checked="checked"' ?>/>
+                    <?= $escape($translate('Insensitive')) ?>
+                </label>
+                <label>
+                    <input type="radio" name="diacritics" value="1"<?= $diacritics ? ' checked="checked"' : '' ?>/>
+                    <?= $escape($translate('Sensitive')) ?>
+                </label>
+            </div>
+        </fieldset>
+
+        <button type="submit" class="button"><?= $escape($hasSuggestTxt
+            ? $translate('Recreate the suggest index')
+            : $translate('Create the suggest index')) ?></button>
+    </form>
+</div>

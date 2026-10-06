@@ -4,7 +4,6 @@ namespace AdvancedSearch\Mvc\Controller\Plugin;
 
 use AdvancedSearch\Api\Representation\SearchConfigRepresentation;
 use AdvancedSearch\Api\Representation\SearchEngineRepresentation;
-use AdvancedSearch\FormAdapter\ApiFormAdapter;
 use AdvancedSearch\Querier\Exception\QuerierException;
 use AdvancedSearch\Query;
 use AdvancedSearch\Response as SearchResponse;
@@ -39,11 +38,6 @@ class ApiSearch extends AbstractPlugin
      * @var \Omeka\Api\Manager
      */
     protected $api;
-
-    /**
-     * @var \AdvancedSearch\FormAdapter\ApiFormAdapter
-     */
-    protected $apiFormAdapter;
 
     /**
      * @var \Common\Stdlib\EasyMeta
@@ -84,7 +78,6 @@ class ApiSearch extends AbstractPlugin
         ApiManager $api,
         ?Acl $acl = null,
         ?AdapterManager $adapterManager = null,
-        ?ApiFormAdapter $apiFormAdapter = null,
         ?EasyMeta $easyMeta = null,
         ?EntityManager $entityManager = null,
         ?LoggerInterface $logger = null,
@@ -96,7 +89,6 @@ class ApiSearch extends AbstractPlugin
         $this->api = $api;
         $this->acl = $acl;
         $this->adapterManager = $adapterManager;
-        $this->apiFormAdapter = $apiFormAdapter;
         $this->easyMeta = $easyMeta;
         $this->entityManager = $entityManager;
         $this->logger = $logger;
@@ -269,40 +261,23 @@ class ApiSearch extends AbstractPlugin
 
         // There is no form validation/filter.
 
-        /** @see \AdvancedSearch\Form\Admin\ApiFormConfigFieldset */
-
-        // Begin building the search query.
+        // Begin building the search query. The standard api query is the pivot:
+        // normalized generically, without any config, and resolved natively by
+        // the querier.
         $resourceType = $request->getResource();
-        $searchConfigSettings = $this->searchConfig->settings();
-        $searchConfigSettingsDefault = [
-            'options' => [],
-            'metadata' => [],
-            'properties' => [],
-            'sort_fields' => [],
-        ];
-        $searchFormSettings = empty($searchConfigSettings['form'])
-            ? $searchConfigSettingsDefault
-            : $searchConfigSettings['form'] + $searchConfigSettingsDefault;
-        $searchFormSettings['resource'] = $resourceType;
-        // Fix to be removed.
-        $engineAdapter = $this->searchConfig->engineAdapter();
-        if ($engineAdapter) {
-            $availableFields = $engineAdapter->getAvailableFields();
-            $searchFormSettings['available_fields'] = array_combine(array_keys($availableFields), array_keys($availableFields));
-        } else {
-            $searchFormSettings['available_fields'] = [];
-        }
-
-        $searchFormSettings['aliases'] = $this->searchConfig->subSetting('index', 'aliases', []);
-        $searchFormSettings['fields_query_args'] = $this->searchConfig->subSetting('index', 'query_args', []);
-        $searchFormSettings['remove_diacritics'] = (bool) $this->searchConfig->subSetting('q', 'remove_diacritics', false);
-        $searchFormSettings['default_search_partial_word'] = (bool) $this->searchConfig->subSetting('q', 'default_search_partial_word', false);
-
-        $searchQuery = $this->apiFormAdapter->toQuery($query, $searchFormSettings);
+        $searchQuery = Query::fromApiQuery($query);
         $searchQuery->setResourceTypes([$resourceType]);
 
-        $fieldBoosts = $this->searchConfig->subSetting('index', 'field_boosts', []);
+        // Keep the aliases of the config, so a filter on an aggregated field
+        // stays usable through the api.
+        $searchQuery->setAliases($this->searchConfig->subSetting('index', 'aliases', []));
+
+        // The section "engine" is filled by the module of the engine of the
+        // config (e.g. SearchSolr), through the event of the configure form.
+        $fieldBoosts = $this->searchConfig->subSetting('engine', 'field_boosts', []);
         $searchQuery->setFieldBoosts($fieldBoosts);
+        $searchQuery->setMinimumMatch(trim((string) $this->searchConfig->subSetting('engine', 'minimum_match', '')));
+        $searchQuery->setTieBreaker(trim((string) $this->searchConfig->subSetting('engine', 'tie_breaker', '')));
 
         // Note: the event search.query is not triggered.
 
@@ -314,12 +289,9 @@ class ApiSearch extends AbstractPlugin
 
         // No site by default for the api (added by controller only).
 
-        // Finish building the search query.
-        // The default sort is the one of the search engine, so it is not added,
-        // except if it is specifically set.
-        $this->sortQuery($searchQuery, $query, $searchFormSettings['metadata'] ?? [], $searchFormSettings['sort_fields'] ?? []);
-        $this->limitQuery($searchQuery, $query, $searchFormSettings['options'] ?? []);
-        // $searchQuery->addOrderBy("$entityClass.id", $query['sort_order']);
+        // Finish building the search query. The sort is set by fromApiQuery()
+        // when specified; the default sort stays the one of the search engine.
+        $this->limitQuery($searchQuery, $query, []);
 
         // No filter for specific limits.
 
@@ -396,60 +368,6 @@ class ApiSearch extends AbstractPlugin
     }
 
     /**
-     * Set sort_by and sort_order conditions to the query builder.
-     *
-     * @see \Omeka\Api\Adapter\AbstractResourceEntityAdapter::sortQuery()
-     * @see \Omeka\Api\Adapter\AbstractEntityAdapter::sortQuery()
-     *
-     * @param Query $searchQuery
-     * @param array $query
-     * @param array $metadata
-     * @param array $sortFields
-     */
-    protected function sortQuery(Query $searchQuery, array $query, array $metadata, array $sortFields): void
-    {
-        if (empty($metadata) || empty($sortFields)) {
-            return;
-        }
-        if (!is_string($query['sort_by'])) {
-            return;
-        }
-        if (empty($metadata[$query['sort_by']])) {
-            return;
-        }
-        $sortBy = $metadata[$query['sort_by']];
-
-        if (isset($query['sort_order'])) {
-            $sortOrder = strtolower((string) $query['sort_order']);
-            $sortOrder = $sortOrder === 'desc' ? 'desc' : 'asc';
-        } else {
-            $sortOrder = null;
-        }
-
-        $property = $this->easyMeta->propertyTerm($sortBy);
-        if ($property) {
-            $sort = $sortOrder ? $property . ' ' . $sortOrder : $property;
-        } elseif (in_array($sortBy, ['resource_class_label', 'owner_name'])) {
-            $sort = $sortOrder ? $sortBy . ' ' . $sortOrder : $sortBy;
-        } elseif (in_array($sortBy, ['id', 'is_public', 'created', 'modified'])) {
-            $sort = $sortOrder ? $sortBy . ' ' . $sortOrder : $sortBy;
-        } else {
-            // Indicate that the sort is checked and that it will be default.
-            $searchQuery->setSort(null);
-            return;
-        }
-
-        // Check if the sort order is managed.
-        if (in_array($sort, $sortFields)) {
-            $searchQuery->setSort($sort);
-        }
-
-        // TODO Sort randomly is not managed (can be done partially in the view).
-        // TODO Sort by item count is not managed.
-        // Else sort by relevance (score) or by id?
-    }
-
-    /**
      * Set page, limit (max results) and offset (first result) conditions to the
      * query builder.
      *
@@ -461,32 +379,47 @@ class ApiSearch extends AbstractPlugin
      */
     protected function limitQuery(Query $searchQuery, array $query, array $options): void
     {
-        if (is_numeric($query['page'])) {
-            $searchPage = $query['page'] > 0 ? (int) $query['page'] : 1;
-            if (is_numeric($query['per_page']) && $query['per_page'] > 0) {
+        // Max results allowed by the search config (api form adapter setting),
+        // used as a cap. Null when not configured.
+        $maxResults = empty($options['max_results']) ? null : (int) $options['max_results'];
+
+        // Paginated request: a page and/or a per_page is provided. The page
+        // defaults to 1 so a per_page alone is honored, like a standard browse.
+        if (is_numeric($query['page']) || is_numeric($query['per_page'])) {
+            $searchPage = is_numeric($query['page']) && (int) $query['page'] > 0
+                ? (int) $query['page']
+                : 1;
+            if (is_numeric($query['per_page']) && (int) $query['per_page'] > 0) {
                 $perPage = (int) $query['per_page'];
                 $this->paginator->setPerPage($perPage);
             } else {
                 $perPage = $this->paginator->getPerPage();
             }
+            if ($maxResults && $perPage > $maxResults) {
+                $perPage = $maxResults;
+            }
             $searchQuery->setLimitPage($searchPage, $perPage);
             return;
         }
 
-        // Set the max limit.
-        $maxResults = empty($options['max_results']) ? 1 : (int) $options['max_results'];
+        $limit = is_numeric($query['limit']) && (int) $query['limit'] > 0 ? (int) $query['limit'] : null;
+        $offset = is_numeric($query['offset']) && (int) $query['offset'] > 0 ? (int) $query['offset'] : null;
+
+        // No pagination: return all results, like the core api. The search
+        // engine requires a positive row count, so the configured max results
+        // or a high value is used as "all".
+        if ($limit === null) {
+            $limit = $maxResults ?: 1000000;
+        } elseif ($maxResults && $limit > $maxResults) {
+            $limit = $maxResults;
+        }
 
         // TODO Offset is not really managed in apiSearch (but rarely used).
-        $limit = $query['limit'] > 0 ? min((int) $query['limit'], $maxResults) : $maxResults;
-        $offset = $query['offset'] > 0 ? (int) $query['offset'] : null;
-        if ($limit && $offset) {
-            // TODO Check the formule to convert offset and limit to page and per page (rarely used).
+        if ($offset) {
             $searchPage = $offset > $limit ? 1 + (int) (($offset - 1) / $limit) : 1;
             $searchQuery->setLimitPage($searchPage, $limit);
-        } elseif ($limit) {
+        } else {
             $searchQuery->setLimitPage(1, $limit);
-        } elseif ($offset) {
-            $searchQuery->setLimitPage($offset, 1);
         }
     }
 

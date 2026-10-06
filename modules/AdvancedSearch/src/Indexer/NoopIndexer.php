@@ -27,7 +27,7 @@ class NoopIndexer implements IndexerInterface
         return false;
     }
 
-    public function clearIndex(?Query $query = null): self
+    public function clearIndex(?Query $query = null, bool $all = false): self
     {
         return $this;
     }
@@ -43,6 +43,11 @@ class NoopIndexer implements IndexerInterface
     }
 
     public function deleteResource(string $resourceType, $id): self
+    {
+        return $this;
+    }
+
+    public function onFullReindexed(): self
     {
         return $this;
     }

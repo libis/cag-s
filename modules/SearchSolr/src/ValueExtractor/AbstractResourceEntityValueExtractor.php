@@ -109,8 +109,11 @@ abstract class AbstractResourceEntityValueExtractor implements ValueExtractorInt
                     'owner' => 'Owner', // @translate
                     'site' => 'Site', // @translate
                     'is_public' => 'Is public', // @translate
+                    'group_id' => 'Groups (module Group)', // @translate
                     'created' => 'Created', // @translate
                     'modified' => 'Modified', // @translate
+                    'changed' => 'Changed (modified, else created)', // @translate
+                    'indexed_at' => 'Indexed at (date of the indexation itself)', // @translate
                     'resource_class' => 'Resource class', // @translate
                     'resource_template' => 'Resource template', // @translate
                     'asset' => 'Asset (attached thumbnail)', // @translate
@@ -118,6 +121,8 @@ abstract class AbstractResourceEntityValueExtractor implements ValueExtractorInt
                     'item_sets_tree' => 'Item: Item sets tree', // @translate
                     'media' => 'Item: Media', // @translate
                     'has_media' => 'Item: Has media', // @translate
+                    'has_original' => 'Has an original file', // @translate
+                    'has_thumbnails' => 'Has thumbnails', // @translate
                     'content' => 'Media: Content (from html or extractable text from file, included alto)', // @translate
                     'is_open' => 'Item set: Is open', // @translate
                     'value' => 'Value itself (in particular for module Thesaurus)', // @translate
@@ -158,6 +163,9 @@ abstract class AbstractResourceEntityValueExtractor implements ValueExtractorInt
                     'o:thumbnail' => 'Thumbnail (asset)', // @translate
                     'o:term' => 'Property or class term', // @translate
                     'property_values' => 'All property values', // @translate
+                    // The digital objects are a niche source: kept last.
+                    'digital_object' => 'Item: Digital object', // @translate
+                    'has_digital_object' => 'Item: Has digital object', // @translate
                 ],
             ],
             // Set dcterms first.
@@ -199,7 +207,8 @@ abstract class AbstractResourceEntityValueExtractor implements ValueExtractorInt
 
         if ($field === '') {
             if (method_exists($resource, 'displayTitle')) {
-                $title = $resource->displayTitle('');
+                $lang = (string) $solrMap->setting('resource_title_language');
+                $title = $resource->displayTitle('', $lang !== '' ? $lang : null);
             } elseif (method_exists($resource, 'title')) {
                 $title = $resource->title();
             } elseif (method_exists($resource, 'label')) {
@@ -229,6 +238,10 @@ abstract class AbstractResourceEntityValueExtractor implements ValueExtractorInt
                 : [];
         }
 
+        if ($field === 'group_id') {
+            return $this->extractReservedGroupIds($resource);
+        }
+
         if ($field === 'site') {
             return $resource instanceof AbstractResourceEntityRepresentation
                 ? $this->extractSitesValues($resource, $solrMap)
@@ -241,6 +254,20 @@ abstract class AbstractResourceEntityValueExtractor implements ValueExtractorInt
                 : [];
         }
 
+        // Date of the indexation itself, not a metadata of the resource: it is
+        // the only date Solr knows and the database does not, so it allows to
+        // find the documents that were not reindexed after a change of their
+        // resource. The date is taken for each document and not once for the
+        // whole batch, else a resource modified during a long job would look
+        // stale though it was indexed after the change.
+        if ($field === 'indexed_at') {
+            // The dates "created" and "modified" above are formatted from the
+            // local time of the server, so the date of indexation follows the
+            // same convention, else the comparison between them would be
+            // shifted by the offset of the time zone.
+            return [date('Y-m-d\TH:i:s\Z')];
+        }
+
         if ($field === 'modified') {
             if (!method_exists($resource, 'modified')) {
                 return [];
@@ -248,6 +275,24 @@ abstract class AbstractResourceEntityValueExtractor implements ValueExtractorInt
             $modified = $resource->modified();
             return $modified
                 ? [$modified->format('Y-m-d\TH:i:s\Z')]
+                : [];
+        }
+
+        // Date of the last change, always filled: a resource is not modified
+        // until its first update, so "modified" is empty for it and a sort on
+        // that index would group all the never updated resources apart, and a
+        // range filter would skip them.
+        if ($field === 'changed') {
+            $changed = method_exists($resource, 'modified')
+                ? $resource->modified()
+                : null;
+            if (!$changed) {
+                $changed = method_exists($resource, 'created')
+                    ? $resource->created()
+                    : null;
+            }
+            return $changed
+                ? [$changed->format('Y-m-d\TH:i:s\Z')]
                 : [];
         }
 
@@ -281,8 +326,57 @@ abstract class AbstractResourceEntityValueExtractor implements ValueExtractorInt
         }
 
         if ($field === 'has_media') {
+            if (!$resource instanceof ItemRepresentation) {
+                return [false];
+            }
+            if (count($resource->media()) > 0) {
+                return [true];
+            }
+            // Items whose content was migrated to linked digital objects have
+            // no native media: optionally count them as having media too.
+            return [
+                (bool) $solrMap->setting('include_digital_object')
+                    && $this->itemHasDigitalObjects($resource),
+            ];
+        }
+
+        if ($field === 'has_original') {
+            if ($resource instanceof MediaRepresentation) {
+                return [(bool) $resource->hasOriginal()];
+            }
+            if ($resource instanceof ItemRepresentation) {
+                foreach ($resource->media() as $media) {
+                    if ($media->hasOriginal()) {
+                        return [true];
+                    }
+                }
+            }
+            return [false];
+        }
+
+        if ($field === 'has_thumbnails') {
+            if ($resource instanceof MediaRepresentation) {
+                return [(bool) $resource->hasThumbnails()];
+            }
+            if ($resource instanceof ItemRepresentation) {
+                foreach ($resource->media() as $media) {
+                    if ($media->hasThumbnails()) {
+                        return [true];
+                    }
+                }
+            }
+            return [false];
+        }
+
+        if ($field === 'digital_object') {
             return $resource instanceof ItemRepresentation
-                ? [count($resource->media()) > 0]
+                ? $this->extractItemDigitalObjectsValue($resource, $solrMap)
+                : [];
+        }
+
+        if ($field === 'has_digital_object') {
+            return $resource instanceof ItemRepresentation
+                ? [$this->itemHasDigitalObjects($resource)]
                 : [false];
         }
 
@@ -398,7 +492,8 @@ abstract class AbstractResourceEntityValueExtractor implements ValueExtractorInt
 
         // TODO Use all available locales to get the title and the description.
         if ($field === 'o:title' && method_exists($resource, 'displayTitle')) {
-            $result = $resource->displayTitle();
+            $lang = (string) $solrMap->setting('resource_title_language');
+            $result = $resource->displayTitle(null, $lang !== '' ? $lang : null);
             return $result === null || $result === '' || $result === []
                 ? []
                 : [$result];
@@ -481,6 +576,8 @@ abstract class AbstractResourceEntityValueExtractor implements ValueExtractorInt
             'items' => [],
             'item_sets' => [],
             'media' => [],
+            'digital_objects' => [],
+            'concepts' => [],
             'assets' => [],
             'users' => [],
         ];
@@ -497,6 +594,12 @@ abstract class AbstractResourceEntityValueExtractor implements ValueExtractorInt
             \Omeka\Api\Representation\AssetRepresentation::class => 'assets',
             \Omeka\Api\Representation\UserRepresentation::class => 'users',
         ];
+        if (class_exists('DigitalObject\Module', false)) {
+            $resourceNames[\DigitalObject\Api\Representation\DigitalObjectRepresentation::class] = 'digital_objects';
+        }
+        if (class_exists('Thesaurus\Module', false)) {
+            $resourceNames[\Thesaurus\Api\Representation\ConceptRepresentation::class] = 'concepts';
+        }
         if (!isset($resourceNames[get_class($resource)])) {
             return false;
         }
@@ -527,6 +630,32 @@ abstract class AbstractResourceEntityValueExtractor implements ValueExtractorInt
         return $user
             ? $this->extractValue($user, $solrMap->subMap())
             : [];
+    }
+
+    /**
+     * Ids of the groups (module Group) the resource is reserved to.
+     *
+     * Stored so a private resource can be searched and faceted by users who
+     * belong to one of these groups, like it is already browsable.
+     *
+     * @return int[]
+     */
+    protected function extractReservedGroupIds(AbstractEntityRepresentation $resource): array
+    {
+        if (!class_exists(\Group\Entity\GroupResource::class)) {
+            return [];
+        }
+        $resourceId = (int) $resource->id();
+        if (!$resourceId) {
+            return [];
+        }
+        /** @var \Doctrine\DBAL\Connection $connection */
+        $connection = $resource->getServiceLocator()->get('Omeka\Connection');
+        $groupIds = $connection->executeQuery(
+            'SELECT `group_id` FROM `group_resource` WHERE `resource_id` = :id',
+            ['id' => $resourceId]
+        )->fetchFirstColumn();
+        return array_values(array_map('intval', $groupIds));
     }
 
     protected function extractSitesValues(
@@ -584,6 +713,54 @@ abstract class AbstractResourceEntityValueExtractor implements ValueExtractorInt
             $extractedValues = array_merge($extractedValues, $values);
         }
         return $extractedValues;
+    }
+
+    /**
+     * Mirror of extractItemMediasValue() for digital objects referenced by the
+     * item through property values. A DigitalObject is autonomous (no item FK),
+     * so the link is discovered by walking $item->values() and collecting any
+     * value resource whose resourceName is "digital_objects".
+     */
+    protected function extractItemDigitalObjectsValue(
+        ItemRepresentation $item,
+        ?SolrMapRepresentation $solrMap
+    ): array {
+        $extractedValues = [];
+        foreach ($this->collectItemDigitalObjects($item) as $do) {
+            $values = $this->extractValue($do, $solrMap->subMap());
+            $extractedValues = array_merge($extractedValues, $values);
+        }
+        return $extractedValues;
+    }
+
+    protected function itemHasDigitalObjects(ItemRepresentation $item): bool
+    {
+        foreach ($this->collectItemDigitalObjects($item) as $do) {
+            return true;
+        }
+        return false;
+    }
+
+    /**
+     * @return iterable<\Omeka\Api\Representation\AbstractResourceEntityRepresentation>
+     */
+    protected function collectItemDigitalObjects(ItemRepresentation $item): iterable
+    {
+        $seen = [];
+        foreach ($item->values() as $property) {
+            foreach ($property['values'] as $value) {
+                $vr = $value->valueResource();
+                if (!$vr || $vr->resourceName() !== 'digital_objects') {
+                    continue;
+                }
+                $id = $vr->id();
+                if (isset($seen[$id])) {
+                    continue;
+                }
+                $seen[$id] = true;
+                yield $vr;
+            }
+        }
     }
 
     protected function extractItemItemSetsValue(
@@ -661,10 +838,18 @@ abstract class AbstractResourceEntityValueExtractor implements ValueExtractorInt
         SolrMapRepresentation $solrMap
     ): array {
         /** @var \Omeka\Api\Representation\ValueRepresentation[] $values */
+        // A language filter excludes the values without language, but such a
+        // value is generally language neutral, so it should be indexed in each
+        // language index. The empty string is the core way to match them.
+        // @see \Omeka\Api\Representation\AbstractResourceEntityRepresentation::value()
+        $langs = $solrMap->pool('filter_languages') ?: null;
+        if ($langs && $solrMap->pool('filter_languages_no_lang')) {
+            $langs[] = '';
+        }
         $values = $resource->value($solrMap->firstSource(), [
             'all' => true,
             'type' => $solrMap->pool('data_types'),
-            'lang' => $solrMap->pool('filter_languages'),
+            'lang' => $langs,
         ]);
         return $this->extractPropertyValuesEach($resource, $solrMap, $values);
     }
@@ -827,14 +1012,55 @@ abstract class AbstractResourceEntityValueExtractor implements ValueExtractorInt
         $privateOnly = $filterVisibility === 'private';
 
         $extractedValues = [];
-        foreach ($resource->values() as $term => $propertyData) {
-            foreach ($propertyData['values'] as $value) {
-                if ($filterVisibility
-                    && (($privateOnly && $value->isPublic())
-                        || ($publicOnly && !$value->isPublic()))
-                ) {
-                    continue;
+        foreach ($this->collectResourceAnnotations($resource) as $entry) {
+            if ($filterVisibility
+                && (($privateOnly && $entry['public'])
+                    || ($publicOnly && !$entry['public']))
+            ) {
+                continue;
+            }
+            if ($annotationTerm) {
+                // Extract only the specified property from each annotation.
+                foreach ($entry['byTerm'][$annotationTerm] ?? [] as $annValue) {
+                    $extractedValues[] = $annValue;
                 }
+            } else {
+                // Extract all properties from each annotation.
+                foreach ($entry['byTerm'] as $annValues) {
+                    foreach ($annValues as $annValue) {
+                        $extractedValues[] = $annValue;
+                    }
+                }
+            }
+        }
+        return $extractedValues;
+    }
+
+    /**
+     * Collect, once per resource, every value annotation flattened by term.
+     *
+     * A resource is indexed against all its maps in sequence and several maps
+     * may target "value_annotations" (e.g. role, date bounds…). Walking all
+     * values and lazy-loading each value annotation for every such map is the
+     * indexing bottleneck, since valueAnnotation() is not memoized. This
+     * memoizes the traversal per resource (single entry, reset on the next
+     * resource) so the annotations are loaded only once instead of once per
+     * map.
+     *
+     * @return array<int, array{public: bool, byTerm: array<string, array>}>
+     */
+    protected function collectResourceAnnotations(
+        AbstractResourceEntityRepresentation $resource
+    ): array {
+        static $cacheId = null;
+        static $cacheData = [];
+        $resourceId = $resource->id();
+        if ($cacheId === $resourceId) {
+            return $cacheData;
+        }
+        $data = [];
+        foreach ($resource->values() as $propertyData) {
+            foreach ($propertyData['values'] as $value) {
                 try {
                     $annotation = $value->valueAnnotation();
                 } catch (\Throwable $e) {
@@ -843,33 +1069,21 @@ abstract class AbstractResourceEntityValueExtractor implements ValueExtractorInt
                 if (!$annotation) {
                     continue;
                 }
-                if ($annotationTerm) {
-                    // Extract only the specified property from each annotation.
-                    $annValues = $annotation->value(
-                        $annotationTerm, ['all' => true]
-                    );
-                    foreach ($annValues as $annValue) {
-                        $extractedValues[] = $annValue;
-                    }
-                } else {
-                    // Extract all properties from each annotation.
-                    foreach (array_keys($annotation->values()) as $annTerm) {
-                        $annValues = $annotation->value(
-                            $annTerm, ['all' => true]
-                        );
-                        foreach ($annValues as $annValue) {
-                            $extractedValues[] = $annValue;
-                        }
-                    }
+                $byTerm = [];
+                foreach (array_keys($annotation->values()) as $annTerm) {
+                    $byTerm[$annTerm] = $annotation->value($annTerm, ['all' => true]);
                 }
+                $data[] = ['public' => $value->isPublic(), 'byTerm' => $byTerm];
             }
         }
-        return $extractedValues;
+        $cacheId = $resourceId;
+        $cacheData = $data;
+        return $data;
     }
 
     protected function extractMediaContent(MediaRepresentation $media): array
     {
-        if ($media->ingester() === 'html') {
+        if ($media->renderer() === 'html') {
             $output = $media->mediaData()['html'];
             return $output ? [$output] : [];
         }

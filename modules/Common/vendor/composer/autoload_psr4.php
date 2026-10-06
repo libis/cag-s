@@ -6,6 +6,8 @@ $vendorDir = dirname(__DIR__);
 $baseDir = dirname($vendorDir);
 
 return array(
+    'Symfony\\Polyfill\\Ctype\\' => array($vendorDir . '/symfony/polyfill-ctype'),
+    'Symfony\\Component\\Yaml\\' => array($vendorDir . '/symfony/yaml'),
     'Sempia\\ExternalAssets\\' => array($vendorDir . '/sempia/external-assets/src'),
     'Sempia\\CommonSymlink\\' => array($vendorDir . '/sempia/common-symlink/src'),
     'Common\\' => array($baseDir . '/src'),

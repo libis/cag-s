@@ -2,9 +2,9 @@
 
 namespace SearchSolrTest\Controller;
 
-use OmekaTestHelper\Controller\OmekaControllerTestCase;
+use SearchSolr\Test\TestCase;
 
-abstract class SolrControllerTestCase extends OmekaControllerTestCase
+abstract class SearchSolrControllerTestCase extends TestCase
 {
     protected $solrCore;
     protected $solrMap;
@@ -46,7 +46,7 @@ abstract class SolrControllerTestCase extends OmekaControllerTestCase
 
         $response = $this->api()->create('search_engines', [
             'o:name' => 'TestIndex',
-            'o:adapter' => 'solarium',
+            'o:engine_adapter' => 'solarium',
             'o:settings' => [
                 'resources' => [
                     'items',
@@ -60,12 +60,18 @@ abstract class SolrControllerTestCase extends OmekaControllerTestCase
         $searchEngine = $response->getContent();
         $response = $this->api()->create('search_configs', [
             'o:name' => 'TestPage',
-            'o:path' => 'test/search',
-            'o:engine_id' => $searchEngine->id(),
-            'o:form' => 'basic',
+            'o:slug' => 'test/search',
+            'o:search_engine' => [
+                'o:id' => $searchEngine->id(),
+            ],
+            'o:form_adapter' => 'basic',
             'o:settings' => [
-                'facets' => [],
-                'sort_fields' => [],
+                'request' => [],
+                'q' => [],
+                'index' => [],
+                'form' => [],
+                'results' => [],
+                'facet' => [],
             ],
         ]);
         $searchConfig = $response->getContent();
@@ -78,9 +84,42 @@ abstract class SolrControllerTestCase extends OmekaControllerTestCase
 
     public function tearDown(): void
     {
+        $this->loginAsAdmin();
         $this->api()->delete('search_configs', $this->searchConfig->id());
         $this->api()->delete('search_engines', $this->searchEngine->id());
         $this->api()->delete('solr_maps', $this->solrMap->id());
         $this->api()->delete('solr_cores', $this->solrCore->id());
+    }
+
+    protected function login($email, $password)
+    {
+        $serviceLocator = $this->getServiceLocator();
+        $auth = $serviceLocator->get('Omeka\AuthenticationService');
+        $adapter = $auth->getAdapter();
+        $adapter->setIdentity($email);
+        $adapter->setCredential($password);
+        return $auth->authenticate();
+    }
+
+    protected function logout()
+    {
+        $serviceLocator = $this->getServiceLocator();
+        $auth = $serviceLocator->get('Omeka\AuthenticationService');
+        $auth->clearIdentity();
+    }
+
+    protected function loginAsAdmin()
+    {
+        $this->login('admin@example.com', 'root');
+    }
+
+    protected function getServiceLocator()
+    {
+        return $this->getApplication()->getServiceManager();
+    }
+
+    protected function api()
+    {
+        return $this->getServiceLocator()->get('Omeka\ApiManager');
     }
 }

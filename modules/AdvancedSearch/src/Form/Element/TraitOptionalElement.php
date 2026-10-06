@@ -10,10 +10,11 @@ trait TraitOptionalElement
      * {@inheritDoc}
      * @see \Laminas\Form\Element\Select::getInputSpecification()
      */
-    public function getInputSpecification(): array
+    public function getInputSpecification()
     {
         $inputSpecification = parent::getInputSpecification();
-        $inputSpecification['required'] = !empty($this->attributes['required']);
+        $inputSpecification['required'] = isset($this->attributes['required'])
+            && $this->attributes['required'];
         return $inputSpecification;
     }
 }

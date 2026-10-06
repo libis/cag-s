@@ -8,8 +8,8 @@ use AdvancedSearch\Querier\Exception\QuerierException;
 use Laminas\EventManager\Event;
 use Laminas\Mvc\Controller\Plugin\AbstractPlugin;
 use Omeka\Api\Representation\SiteRepresentation;
+use Omeka\Stdlib\Message;
 use Omeka\Stdlib\Paginator;
-use Common\Stdlib\PsrMessage;
 
 /**
  * FIXME Remove or simplify this class or use it to convert the query directly to a omeka (or sql) or a solarium query.
@@ -43,36 +43,31 @@ class SearchRequestToResponse extends AbstractPlugin
         // The controller may not be available.
         $services = $searchConfig->getServiceLocator();
         $plugins = $services->get('ControllerPluginManager');
-        $logger = $services->get('Omeka\Logger');
-        $translator = $services->get('MvcTranslator');
 
         $formAdapterName = $searchConfig->formAdapterName();
         if (!$formAdapterName) {
-            $message = new PsrMessage('This search config has no form adapter.'); // @translate
-            $logger->err($message->getMessage());
+            $message = new Message('This search config has no form adapter.'); // @translate
+            $plugins->get('logger')()->err($message);
             return [
                 'status' => 'error',
-                'message' => $message->setTranslator($translator),
+                'message' => $message,
             ];
         }
 
         /** @var \AdvancedSearch\FormAdapter\FormAdapterInterface $formAdapter */
         $formAdapter = $searchConfig->formAdapter();
         if (!$formAdapter) {
-            $message = new PsrMessage(
-                'Form adapter "{name}" not found.', // @translate
-                ['name' => $formAdapterName]
-            );
-            $logger->err($message->getMessage(), $message->getContext());
+            $message = new Message('Form adapter "%s" not found.', $formAdapterName); // @translate
+            $plugins->get('logger')()->err($message);
             return [
                 'status' => 'error',
-                'message' => $message->setTranslator($translator),
+                'message' => $message,
             ];
         }
 
         $searchConfigSettings = $searchConfig->settings();
 
-        [$request, $isEmptyRequest] = $this->cleanRequest($request);
+        list($request, $isEmptyRequest) = $this->cleanRequest($request);
         if ($isEmptyRequest) {
             // Keep the other arguments of the request (mainly pagination, sort,
             // and facets).
@@ -143,14 +138,8 @@ class SearchRequestToResponse extends AbstractPlugin
 
         $engineSettings = $this->searchEngine->settings();
 
-        // Manage rights of resources to search: visibility public/private.
-
-        // TODO Researcher and author may not access all private resources.
-        // TODO Manage roles from modules and access level from module Access.
-
-        // For module Access, this is a standard filter.
-
         $user = $plugins->get('identity')();
+        // TODO Manage roles from modules and visibility from modules (access resources).
         $omekaRoles = [
             \Omeka\Permissions\Acl::ROLE_GLOBAL_ADMIN,
             \Omeka\Permissions\Acl::ROLE_SITE_ADMIN,
@@ -159,14 +148,8 @@ class SearchRequestToResponse extends AbstractPlugin
             \Omeka\Permissions\Acl::ROLE_AUTHOR,
             \Omeka\Permissions\Acl::ROLE_RESEARCHER,
         ];
-        $userRole = $user ? $user->getRole() : null;
-
-        $accessToAdmin = $user && in_array($userRole, $omekaRoles);
-        if ($accessToAdmin) {
+        if ($user && in_array($user->getRole(), $omekaRoles)) {
             $query->setIsPublic(false);
-        // } elseif ($user && !in_array($userRole, $omekaRoles)) {
-            // This is the default.
-            // $query->setIsPublic(true);
         }
 
         if ($site) {
@@ -175,10 +158,8 @@ class SearchRequestToResponse extends AbstractPlugin
 
         // Check resources.
         $resourceTypes = $query->getResources();
-        // TODO Check why resources may not be filled.
-        $engineSettings['resources'] ??= ['items'];
         if ($resourceTypes) {
-            $resourceTypes = array_intersect($resourceTypes, $engineSettings['resources']) ?: $engineSettings['resources'];
+            $resourceTypes = array_intersect($engineSettings['resources']) + $engineSettings['resources'];
             $query->setResources($resourceTypes);
         } else {
             $query->setResources($engineSettings['resources']);
@@ -227,8 +208,6 @@ class SearchRequestToResponse extends AbstractPlugin
             $query->setFacets($facets);
         }
 
-        $query->setOption('facet_display_list', $searchConfigSettings['facet']['display_list'] ?? 'all');
-
         $eventManager = $services->get('Application')->getEventManager();
         $eventArgs = $eventManager->prepareArgs([
             'request' => $request,
@@ -247,14 +226,11 @@ class SearchRequestToResponse extends AbstractPlugin
         try {
             $response = $querier->query();
         } catch (QuerierException $e) {
-            $message = new PsrMessage(
-                "Query error: {message}\nQuery: {json_query}", // @translate
-                ['message' => $e->getMessage(), 'json_query' => json_encode($query->jsonSerialize(), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT)]
-            );
-            $logger->err($message->getMessage(), $message->getContext());
+            $message = new Message("Query error: %s\nQuery: %s", $e->getMessage(), json_encode($query->jsonSerialize(), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT)); // @translate
+            $plugins->get('logger')()->err($message);
             return [
                 'status' => 'error',
-                'message' => $message->setTranslator($translator),
+                'message' => $message,
             ];
         }
 
@@ -268,7 +244,7 @@ class SearchRequestToResponse extends AbstractPlugin
         $totalResults = array_map(function ($resource) use ($response) {
             return $response->getResourceTotalResults($resource);
         }, $engineSettings['resources']);
-        $plugins->get('paginator')(max($totalResults), $query->getPage() ?: 1, $query->getPerPage());
+        $plugins->get('paginator')(max($totalResults), $query->getPage() ?: 1);
 
         return [
             'status' => 'success',

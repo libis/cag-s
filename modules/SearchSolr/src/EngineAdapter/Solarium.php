@@ -32,8 +32,7 @@ namespace SearchSolr\EngineAdapter;
 use AdvancedSearch\EngineAdapter\AbstractEngineAdapter;
 use Laminas\I18n\Translator\TranslatorInterface;
 use Omeka\Api\Manager as ApiManager;
-use SearchSolr\Api\Representation\SolrCoreRepresentation;
-use SearchSolr\Form\Admin\SolrConfigFieldset;
+use SearchSolr\Stdlib\SolrCore;
 
 class Solarium extends AbstractEngineAdapter
 {
@@ -49,7 +48,7 @@ class Solarium extends AbstractEngineAdapter
 
     protected $label = 'Solr [via Solarium]'; // @translate
 
-    protected $configFieldsetClass = \SearchSolr\Form\Admin\SolrConfigFieldset::class;
+    protected $configFieldsetClass = null;
 
     protected $indexerClass = \SearchSolr\Indexer\SolariumIndexer::class;
 
@@ -59,16 +58,23 @@ class Solarium extends AbstractEngineAdapter
      * @param ApiManager $api
      * @param TranslatorInterface $translator
      */
-    public function __construct(ApiManager $api, TranslatorInterface $translator)
+    /**
+     * @var \Laminas\ServiceManager\ServiceLocatorInterface
+     */
+    protected $services;
+
+    public function __construct(ApiManager $api, TranslatorInterface $translator, $services = null)
     {
         $this->api = $api;
         $this->translator = $translator;
+        $this->services = $services;
     }
 
     public function getConfigFieldset(): ?\Laminas\Form\Fieldset
     {
-        $solrCores = $this->api->search('solr_cores')->getContent();
-        return new SolrConfigFieldset(null, ['solrCores' => $solrCores]);
+        // The whole solr configuration, including the index name for a shared
+        // core, is edited on the core page.
+        return null;
     }
 
     public function getAvailableFields(): array
@@ -340,21 +346,15 @@ class Solarium extends AbstractEngineAdapter
         return $indexed;
     }
 
-    public function getSolrCore(): ?SolrCoreRepresentation
+    /**
+     * The Solr core of the engine: a facet of the engine itself (connection
+     * and settings under "solr", maps by engine).
+     */
+    public function getSolrCore(): ?SolrCore
     {
-        if (!$this->searchEngine) {
+        if (!$this->searchEngine || !$this->services) {
             return null;
         }
-
-        $solrCoreId = $this->searchEngine->settingEngineAdapter('solr_core_id');
-        if (!$solrCoreId) {
-            return null;
-        }
-
-        try {
-            return $this->api->read('solr_cores', $solrCoreId)->getContent();
-        } catch (\Throwable $e) {
-            return null;
-        }
+        return new SolrCore($this->searchEngine, $this->services);
     }
 }

@@ -77,7 +77,7 @@ $(document).ready(function() {
             // Data Type Geometry.
             'geo[mode]',
             // Numeric Data Types
-             'numeric-toggle-time-checkbox',
+            'numeric-toggle-time-checkbox',
             'year',
             'month',
             'day',
@@ -329,7 +329,15 @@ $(document).ready(function() {
             sidebar.find('select.chosen-select option[value=""][selected]').prop('selected',  false).parent().trigger('chosen:updated');
             sidebar.find('select.chosen-select').trigger('chosen:update');
         }
-        Omeka.handleQueryTextInput(sidebar.find('.query-type'));
+        sidebar.find('.query-type').each(function() {
+            Omeka.handleQueryTextInput($(this));
+        });
+        // Init filter-search-index for sidebar so that new values added in
+        // sidebar get unique indexes.
+        const sidebarFilterQueries = sidebar.find('#filter-queries');
+        if (sidebarFilterQueries.length) {
+            sidebarFilterQueries.data('filter-search-index', sidebarFilterQueries.find('.value').length - 1);
+        }
     });
 
     /**

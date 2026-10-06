@@ -246,7 +246,7 @@ class SearchFilters extends AbstractHelper
                         }
                         $filters[$filterLabel][$this->urlQuery($key, $subKey)] = $noValue
                             ? $queryTypesLabels[$queryType]
-                            : implode(', ', $this->checkAndFlatArray($text));
+                            : implode(', ', array_filter($this->checkAndFlatArray($text), fn ($v) => $v !== '' && $v !== null));
                         ++$index;
                     }
                     break;
@@ -529,10 +529,10 @@ class SearchFilters extends AbstractHelper
 
                 case 'rft':
                     // TODO Label for rft search filter depends on the search config.
-                    $filterLabel = $value === 'record'
+                    $filterLabel = $translate('Search type'); // @translate
+                    $filters[$filterLabel][$this->urlQuery($key)] = $value === 'record'
                         ? $translate('Record only') // @translate
                         : $translate('Full text'); // @translate
-                    $filters[$filterLabel][$this->urlQuery($key)] = '';
                     break;
 
                 default:
@@ -585,8 +585,18 @@ class SearchFilters extends AbstractHelper
     {
         $view = $this->getView();
         $plugins = $view->getHelperPluginManager();
+        $api = $plugins->get('api');
         $translate = $plugins->get('translate');
         $dataTypeHelper = $plugins->get('dataType');
+
+        // Linked resource titles are displayed in the current site locale, so
+        // multilingual bounce-link filters show the right language. There is no
+        // site locale in admin, so the default title is kept there.
+        $status = $plugins->get('status');
+        $titleLocale = $status->isSiteRequest()
+            ? trim((string) $view->siteSetting('locale'))
+            : '';
+        $titleLocale = $titleLocale !== '' ? $titleLocale : null;
 
         $engineAdapter = $this->searchConfig ? $this->searchConfig->engineAdapter() : null;
         $availableFields = $engineAdapter
@@ -661,6 +671,20 @@ class SearchFilters extends AbstractHelper
             }
             // Do not store unknown ids (may be removed or private).
             $allResourceTitles = array_filter(array_column($qb->getQuery()->getScalarResult(), 'title', 'id'));
+
+            // Display linked resource titles in the site locale when available
+            // (fallback to the default title above), respecting each resource
+            // template title property.
+            if ($titleLocale) {
+                $defaultTitlePropertyId = (int) $plugins->get('easyMeta')()->propertyId('dcterms:title');
+                $allResourceTitles = $this->localizeResourceTitles(
+                    $entityManager->getConnection(),
+                    $allResourceTitles,
+                    $titleLocale,
+                    $defaultTitlePropertyId
+                );
+            }
+
             // Split results back into original variables.
             $linkIds = array_intersect_key($allResourceTitles, array_flip($linkIds));
             $vrIds = array_intersect_key($allResourceTitles, array_flip($vrIds));
@@ -693,8 +717,27 @@ class SearchFilters extends AbstractHelper
         }
 
         $queryTypesLabels = $this->getQueryTypesLabels();
-        $searchFormAdvancedLabels = array_column($searchFormSettings['advanced']['fields'] ?? [], 'label', 'value');
+        $searchFormAdvanced = $this->searchConfig ? $this->searchConfig->advancedFilterSettings() : [];
+        $searchFormAdvancedLabels = array_column($searchFormAdvanced['fields'] ?? [], 'label', 'value');
         $fieldFiltersLabels = array_replace($fieldLabels, array_filter($searchFormAdvancedLabels));
+
+        // Map of indexed value => admin-defined display label, per field. Used
+        // to replace raw values (e.g. "1") with readable text (e.g. "Only with
+        // image") in active filter chips, without touching the index or the
+        // querier. Applied identically for InternalQuerier and SolariumQuerier.
+        // Each filter config may carry inline value_labels and/or a
+        // value_labels_table (module Table) reference, both resolved here.
+        $valueLabelsByField = [];
+        foreach ($searchFormSettings['filters'] ?? [] as $filterConfig) {
+            $field = $filterConfig['field'] ?? null;
+            if (!is_string($field) || $field === '') {
+                continue;
+            }
+            $resolved = SearchResources::resolveValueLabels($filterConfig, $api);
+            if ($resolved) {
+                $valueLabelsByField[$field] = $resolved;
+            }
+        }
 
         $index = 0;
         foreach ($filterFilters as $subKey => $queryRow) {
@@ -787,7 +830,33 @@ class SearchFilters extends AbstractHelper
                 }
             }
 
-            $filters[$filterLabel][$this->urlQuery('filter', $subKey, !empty($queryRow['is_form_filter']))] = implode(', ', $vals);
+            $vals = array_filter($vals, fn ($v) => $v !== '' && $v !== null);
+
+            // Skip filters that have no displayable value (empty pill avoid).
+            if (!$vals && !$isWithoutValue) {
+                continue;
+            }
+
+            // Apply per-field value_labels mapping when defined. Multi-field
+            // filters merge labels of all referenced fields; first match wins.
+            $valueLabels = [];
+            foreach (is_array($queryFields) ? $queryFields : [$queryFields] as $qf) {
+                if ($qf !== null && $qf !== '' && !empty($valueLabelsByField[$qf]) && is_array($valueLabelsByField[$qf])) {
+                    $valueLabels += $valueLabelsByField[$qf];
+                }
+            }
+            if ($valueLabels) {
+                $vals = array_map(function ($v) use ($valueLabels, $translate) {
+                    $key = (string) $v;
+                    return array_key_exists($key, $valueLabels) && $valueLabels[$key] !== ''
+                        ? $translate($valueLabels[$key])
+                        : $v;
+                }, $vals);
+            }
+
+            $filters[$filterLabel][$this->urlQuery('filter', $subKey, !empty($queryRow['is_form_filter']))] = $isWithoutValue
+                ? ''
+                : implode(', ', $vals);
 
             if (!isset($queryRow['replaced_filter_key'])
                 && isset($queryRow['replaced_field'])
@@ -799,6 +868,65 @@ class SearchFilters extends AbstractHelper
         }
 
         return $filters;
+    }
+
+    /**
+     * Replace resource titles with their value in a given language when it
+     * exists, respecting each resource template title property (default
+     * dcterms:title). Resources without a localized title are left unchanged.
+     *
+     * A single query is used for all ids.
+     *
+     * @param array $resourceTitles Map of resource id => default title.
+     * @return array Same map, with localized titles where available.
+     */
+    protected function localizeResourceTitles(
+        \Doctrine\DBAL\Connection $connection,
+        array $resourceTitles,
+        string $locale,
+        int $defaultTitlePropertyId
+    ): array {
+        if (!$resourceTitles || $locale === '' || !$defaultTitlePropertyId) {
+            return $resourceTitles;
+        }
+
+        $sql = <<<'SQL'
+SELECT `value`.resource_id AS id, `value`.value AS title
+FROM `value`
+INNER JOIN resource ON resource.id = `value`.resource_id
+LEFT JOIN resource_template ON resource_template.id = resource.resource_template_id
+WHERE `value`.resource_id IN (:ids)
+    AND `value`.lang = :lang
+    AND `value`.value IS NOT NULL
+    AND `value`.property_id = COALESCE(resource_template.title_property_id, :defaultProp)
+ORDER BY `value`.id ASC
+SQL;
+        $rows = $connection->executeQuery(
+            $sql,
+            [
+                'ids' => array_keys($resourceTitles),
+                'lang' => $locale,
+                'defaultProp' => $defaultTitlePropertyId,
+            ],
+            [
+                'ids' => \Doctrine\DBAL\Connection::PARAM_INT_ARRAY,
+            ]
+        )->fetchAllAssociative();
+
+        $seen = [];
+        foreach ($rows as $row) {
+            $id = (int) $row['id'];
+            if (isset($seen[$id]) || !isset($resourceTitles[$id])) {
+                continue;
+            }
+            $title = trim((string) $row['title']);
+            if ($title !== '') {
+                $seen[$id] = true;
+                $resourceTitles[$id] = $title;
+            }
+        }
+
+        return $resourceTitles;
     }
 
     /**

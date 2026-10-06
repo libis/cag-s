@@ -438,10 +438,6 @@ class Harvest extends AbstractJob
 
         $meta = $elementTexts;
 
-
-
-        //$meta['o:item_set'] = ["o:id" => $setId];
-
         if ($args['endpoint'] == "https://repository.teneo.libis.be/oaiprovider/request"):
             $dcHeader = $record->header->identifier;
             $ie = explode(":", $dcHeader);

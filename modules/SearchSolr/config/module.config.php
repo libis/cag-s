@@ -5,7 +5,6 @@ namespace SearchSolr;
 return [
     'api_adapters' => [
         'invokables' => [
-            'solr_cores' => Api\Adapter\SolrCoreAdapter::class,
             'solr_maps' => Api\Adapter\SolrMapAdapter::class,
         ],
     ],
@@ -25,8 +24,8 @@ return [
     'form_elements' => [
         'invokables' => [
             Form\ConfigForm::class => Form\ConfigForm::class,
-            Form\Admin\SolrConfigFieldset::class => Form\Admin\SolrConfigFieldset::class,
             Form\Admin\SolrCoreMappingImportForm::class => Form\Admin\SolrCoreMappingImportForm::class,
+            Form\Admin\SolrCoreSyncForm::class => Form\Admin\SolrCoreSyncForm::class,
             Form\Admin\SourceFieldset::class => Form\Admin\SourceFieldset::class,
         ],
         'factories' => [
@@ -38,8 +37,6 @@ return [
         'factories' => [
             Controller\Admin\CoreController::class => Service\Controller\CoreControllerFactory::class,
             Controller\Admin\MapController::class => Service\Controller\MapControllerFactory::class,
-            Controller\ApiController::class => Service\Controller\ApiControllerFactory::class,
-            Controller\ApiLocalController::class => Service\Controller\ApiLocalControllerFactory::class,
         ],
     ],
     'service_manager' => [
@@ -51,37 +48,40 @@ return [
         ],
     ],
     'navigation' => [
-        'AdvancedSearchSolr' => [
-            'search' => [
-                // Copy of the first level of navigation from the config of the module Search.
-                // It avoids an error when Advanced Search is automatically disabled for upgrading. This errors occurs one time only anyway.
+        // Use the "Solr" page of the existing "Search manager" of the module AdvancedSearch.
+        // The first level of navigation is copied to avoids an error when Advanced Search
+        // is automatically disabled for upgrading. This errors occurs one time only anyway.
+        'AdminModule' => [
+            'advanced-search' => [
                 'label' => 'Search manager', // @translate
-                'route' => 'admin/search',
+                'route' => 'admin/search-manager',
                 'resource' => \AdvancedSearch\Controller\Admin\IndexController::class,
                 'privilege' => 'browse',
                 'class' => 'o-icon-search',
                 'pages' => [
                     [
-                        'label' => 'Solr', // @translate
-                        'route' => 'admin/search/solr',
+                        // The cores are managed in the table of the search
+                        // engines: no visible entry, but the hierarchy keeps
+                        // the menu active on the solr pages.
+                        'route' => 'admin/search-manager/solr',
                         'resource' => Controller\Admin\CoreController::class,
                         'privilege' => 'browse',
-                        // 'class' => 'o-icon-search',
+                        'visible' => false,
                         'pages' => [
                             [
-                                'route' => 'admin/search/solr/core',
+                                'route' => 'admin/search-manager/solr/core',
                                 'visible' => false,
                             ],
                             [
-                                'route' => 'admin/search/solr/core-id',
+                                'route' => 'admin/search-manager/solr/core-id',
                                 'visible' => false,
                             ],
                             [
-                                'route' => 'admin/search/solr/core-id-map-resource',
+                                'route' => 'admin/search-manager/solr/core-id-map-resource',
                                 'visible' => false,
                             ],
                             [
-                                'route' => 'admin/search/solr/core-id-map-resource-id',
+                                'route' => 'admin/search-manager/solr/core-id-map-resource-id',
                                 'visible' => false,
                             ],
                         ],
@@ -94,7 +94,10 @@ return [
         'routes' => [
             'admin' => [
                 'child_routes' => [
-                    'search' => [
+                    // The solr specific routes are merged under routes of module AdvancedSearch.
+                    // The first level of routing is copied to avoids an error when Advanced Search
+                    // is automatically disabled for upgrading. This errors occurs one time only anyway.
+                    'search-manager' => [
                         'type' => \Laminas\Router\Http\Literal::class,
                         'options' => [
                             'route' => '/search-manager',
@@ -179,38 +182,6 @@ return [
                     ],
                 ],
             ],
-            'api' => [
-                'child_routes' => [
-                    'search_solr' => [
-                        'type' => \Laminas\Router\Http\Segment::class,
-                        'options' => [
-                            'route' => '/:resource[/:id]',
-                            'constraints' => [
-                                'resource' => 'solr_cores|solr_maps',
-                            ],
-                            'defaults' => [
-                                'controller' => Controller\ApiController::class,
-                            ],
-                        ],
-                    ],
-                ],
-            ],
-            'api-local' => [
-                'child_routes' => [
-                    'search_solr' => [
-                        'type' => \Laminas\Router\Http\Segment::class,
-                        'options' => [
-                            'route' => '/:resource[/:id]',
-                            'constraints' => [
-                                'resource' => 'solr_cores|solr_maps',
-                            ],
-                            'defaults' => [
-                                'controller' => Controller\ApiLocalController::class,
-                            ],
-                        ],
-                    ],
-                ],
-            ],
         ],
     ],
     'translator' => [
@@ -247,6 +218,21 @@ return [
             'searchsolr_solarium_timeout' => 5,
             // Allow to share a server between multiple tools (drupal).
             'searchsolr_server_id' => null,
+            // At sync, a property whose average value length exceeds this gets
+            // only a full text index (_txt), without exact-value index
+            // (_ss/_s), useless for facets and filters on long texts.
+            'searchsolr_text_only_average_length' => 100,
+            // Minimum ratio of numeric values for a property to get a
+            // numeric index (_i/_is or _d/_ds) instead of a string one, with
+            // the source "datatypes" of the sync. The few values that are not
+            // numbers are dropped by the formatter.
+            'searchsolr_numeric_ratio' => 0.95,
+            // Byte limit of a value in an exact-value string field: beyond it,
+            // the sync excludes the property and the indexer skips the single
+            // value with a log (the document and its _txt fields are kept).
+            // Solr rejects the whole document beyond 32766 bytes (docValues),
+            // but an exact value has no use far below that limit.
+            'searchsolr_string_value_max_bytes' => 1000,
         ],
     ],
     'searchsolr_value_extractors' => [
@@ -263,11 +249,8 @@ return [
             'text' => ValueFormatter\Text::class,
             'boolean' => ValueFormatter\Boolean::class,
             'integer' => ValueFormatter\Integer::class,
+            'decimal' => ValueFormatter\Decimal::class,
             'date' => ValueFormatter\Date::class,
-            'date_range' => ValueFormatter\DateRange::class,
-            'edtf' => ValueFormatter\Edtf::class,
-            'edtf_date' => ValueFormatter\EdtfDate::class,
-            'edtf_year' => ValueFormatter\EdtfYear::class,
             'place' => ValueFormatter\Place::class,
             'point' => ValueFormatter\Point::class,
             'thesaurus' => ValueFormatter\Thesaurus::class,

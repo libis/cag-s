@@ -88,6 +88,8 @@ class IndexSuggestions extends AbstractJob
             'media' => \Omeka\Entity\Media::class,
             'value_annotations' => \Omeka\Entity\ValueAnnotation::class,
             'annotations' => \Annotate\Entity\Annotation::class,
+            'digital_objects' => \DigitalObject\Entity\DigitalObject::class,
+            'concepts' => \Thesaurus\Entity\Concept::class,
         ];
         $resourceClasses = array_intersect_key($mapResources, array_flip($resourceTypes));
         if (!$resourceClasses) {
@@ -158,6 +160,8 @@ class IndexSuggestions extends AbstractJob
             'media' => \Omeka\Entity\Media::class,
             'value_annotations' => \Omeka\Entity\ValueAnnotation::class,
             'annotations' => \Annotate\Entity\Annotation::class,
+            'digital_objects' => \DigitalObject\Entity\DigitalObject::class,
+            'concepts' => \Thesaurus\Entity\Concept::class,
         ];
         $resourceClasses = in_array('resources', $resourceTypes)
             ? []
@@ -217,7 +221,9 @@ class IndexSuggestions extends AbstractJob
                 PRIMARY KEY (`text`, `site_id`)
             ) DEFAULT CHARACTER SET utf8mb4 COLLATE `utf8mb4_bin` ENGINE = InnoDB;
             SQL;
-        $this->connection->executeStatement($sql);
+        foreach (array_filter(array_map('trim', explode(";\n", $sql))) as $sql) {
+            $this->connection->executeStatement($sql);
+        }
 
         // 1. Index global (site_id = 0): all resources (public + private).
         if ($indexAdmin) {
@@ -441,7 +447,9 @@ class IndexSuggestions extends AbstractJob
                 PRIMARY KEY (`text`, `site_id`)
             ) DEFAULT CHARACTER SET utf8mb4 COLLATE `utf8mb4_unicode_ci` ENGINE = InnoDB;
             SQL;
-        $this->connection->executeStatement($sql);
+        foreach (array_filter(array_map('trim', explode(";\n", $sql))) as $sql) {
+            $this->connection->executeStatement($sql);
+        }
 
         // For each case-insensitive group, find the variant with highest total
         // and insert it with summed totals.

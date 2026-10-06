@@ -18,6 +18,7 @@
 
 $plugins = $this->getHelperPluginManager();
 $translate = $plugins->get('translate');
+$formatNumber = $plugins->get('formatNumber');
 
 // Check if Mapping module is active and map display is enabled.
 $mapDisplayEnabled = (bool) $searchConfig->subSetting('results', 'map_display');
@@ -61,7 +62,11 @@ $showFacetsFieldLabel = (bool) $searchConfig->subSetting('results', 'active_face
 
 <?php // Active Facets. ?>
 
-<?php if (isset($displayParts['active_facets']) && $activeFacets = $response->getActiveFacets()): ?>
+<?php
+$activeFacets = $response->getActiveFacets();
+$hasRefineActive = trim((string) $query->getQueryRefine()) !== '';
+?>
+<?php if (isset($displayParts['active_facets']) && ($activeFacets || $hasRefineActive)): ?>
 <?php $facetActives = $plugins->get('facetActives'); ?>
 <?= $facetActives(null, $activeFacets, $searchConfig->setting('facet', []) + ['facets_mode' => $facetsMode, 'show_field_label' => $showFacetsFieldLabel]) ?>
 <?php endif; ?>
@@ -71,7 +76,7 @@ $showFacetsFieldLabel = (bool) $searchConfig->subSetting('results', 'active_face
 <?php if (isset($displayParts['total_results'])): ?>
 <div class="search-results-count-total">
     <?php $totalResults = $response->getTotalResults(); ?>
-    <?= sprintf($totalResults <= 1 ? $translate('%s resource') : $translate('%s resources'), $totalResults) ?>
+    <?= sprintf($totalResults <= 1 ? $translate('%s resource') : $translate('%s resources'), $formatNumber($totalResults)) ?>
 </div>
 <?php endif; ?>
 
@@ -110,13 +115,16 @@ $showFacetsFieldLabel = (bool) $searchConfig->subSetting('results', 'active_face
 <?php // Grid/list/map. // TODO Ideally, list/grid should be buttons but with a light design, like a link. Or a switch. ?>
 
 <?php if ($multiMode): ?>
-<div class="search-results-display">
-    <a class="search-view-type search-view-type-list<?= $gridListMode === 'list' ? ' active' : '' ?>" href="#"><?= $translate('list') ?></a>
-    |
-    <a class="search-view-type search-view-type-grid<?= in_array($gridListMode, ['grid', 'auto']) ? ' active' : '' ?>" href="#"><?= $translate('grid') ?></a>
+<?php $isList = $gridListMode === 'list'; ?>
+<?php $isGrid = in_array($gridListMode, ['grid', 'auto']); ?>
+<?php $isMap = $gridListMode === 'map'; ?>
+<div class="search-results-display" role="group" aria-label="<?= $this->escapeHtmlAttr($translate('Display mode')) ?>">
+    <a class="search-view-type search-view-type-list<?= $isList ? ' active' : '' ?>" href="#" role="button" aria-pressed="<?= $isList ? 'true' : 'false' ?>"><?= $translate('list') ?></a>
+    <span aria-hidden="true">|</span>
+    <a class="search-view-type search-view-type-grid<?= $isGrid ? ' active' : '' ?>" href="#" role="button" aria-pressed="<?= $isGrid ? 'true' : 'false' ?>"><?= $translate('grid') ?></a>
     <?php if ($showMapView): ?>
-    |
-    <a class="search-view-type search-view-type-map<?= $gridListMode === 'map' ? ' active' : '' ?>" href="#"><?= $translate('map') ?></a>
+    <span aria-hidden="true">|</span>
+    <a class="search-view-type search-view-type-map<?= $isMap ? ' active' : '' ?>" href="#" role="button" aria-pressed="<?= $isMap ? 'true' : 'false' ?>"><?= $translate('map') ?></a>
     <?php endif; ?>
 </div>
 <?php endif; ?>

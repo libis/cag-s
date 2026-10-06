@@ -32,14 +32,19 @@ namespace AdvancedSearch\Form\Admin;
 
 use AdvancedSearch\EngineAdapter\Internal;
 use Common\Form\Element as CommonElement;
+use Laminas\EventManager\Event;
+use Laminas\EventManager\EventManagerAwareInterface;
+use Laminas\EventManager\EventManagerAwareTrait;
 use Laminas\Form\Element;
 use Laminas\Form\Fieldset;
 use Laminas\Form\Form;
 use Laminas\Mvc\I18n\Translator;
 use Omeka\Form\Element as OmekaElement;
 
-class SearchConfigConfigureForm extends Form
+class SearchConfigConfigureForm extends Form implements EventManagerAwareInterface
 {
+    use EventManagerAwareTrait;
+
     /**
      * @var \Laminas\Form\FormElementManager
      */
@@ -170,27 +175,6 @@ class SearchConfigConfigureForm extends Form
                             STRING,
                 ],
             ])
-            ->add([
-                'name' => 'field_boosts',
-                'type' => OmekaElement\ArrayTextarea::class,
-                'options' => [
-                    'label' => 'Boost multipliers by index (Solr only)', // @translate
-                    'as_key_value' => true,
-                ],
-                'attributes' => [
-                    'id' => 'field_boosts',
-                    'required' => false,
-                    'rows' => 12,
-                    'placeholder' => <<<'STRING'
-                            dcterms_creator_ss = 100
-                            dcterms_creator_txt = 50
-                            dcterms_subject_ss = 10
-                            dcterms_subject_txt = 5
-                            dcterms_description_txt = 0.01
-                            bibo_content_txt = 0.001
-                            STRING,
-                ],
-            ])
         ;
 
         $this
@@ -225,7 +209,7 @@ class SearchConfigConfigureForm extends Form
                 'type' => Element\Text::class,
                 'options' => [
                     'label' => 'Default query', // @translate
-                    'info' => 'The format of the query depends on the search form and the search engine.', // @translated
+                    'info' => 'The format of the query depends on the search form and the search engine.', // @translate
                 ],
                 'attributes' => [
                     'id' => 'default_query',
@@ -236,7 +220,7 @@ class SearchConfigConfigureForm extends Form
                 'type' => Element\Text::class,
                 'options' => [
                     'label' => 'Complementary default query', // @translate
-                    'info' => 'Mainly used to specify a default sort when request is empty, but other args are possible (default pagination, selected facets…).', // @translated
+                    'info' => 'Mainly used to specify a default sort when request is empty, but other args are possible (default pagination, selected facets…).', // @translate
                 ],
                 'attributes' => [
                     'id' => 'default_query_post',
@@ -247,7 +231,7 @@ class SearchConfigConfigureForm extends Form
                 'type' => CommonElement\UrlQuery::class,
                 'options' => [
                     'label' => 'Hidden query filter to limit results', // @translate
-                    'info' => 'These args are appended to all queries. The format of the query depends on the search form and the search engine.', // @translated
+                    'info' => 'These args are appended to all queries. The format of the query depends on the search form and the search engine.', // @translate
                 ],
                 'attributes' => [
                     'id' => 'hidden_query_filters',
@@ -268,7 +252,7 @@ class SearchConfigConfigureForm extends Form
                 'type' => Element\Text::class,
                 'options' => [
                     'label' => 'Query default field', // @translate
-                    'info' => 'Optional. Specifies a default search field in case it is not made explicit in the query.', // @translated
+                    'info' => 'Optional. Specifies a default search field in case it is not made explicit in the query.', // @translate
                 ],
                 'attributes' => [
                     'id' => 'query_default_field',
@@ -295,6 +279,7 @@ class SearchConfigConfigureForm extends Form
                 ],
                 'attributes' => [
                     'id' => 'q_label',
+                    'data-common' => '1',
                     'required' => false,
                     'value' => 'Search', // @translate
                 ],
@@ -304,11 +289,12 @@ class SearchConfigConfigureForm extends Form
                 'type' => CommonElement\OptionalSelect::class,
                 'options' => [
                     'label' => 'Suggester', // @translate
-                    'value_options' => $this->suggesters,
+                    'value_options' => $this->getOption('suggesters') ?: $this->suggesters,
                     'empty_option' => '',
                 ],
                 'attributes' => [
                     'id' => 'q_suggester',
+                    'data-advanced-section' => $this->translator->translate('Autosuggestion'), // @translate
                     'multiple' => false,
                     'class' => 'chosen-select',
                     'data-placeholder' => ' ',
@@ -324,6 +310,7 @@ class SearchConfigConfigureForm extends Form
                 ],
                 'attributes' => [
                     'id' => 'q_suggest_url',
+                    'data-advanced-section' => $this->translator->translate('Autosuggestion'), // @translate
                 ],
             ])
             ->add([
@@ -335,6 +322,7 @@ class SearchConfigConfigureForm extends Form
                 ],
                 'attributes' => [
                     'id' => 'q_suggest_url_param_name',
+                    'data-advanced-section' => $this->translator->translate('Autosuggestion'), // @translate
                 ],
             ])
             ->add([
@@ -345,6 +333,7 @@ class SearchConfigConfigureForm extends Form
                 ],
                 'attributes' => [
                     'id' => 'q_suggest_fill_input',
+                    'data-advanced-section' => $this->translator->translate('Autosuggestion'), // @translate
                 ],
             ])
             ->add([
@@ -355,6 +344,7 @@ class SearchConfigConfigureForm extends Form
                 ],
                 'attributes' => [
                     'id' => 'q_remove_diacritics',
+                    'data-advanced-section' => $this->translator->translate('Query processing'), // @translate
                 ],
             ])
         ;
@@ -373,6 +363,7 @@ class SearchConfigConfigureForm extends Form
                     ],
                     'attributes' => [
                         'id' => 'q_default_search_partial_word',
+                    'data-advanced-section' => $this->translator->translate('Query processing'), // @translate
                     ],
                 ])
             ;
@@ -387,23 +378,35 @@ class SearchConfigConfigureForm extends Form
                     'label' => 'Options', // @translate
                     'info' => 'List of specific Omeka and Laminas options.', // @translate
                     'ini_typed_mode' => true,
+                    'pairs_editor' => [
+                        'key_label' => $this->translator->translate('Option'), // @translate
+                        'value_label' => $this->translator->translate('Value'), // @translate
+                        'sortable' => false,
+                    ],
                 ],
                 'attributes' => [
                     'id' => 'q_options',
+                    'data-advanced-section' => $this->translator->translate('Advanced'), // @translate
                     'required' => false,
                     'placeholder' => '',
                 ],
             ])
             ->add([
-                'type' => CommonElement\IniTextarea::class,
+                'type' => CommonElement\ArrayTextarea::class,
                 'name' => 'attributes',
                 'options' => [
                     'label' => 'Html attributes', // @translate
                     'info' => 'Attributes to add to the input field, for example `class = "my-specific-class"`, data, etc.', // @translate
-                    'ini_typed_mode' => true,
+                    'as_key_value' => true,
+                    'key_value_separator' => '=',
+                    'pairs_editor' => [
+                        'key_label' => $this->translator->translate('Attribute'), // @translate
+                        'value_label' => $this->translator->translate('Value'), // @translate
+                    ],
                 ],
                 'attributes' => [
                     'id' => 'q_attributes',
+                    'data-advanced-section' => $this->translator->translate('Advanced'), // @translate
                     'required' => false,
                     'placeholder' => '',
                 ],
@@ -414,6 +417,7 @@ class SearchConfigConfigureForm extends Form
         /** @var \AdvancedSearch\Form\Admin\SearchConfigFilterFieldset $filterFieldset */
         $filterFieldset = $this->formElementManager->get(SearchConfigFilterFieldset::class, [
             'search_config' => $searchConfig,
+            'translator' => $this->translator,
         ]);
 
         $this
@@ -434,6 +438,8 @@ class SearchConfigConfigureForm extends Form
                 ],
                 'attributes' => [
                     'id' => 'button_submit',
+                    'data-common' => '1',
+                    'data-inline' => 'submit',
                     'value' => true,
                 ],
             ])
@@ -445,6 +451,9 @@ class SearchConfigConfigureForm extends Form
                 ],
                 'attributes' => [
                     'id' => 'label_submit',
+                    'data-common' => '1',
+                    'data-inline' => 'submit',
+                    'data-show-if' => 'button_submit',
                     'required' => false,
                     'value' => 'Search', // @translate
                     'placeholder' => 'Search', // @translate
@@ -458,6 +467,8 @@ class SearchConfigConfigureForm extends Form
                 ],
                 'attributes' => [
                     'id' => 'button_reset',
+                    'data-common' => '1',
+                    'data-inline' => 'reset',
                 ],
             ])
             ->add([
@@ -468,6 +479,9 @@ class SearchConfigConfigureForm extends Form
                 ],
                 'attributes' => [
                     'id' => 'label_reset',
+                    'data-common' => '1',
+                    'data-inline' => 'reset',
+                    'data-show-if' => 'button_reset',
                     'required' => false,
                     'value' => 'Reset fields', // @translate
                     'placeholder' => 'Reset fields', // @translate
@@ -481,88 +495,16 @@ class SearchConfigConfigureForm extends Form
                 ],
                 'attributes' => [
                     'id' => 'attribute_form',
+                    'data-advanced-section' => $this->translator->translate('Advanced'), // @translate
                 ],
             ])
             // TODO Make option "rft" a standard filter.
             ->add([
-                'name' => 'rft',
-                'type' => CommonElement\OptionalRadio::class,
-                'options' => [
-                    'label' => 'Add a button to search record or full text (for content not stored in a property)', // @translate
-                    'value_options' => [
-                        '' => 'None', // @translate
-                        'fulltext_checkbox' => 'Check box "Search full text"', // @translate
-                        'record_checkbox' => 'Check box "Record only"', // @translate
-                        'fulltext_radio' => 'Radio "Full text" and "Record only"', // @translate
-                        'record_radio' => 'Radio "Record only" and "Full text"', // @translate
-                    ],
-                ],
-                'attributes' => [
-                    'id' => 'rft',
-                    'value' => '',
-                ],
-            ])
-            ->add([
-                'name' => 'quick_filter',
-                'type' => CommonElement\OptionalSelect::class,
-                'options' => [
-                    'label' => 'Quick filter next to main search field', // @translate
-                    'value_options' => $engineAdapter
-                        ? $engineAdapter->getAvailableFieldsForSelect()
-                        : [],
-                    'empty_option' => '',
-                ],
-                'attributes' => [
-                    'id' => 'form_quick_filter',
-                    'class' => 'chosen-select',
-                    'data-placeholder' => 'Set field or index…', // @translate
-                ],
-            ])
-            ->add([
-                'name' => 'quick_filter_label',
-                'type' => Element\Text::class,
-                'options' => [
-                    'label' => 'Quick filter label', // @translate
-                ],
-                'attributes' => [
-                    'id' => 'form_quick_filter_label',
-                ],
-            ])
-            ->add([
-                'name' => 'quick_filter_values',
-                'type' => OmekaElement\ArrayTextarea::class,
-                'options' => [
-                    'label' => 'Quick filter predefined values', // @translate
-                    'info' => 'If empty, all values are fetched from the index.', // @translate
-                    'as_key_value' => true,
-                ],
-                'attributes' => [
-                    'id' => 'form_quick_filter_values',
-                    'rows' => 5,
-                    'placeholder' => <<<TXT
-                        = All
-                        Object = Objects
-                        Person = Persons
-                        Place = Places
-                        TXT,
-                ],
-            ])
-            ->add([
-                'name' => 'quick_filter_advanced',
-                'type' => Element\Checkbox::class,
-                'options' => [
-                    'label' => 'Display quick filter on advanced form', // @translate
-                ],
-                'attributes' => [
-                    'id' => 'form_quick_filter_advanced',
-                ],
-            ])
-            ->add([
                 'name' => 'filters',
                 'type' => Element\Collection::class,
                 'options' => [
-                    'label' => 'Filters', // @ŧranslate
-                    'info' => 'List of filters that will be displayed in the search form, formatted as ini. The section is a unique name. Main keys are: field, label and type.', // @translate
+                    'label' => 'Filters', // @translate
+                    'info' => 'The filters are the fields of the search form, used before submitting the search.', // @translate
                     'count' => 0,
                     'allow_add' => true,
                     'allow_remove' => true,
@@ -575,7 +517,8 @@ class SearchConfigConfigureForm extends Form
                     'id' => 'form_filters',
                     'required' => false,
                     'class' => 'form-fieldset-collection',
-                    'data-label-index' => $this->translator->translate('Filter {index}'), // @ŧranslate
+                    'data-label-index' => $this->translator->translate('Filter {index}'), // @translate
+                    'data-label-new' => $this->translator->translate('New filter'), // @translate
                 ],
             ])
             ->add([
@@ -597,138 +540,9 @@ class SearchConfigConfigureForm extends Form
                 ],
             ])
 
-            // Advanced is a sub-fieldset of form.
-            ->add([
-                'name' => 'advanced',
-                'type' => Fieldset::class,
-                'options' => [
-                    'label' => 'Configuration of the element "Advanced filters"', // @translate
-                ],
-            ])
-            ->get('advanced')
-            ->add([
-                'name' => 'default_number',
-                'type' => Element\Number::class,
-                'options' => [
-                    'label' => 'Number of advanced filters to display', // @translate
-                    'info' => 'The filters may be managed via js for a better display.', // @translate
-                ],
-                'attributes' => [
-                    'id' => 'default_number',
-                    'required' => false,
-                    'value' => '1',
-                    'min' => '0',
-                    // A mysql query supports 61 arguments maximum.
-                    'max' => '49',
-                    'step' => '1',
-                ],
-            ])
-            ->add([
-                'name' => 'max_number',
-                'type' => Element\Number::class,
-                'options' => [
-                    'label' => 'Maximum number of advanced filters to display', // @translate
-                ],
-                'attributes' => [
-                    'id' => 'max_number',
-                    'required' => false,
-                    'value' => '10',
-                    'min' => '0',
-                    // A mysql query supports 61 arguments maximum.
-                    'max' => '49',
-                    'step' => '1',
-                ],
-            ])
-            ->add([
-                'name' => 'field_joiner',
-                'type' => Element\Checkbox::class,
-                'options' => [
-                    'label' => 'Add the joiner ("and" or "or") to the advanced filters', // @translate
-                ],
-                'attributes' => [
-                    'id' => 'field_joiner',
-                ],
-            ])
-            ->add([
-                'name' => 'field_joiner_not',
-                'type' => Element\Checkbox::class,
-                'options' => [
-                    'label' => 'Add the joiner "not" to the advanced filters', // @translate
-                ],
-                'attributes' => [
-                    'id' => 'field_joiner_not',
-                ],
-            ])
-            ->add([
-                'name' => 'field_operator',
-                'type' => Element\Checkbox::class,
-                'options' => [
-                    'label' => 'Add the operator ("equal", "in", etc.) to the advanced filters', // @translate
-                ],
-                'attributes' => [
-                    'id' => 'field_operator',
-                ],
-            ])
-            ->add([
-                'name' => 'field_operators',
-                'type' => OmekaElement\ArrayTextarea::class,
-                'options' => [
-                    'label' => 'List of operators', // @translate
-                    'info' => 'The default list is the full list available in advanced standard search form. Negative operators are removed when the joiner "not" is used.', // @translate
-                    'as_key_value' => true,
-                    'key_value_separator' => '=',
-                ],
-                'attributes' => [
-                    'id' => 'field_operators',
-                    'rows' => 12,
-                    // This placeholder does not contain all query types.
-                    'placeholder' => <<<'STRING'
-                        eq = is exactly
-                        in = contains
-                        sw = starts with
-                        ew = ends with
-                        STRING, // @translate
-                ],
-            ])
-            ->add([
-                'name' => 'field_value_autosuggest',
-                'type' => Element\Checkbox::class,
-                'options' => [
-                    'label' => 'Enable autocompletion on filter values', // @translate
-                    'info' => 'Requires module Reference (database values) or SearchSolr (indexed values).', // @translate
-                ],
-                'attributes' => [
-                    'id' => 'field_value_autosuggest',
-                ],
-            ])
-            ->add([
-                'name' => 'fields',
-                'type' => CommonElement\DataTextarea::class,
-                'options' => [
-                    'label' => 'Fields', // @translate
-                    'info' => 'List of filters that will be displayed in the search form. Format is "term or field = Label".', // @translate
-                    'as_key_value' => true,
-                    'key_value_separator' => '=',
-                    'data_options' => [
-                        'value' => null,
-                        'label' => null,
-                    ],
-                ],
-                'attributes' => [
-                    'id' => 'fields',
-                    // field (term) = label (order means weight).
-                    'placeholder' => 'dcterms:title = Title',
-                    'rows' => 12,
-                ],
-            ])
         ;
 
         // Settings for the results.
-
-        /** @var \AdvancedSearch\Form\Admin\SearchConfigSortFieldset $sortFieldset */
-        $sortFieldset = $this->formElementManager->get(SearchConfigSortFieldset::class, [
-            'search_config' => $searchConfig,
-        ]);
 
         $this
             ->add([
@@ -747,6 +561,8 @@ class SearchConfigConfigureForm extends Form
                 ],
                 'attributes' => [
                     'id' => 'results_label_default',
+                    'data-subtab' => 'general',
+                    'data-advanced-section' => $this->translator->translate('Labels'), // @translate
                     'value' => 'Search', // @translate
                     'required' => false,
                 ],
@@ -759,6 +575,8 @@ class SearchConfigConfigureForm extends Form
                 ],
                 'attributes' => [
                     'id' => 'results_label_results',
+                    'data-subtab' => 'general',
+                    'data-advanced-section' => $this->translator->translate('Labels'), // @translate
                     'value' => 'Search results', // @translate
                     'required' => false,
                 ],
@@ -771,6 +589,8 @@ class SearchConfigConfigureForm extends Form
                 ],
                 'attributes' => [
                     'id' => 'results_label_no_results',
+                    'data-subtab' => 'general',
+                    'data-advanced-section' => $this->translator->translate('Labels'), // @translate
                     'value' => 'No results', // @translate
                     'required' => false,
                 ],
@@ -783,17 +603,21 @@ class SearchConfigConfigureForm extends Form
                 ],
                 'attributes' => [
                     'id' => 'by_resource_type',
+                    'data-subtab' => 'general',
+                    'data-common' => '1',
                 ],
             ])
             ->add([
                 'name' => 'template',
                 'type' => Element\Text::class,
                 'options' => [
-                    'label' => 'Template', // @translate
-                    'info' => 'The template to use in your theme. Default is search/search.', // @translate
+                    'label' => 'Theme template (phtml file)', // @translate
+                    'info' => 'The template of the theme used to render the page. Default is search/search. Rarely used.', // @translate
                 ],
                 'attributes' => [
                     'id' => 'template',
+                    'data-subtab' => 'general',
+                    'data-advanced-section' => $this->translator->translate('Advanced'), // @translate
                 ],
             ])
             ->add([
@@ -805,6 +629,8 @@ class SearchConfigConfigureForm extends Form
                 ],
                 'attributes' => [
                     'id' => 'autoscroll',
+                    'data-subtab' => 'general',
+                    'data-advanced-section' => $this->translator->translate('Advanced'), // @translate
                 ],
             ])
             ->add([
@@ -815,6 +641,8 @@ class SearchConfigConfigureForm extends Form
                 ],
                 'attributes' => [
                     'id' => 'breadcrumbs',
+                    'data-subtab' => 'general',
+                    'data-common' => '1',
                 ],
             ])
             ->add([
@@ -831,6 +659,8 @@ class SearchConfigConfigureForm extends Form
                 ],
                 'attributes' => [
                     'id' => 'search_filters',
+                    'data-subtab' => 'header',
+                    'data-common' => '1',
                     'value' => 'header',
                 ],
             ])
@@ -850,6 +680,8 @@ class SearchConfigConfigureForm extends Form
                 ],
                 'attributes' => [
                     'id' => 'search_filters_mode',
+                    'data-subtab' => 'header',
+                    'data-advanced-section' => $this->translator->translate('Used filters'), // @translate
                     'value' => 'link_remove',
                 ],
             ])
@@ -869,6 +701,8 @@ class SearchConfigConfigureForm extends Form
                 ],
                 'attributes' => [
                     'id' => 'active_facets_mode',
+                    'data-subtab' => 'header',
+                    'data-advanced-section' => $this->translator->translate('Used facets'), // @translate
                     'value' => 'link_remove',
                 ],
             ])
@@ -880,6 +714,8 @@ class SearchConfigConfigureForm extends Form
                 ],
                 'attributes' => [
                     'id' => 'search_filters_field_label',
+                    'data-subtab' => 'header',
+                    'data-advanced-section' => $this->translator->translate('Used filters'), // @translate
                     'value' => '1',
                 ],
             ])
@@ -897,6 +733,8 @@ class SearchConfigConfigureForm extends Form
                 ],
                 'attributes' => [
                     'id' => 'active_facets',
+                    'data-subtab' => 'header',
+                    'data-common' => '1',
                     'value' => 'none',
                 ],
             ])
@@ -908,6 +746,8 @@ class SearchConfigConfigureForm extends Form
                 ],
                 'attributes' => [
                     'id' => 'active_facets_field_label',
+                    'data-subtab' => 'header',
+                    'data-advanced-section' => $this->translator->translate('Used facets'), // @translate
                     'value' => '1',
                 ],
             ])
@@ -925,6 +765,8 @@ class SearchConfigConfigureForm extends Form
                 ],
                 'attributes' => [
                     'id' => 'total_results',
+                    'data-subtab' => 'header',
+                    'data-common' => '1',
                     'value' => 'header',
                 ],
             ])
@@ -932,7 +774,7 @@ class SearchConfigConfigureForm extends Form
                 'name' => 'search_form_simple',
                 'type' => CommonElement\OptionalRadio::class,
                 'options' => [
-                    'label' => 'Search form simple', // @translate
+                    'label' => 'Simple search form (main field only)', // @translate
                     'value_options' => [
                         'none' => 'No', // @translate
                         'header' => 'Results header', // @translate
@@ -942,6 +784,8 @@ class SearchConfigConfigureForm extends Form
                 ],
                 'attributes' => [
                     'id' => 'search_form_simple',
+                    'data-subtab' => 'header',
+                    'data-common' => '1',
                     'value' => 'none',
                 ],
             ])
@@ -949,7 +793,7 @@ class SearchConfigConfigureForm extends Form
                 'name' => 'search_form_quick',
                 'type' => CommonElement\OptionalRadio::class,
                 'options' => [
-                    'label' => 'Search form quick', // @translate
+                    'label' => 'Quick search form (main field only, alternative style)', // @translate
                     'value_options' => [
                         'none' => 'No', // @translate
                         'header' => 'Results header', // @translate
@@ -959,6 +803,8 @@ class SearchConfigConfigureForm extends Form
                 ],
                 'attributes' => [
                     'id' => 'search_form_quick',
+                    'data-subtab' => 'header',
+                    'data-common' => '1',
                     'value' => 'none',
                 ],
             ])
@@ -976,6 +822,8 @@ class SearchConfigConfigureForm extends Form
                 ],
                 'attributes' => [
                     'id' => 'paginator',
+                    'data-subtab' => 'header',
+                    'data-common' => '1',
                     'value' => 'header',
                 ],
             ])
@@ -993,6 +841,8 @@ class SearchConfigConfigureForm extends Form
                 ],
                 'attributes' => [
                     'id' => 'per_page',
+                    'data-subtab' => 'header',
+                    'data-common' => '1',
                     'value' => 'header',
                 ],
             ])
@@ -1010,6 +860,8 @@ class SearchConfigConfigureForm extends Form
                 ],
                 'attributes' => [
                     'id' => 'sort',
+                    'data-subtab' => 'header',
+                    'data-common' => '1',
                     'value' => 'header',
                 ],
             ])
@@ -1027,6 +879,8 @@ class SearchConfigConfigureForm extends Form
                 ],
                 'attributes' => [
                     'id' => 'grid_list',
+                    'data-subtab' => 'header',
+                    'data-common' => '1',
                     'value' => 'header',
                 ],
             ])
@@ -1045,6 +899,8 @@ class SearchConfigConfigureForm extends Form
                 ],
                 'attributes' => [
                     'id' => 'grid_list_mode',
+                    'data-subtab' => 'header',
+                    'data-common' => '1',
                     'value' => 'auto',
                 ],
             ])
@@ -1057,6 +913,8 @@ class SearchConfigConfigureForm extends Form
                 ],
                 'attributes' => [
                     'id' => 'map_display',
+                    'data-subtab' => 'general',
+                    'data-common' => '1',
                 ],
             ])
             ->add([
@@ -1072,6 +930,8 @@ class SearchConfigConfigureForm extends Form
                 ],
                 'attributes' => [
                     'id' => 'thumbnail_mode',
+                    'data-subtab' => 'card',
+                    'data-common' => '1',
                     'value' => 'default',
                 ],
             ])
@@ -1084,6 +944,8 @@ class SearchConfigConfigureForm extends Form
                 ],
                 'attributes' => [
                     'id' => 'thumbnail_type',
+                    'data-subtab' => 'card',
+                    'data-common' => '1',
                     'value' => 'medium',
                 ],
             ])
@@ -1095,17 +957,35 @@ class SearchConfigConfigureForm extends Form
                 ],
                 'attributes' => [
                     'id' => 'allow_html',
+                    'data-subtab' => 'card',
+                    'data-common' => '1',
                 ],
             ])
             ->add([
                 'name' => 'properties',
-                'type' => OmekaElement\ArrayTextarea::class,
+                'type' => CommonElement\ArrayTextarea::class,
                 'options' => [
                     'label' => 'Properties to display for each result', // @translate
-                    'info' => 'List of property terms to display below each result, one by line.', // @translate
+                    'info' => 'The values of these properties are displayed below each result, in this order. The label of the property is used when no label is set.', // @translate
+                    'as_key_value' => true,
+                    'key_value_separator' => '=',
+                    'pairs_editor' => [
+                        'keys' => [
+                            'header' => $this->translator->translate('Title (heading)'), // @translate
+                            'body' => $this->translator->translate('Description (body)'), // @translate
+                        ],
+                        'key_source' => '#form_filter_field',
+                        'key_skip' => ['advanced'],
+                        'key_pattern' => '^[a-zA-Z][a-zA-Z0-9]*:[a-zA-Z][a-zA-Z0-9]*$',
+                        'key_label' => $this->translator->translate('Property'), // @translate
+                        'value_label' => $this->translator->translate('Label (optional)'), // @translate
+                        'key_fill' => false,
+                    ],
                 ],
                 'attributes' => [
                     'id' => 'properties',
+                    'data-subtab' => 'card',
+                    'data-common' => '1',
                     'rows' => 5,
                     'placeholder' => <<<'TXT'
                         dcterms:creator
@@ -1115,22 +995,33 @@ class SearchConfigConfigureForm extends Form
                 ],
             ])
             ->add([
-                'name' => 'facets',
-                'type' => CommonElement\OptionalRadio::class,
+                'name' => 'properties_grid',
+                'type' => CommonElement\ArrayTextarea::class,
                 'options' => [
-                    'label' => 'Block of facets', // @translate
-                    'value_options' => [
-                        'none' => 'No', // @translate
-                        'before' => 'Before results', // @translate
-                        'after' => 'After results', // @translate
+                    'label' => 'Properties to display in grid mode, when different', // @translate
+                    'info' => 'A grid card is smaller: it may display fewer properties. Leave empty to use the same list.', // @translate
+                    'as_key_value' => true,
+                    'key_value_separator' => '=',
+                    'pairs_editor' => [
+                        'keys' => [
+                            'header' => $this->translator->translate('Title (heading)'), // @translate
+                            'body' => $this->translator->translate('Description (body)'), // @translate
+                        ],
+                        'key_source' => '#form_filter_field',
+                        'key_skip' => ['advanced'],
+                        'key_pattern' => '^[a-zA-Z][a-zA-Z0-9]*:[a-zA-Z][a-zA-Z0-9]*$',
+                        'key_label' => $this->translator->translate('Property'), // @translate
+                        'value_label' => $this->translator->translate('Label (optional)'), // @translate
+                        'key_fill' => false,
                     ],
                 ],
                 'attributes' => [
-                    'id' => 'facets',
-                    'value' => 'before',
+                    'id' => 'properties_grid',
+                    'data-subtab' => 'card',
+                    'data-common' => '1',
+                    'rows' => 5,
                 ],
             ])
-
             ->add([
                 'name' => 'pagination_per_page',
                 'type' => CommonElement\OptionalNumber::class,
@@ -1139,6 +1030,8 @@ class SearchConfigConfigureForm extends Form
                 ],
                 'attributes' => [
                     'id' => 'pagination_per_page',
+                    'data-subtab' => 'header',
+                    'data-advanced-section' => $this->translator->translate('Pagination'), // @translate
                     'required' => false,
                     'value' => '0',
                     'min' => '0',
@@ -1151,14 +1044,20 @@ class SearchConfigConfigureForm extends Form
 
             ->add([
                 'name' => 'per_page_list',
-                'type' => OmekaElement\ArrayTextarea::class,
+                'type' => CommonElement\ArrayTextarea::class,
                 'options' => [
                     'label' => 'Labels for results per page', // @translate
                     'as_key_value' => true,
                     'key_value_separator' => '=',
+                    'pairs_editor' => [
+                        'key_label' => $this->translator->translate('Number'), // @translate
+                        'value_label' => $this->translator->translate('Label'), // @translate
+                    ],
                 ],
                 'attributes' => [
                     'id' => 'per_page_list',
+                    'data-subtab' => 'header',
+                    'data-advanced-section' => $this->translator->translate('Pagination'), // @translate
                     'placeholder' => <<<'STRING'
                         10 = Results by 10
                         25 = Results by 25
@@ -1178,46 +1077,31 @@ class SearchConfigConfigureForm extends Form
                 ],
                 'attributes' => [
                     'id' => 'label_sort',
+                    'data-subtab' => 'header',
+                    'data-advanced-section' => $this->translator->translate('Sort'), // @translate
                 ],
             ])
 
             ->add([
-                'type' => Element\Collection::class,
                 'name' => 'sort_list',
+                'type' => CommonElement\ArrayTextarea::class,
                 'options' => [
-                    'label' => 'Sort selector', // @ŧranslate
-                    'info' => 'List of sort field that will be displayed in the results.', // @translate
-                    'count' => 0,
-                    'allow_add' => true,
-                    'allow_remove' => true,
-                    'should_create_template' => true,
-                    'template_placeholder' => '__index__',
-                    'create_new_objects' => true,
-                    'target_element' => $sortFieldset,
+                    'label' => 'Sort selector', // @translate
+                    'info' => 'The sort options offered to the visitor, in this order. Format is "field direction = label".', // @translate
+                    'as_key_value' => true,
+                    'key_value_separator' => '=',
+                    'pairs_editor' => [
+                        'keys' => $this->availableSortFieldsFlat($searchConfig),
+                        'key_label' => $this->translator->translate('Sort field'), // @translate
+                        'value_label' => $this->translator->translate('Label'), // @translate
+                    ],
                 ],
                 'attributes' => [
                     'id' => 'sort_list',
-                    'required' => false,
-                    'class' => 'form-fieldset-collection',
-                    'data-label-index' => $this->translator->translate('Sort {index}'), // @ŧranslate
-                ],
-            ])
-            ->add([
-                'name' => 'plus',
-                'type' => Element\Button::class,
-                'options' => [
-                    'label' => ' ',
-                    'label_options' => [
-                        'disable_html_escape' => true,
-                    ],
-                    'label_attributes' => [
-                        'class' => 'config-fieldset-action-label',
-                    ],
-                ],
-                'attributes' => [
-                    // Don't use o-icon-add.
-                    'class' => 'config-fieldset-action config-fieldset-plus fa fa-plus add-value button',
-                    'aria-label' => 'Add a sort option', // @translate
+                    'data-subtab' => 'header',
+                    'data-advanced-section' => $this->translator->translate('Sort'), // @translate
+                    'rows' => 6,
+                    'placeholder' => 'dcterms:date asc = Date',
                 ],
             ])
         ;
@@ -1228,6 +1112,7 @@ class SearchConfigConfigureForm extends Form
         /** @var \AdvancedSearch\Form\Admin\SearchConfigFacetFieldset $facetFieldset */
         $facetFieldset = $this->formElementManager->get(SearchConfigFacetFieldset::class, [
             'search_config' => $searchConfig,
+            'translator' => $this->translator,
         ]);
 
         $this
@@ -1247,6 +1132,7 @@ class SearchConfigConfigureForm extends Form
                 ],
                 'attributes' => [
                     'id' => 'facet_label_facets',
+                    'data-common' => '1',
                     'value' => 'Facets',
                     'required' => false,
                 ],
@@ -1259,8 +1145,26 @@ class SearchConfigConfigureForm extends Form
                 ],
                 'attributes' => [
                     'id' => 'facet_label_no_facets',
+                    'data-advanced-section' => $this->translator->translate('Display'), // @translate
                     'value' => 'No facets', // @translate
                     'required' => false,
+                ],
+            ])
+            ->add([
+                'name' => 'position',
+                'type' => CommonElement\OptionalRadio::class,
+                'options' => [
+                    'label' => 'Position of the block of facets', // @translate
+                    'value_options' => [
+                        'none' => 'No', // @translate
+                        'before' => 'Left of the results', // @translate
+                        'after' => 'Right of the results', // @translate
+                    ],
+                ],
+                'attributes' => [
+                    'id' => 'facet_position',
+                    'data-common' => '1',
+                    'value' => 'before',
                 ],
             ])
             ->add([
@@ -1276,6 +1180,7 @@ class SearchConfigConfigureForm extends Form
                 ],
                 'attributes' => [
                     'id' => 'facet_mode',
+                    'data-common' => '1',
                     'required' => false,
                     'value' => 'button',
                 ],
@@ -1284,15 +1189,16 @@ class SearchConfigConfigureForm extends Form
                 'name' => 'list',
                 'type' => CommonElement\OptionalRadio::class,
                 'options' => [
-                    'label' => 'List of facets', // @translate
-                    'info' => 'With the internal search engine, the option "all facets" may be slow when there are facets and filters for item sets or sites.', // @translate
+                    'label' => 'Values displayed in each facet', // @translate
+                    'info' => 'With the internal search engine, the option "all values" may be slow when there are facets and filters for item sets or sites.', // @translate
                     'value_options' => [
-                        'available' => 'Available facets only', // @translate
-                        'all' => 'All facets, even with 0 results (see info)', // @translate
+                        'available' => 'Values with results only', // @translate
+                        'all' => 'All values, even with 0 results (see info)', // @translate
                     ],
                 ],
                 'attributes' => [
                     'id' => 'facet_list',
+                    'data-advanced-section' => $this->translator->translate('Display'), // @translate
                     'required' => false,
                     'value' => 'available',
                 ],
@@ -1305,6 +1211,7 @@ class SearchConfigConfigureForm extends Form
                 ],
                 'attributes' => [
                     'id' => 'facet_display_active',
+                    'data-advanced-section' => $this->translator->translate('Used facets'), // @translate
                     'required' => false,
                     'value' => true,
                 ],
@@ -1317,6 +1224,7 @@ class SearchConfigConfigureForm extends Form
                 ],
                 'attributes' => [
                     'id' => 'facet_display_active_field_label',
+                    'data-advanced-section' => $this->translator->translate('Used facets'), // @translate
                     'required' => false,
                     'value' => false,
                 ],
@@ -1329,6 +1237,7 @@ class SearchConfigConfigureForm extends Form
                 ],
                 'attributes' => [
                     'id' => 'facet_label_active_facets',
+                    'data-advanced-section' => $this->translator->translate('Used facets'), // @translate
                     'value' => 'Active facets', // @translate
                 ],
             ])
@@ -1346,6 +1255,7 @@ class SearchConfigConfigureForm extends Form
                 ],
                 'attributes' => [
                     'id' => 'facet_display_submit',
+                    'data-common' => '1',
                     'required' => false,
                     'value' => 'above',
                 ],
@@ -1358,6 +1268,7 @@ class SearchConfigConfigureForm extends Form
                 ],
                 'attributes' => [
                     'id' => 'facet_label_submit',
+                    'data-common' => '1',
                     'required' => false,
                     'value' => 'Apply facets', // @translate
                     'placeholder' => 'Apply facets', // @translate
@@ -1377,6 +1288,7 @@ class SearchConfigConfigureForm extends Form
                 ],
                 'attributes' => [
                     'id' => 'facet_display_reset',
+                    'data-common' => '1',
                     'required' => false,
                     'value' => 'above',
                 ],
@@ -1389,9 +1301,28 @@ class SearchConfigConfigureForm extends Form
                 ],
                 'attributes' => [
                     'id' => 'facet_label_reset',
+                    'data-common' => '1',
                     'required' => false,
                     'value' => 'Reset facets', // @translate
                     'placeholder' => 'Reset facets', // @translate
+                ],
+            ])
+            ->add([
+                'name' => 'display_expand_all',
+                'type' => CommonElement\OptionalRadio::class,
+                'options' => [
+                    'label' => 'Global "Expand all / Collapse all" toggle above facets', // @translate
+                    'value_options' => [
+                        'none' => 'None', // @translate
+                        'expand' => 'Display toggle, expand all by default', // @translate
+                        'collapse' => 'Display toggle, collapse all by default', // @translate
+                    ],
+                ],
+                'attributes' => [
+                    'id' => 'facet_display_expand_all',
+                    'data-advanced-section' => $this->translator->translate('Display'), // @translate
+                    'required' => false,
+                    'value' => 'none',
                 ],
             ])
             ->add([
@@ -1402,6 +1333,7 @@ class SearchConfigConfigureForm extends Form
                 ],
                 'attributes' => [
                     'id' => 'facet_display_refine',
+                    'data-advanced-section' => $this->translator->translate('Refine'), // @translate
                     'required' => false,
                     'value' => true,
                 ],
@@ -1414,6 +1346,8 @@ class SearchConfigConfigureForm extends Form
                 ],
                 'attributes' => [
                     'id' => 'facet_label_refine',
+                    'data-advanced-section' => $this->translator->translate('Refine'), // @translate
+                    'data-show-if' => 'facet_display_refine',
                     'required' => false,
                     'value' => 'Refine search', // @translate
                     'placeholder' => 'Refine search', // @translate
@@ -1423,8 +1357,8 @@ class SearchConfigConfigureForm extends Form
                 'name' => 'facets',
                 'type' => Element\Collection::class,
                 'options' => [
-                    'label' => 'Facets', // @ŧranslate
-                    'info' => 'List of facets that will be displayed in the search page, formatted as ini. The section is a unique name. Keys are: field, label, type, order, limit, state, more, languages, data_types, main_types, values, display_count, and specific options, like thesaurus, min and max.', // @translate
+                    'label' => 'Facets', // @translate
+                    'info' => 'The facets are displayed in the page of results, after the search, in order to refine them.', // @translate
                     'count' => 0,
                     'allow_add' => true,
                     'allow_remove' => true,
@@ -1437,7 +1371,8 @@ class SearchConfigConfigureForm extends Form
                     'id' => 'facet_facets',
                     'required' => false,
                     'class' => 'form-fieldset-collection',
-                    'data-label-index' => $this->translator->translate('Facet {index}'), // @ŧranslate
+                    'data-label-index' => $this->translator->translate('Facet {index}'), // @translate
+                    'data-label-new' => $this->translator->translate('New facet'), // @translate
                 ],
             ])
             ->add([
@@ -1461,7 +1396,16 @@ class SearchConfigConfigureForm extends Form
         ;
 
         $this
-            ->addFormFieldset()
+            ->addFormFieldset();
+
+        // Modules can append their own top-level fieldsets, displayed as tabs,
+        // in particular the engine specific settings (e.g. SearchSolr): the
+        // reserved fieldset name "engine" is read for the query relevance
+        // (field boosts, minimum match, tie breaker).
+        $event = new Event('form.add_elements', $this);
+        $this->getEventManager()->triggerEvent($event);
+
+        $this
             ->prepareInputFilters();
     }
 
@@ -1719,6 +1663,30 @@ class SearchConfigConfigureForm extends Form
     {
         $this->thumbnailTypes = $thumbnailTypes;
         return $this;
+    }
+
+    /**
+     * The available sort fields as a flat list "name => default label".
+     */
+    protected function availableSortFieldsFlat($searchConfig): array
+    {
+        $engineAdapter = $searchConfig ? $searchConfig->engineAdapter() : null;
+        if (!$engineAdapter) {
+            return [];
+        }
+        $result = [];
+        foreach ($engineAdapter->getAvailableSortFields() as $name => $labelOrGroup) {
+            if (is_array($labelOrGroup) && isset($labelOrGroup['options'])) {
+                foreach ($labelOrGroup['options'] as $optionName => $optionLabel) {
+                    $optionLabel = is_array($optionLabel) ? ($optionLabel['label'] ?? $optionName) : $optionLabel;
+                    $result[$optionName] = $this->translator->translate((string) $optionLabel);
+                }
+                continue;
+            }
+            $label = is_array($labelOrGroup) ? ($labelOrGroup['label'] ?? $name) : $labelOrGroup;
+            $result[$name] = $this->translator->translate((string) $label);
+        }
+        return $result;
     }
 
     public function setTranslator(Translator $translator): self

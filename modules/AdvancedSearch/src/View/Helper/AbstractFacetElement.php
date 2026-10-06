@@ -2,9 +2,6 @@
 
 namespace AdvancedSearch\View\Helper;
 
-/**
- * @deprecated Since 3.4.8. Use AbstractFacet only.
- */
 class AbstractFacetElement extends AbstractFacet
 {
     /**
@@ -14,7 +11,7 @@ class AbstractFacetElement extends AbstractFacet
      * May contain the key, that may be a numeric key, or string like "from" or "to".
      * @return string|array
      */
-    public function __invoke(?string $facetField, array $facet, array $options = [], bool $asData = false)
+    public function __invoke(string $facetField, array $facet, array $options = [], bool $asData = false)
     {
         // Variables are static to speed up process for all facets.
         // TODO Share the list between active and facet helpers.

@@ -7,6 +7,7 @@ return [
         'factories' => array_filter([
             'Common\Cipher' => Service\Stdlib\CipherFactory::class,
             'Common\DeferredJobDispatch' => Service\Stdlib\DeferredJobDispatchFactory::class,
+            'Common\DirectoryManager' => Service\Stdlib\DirectoryManagerFactory::class,
             'Common\EasyMeta' => Service\Stdlib\EasyMetaFactory::class,
             'Common\UpgradeJobDispatch' => Service\Stdlib\UpgradeJobDispatchFactory::class,
             // TODO Use a delegator for file, dispatcher and logger factories? A direct factory is simpler for the same result for these services.
@@ -14,11 +15,11 @@ return [
             'Omeka\File\Validator' => Service\File\ValidatorFactory::class,
             // Allow to use the PSR-3 formatter in job.
             'Omeka\Job\Dispatcher' => Service\Job\DispatcherFactory::class,
+            'Common\Job\DispatchStrategy\SynchronousMessenger' => Service\Job\DispatchStrategy\SynchronousMessengerFactory::class,
             // Allow to add the PSR-3 formatter to default logger.
             'Omeka\Logger' => Service\LoggerFactory::class,
             // Backfill of the core secret-key cipher: defer to the core service
             // as soon as it provides the class, otherwise provide the backfill.
-            // During preload, the class may be available but not loaded yet.
             'Omeka\Cipher' => class_exists(\Omeka\Stdlib\Cipher::class)
                 ? null
                 : Service\Stdlib\CipherFactory::class,
@@ -51,7 +52,13 @@ return [
             'formTabs' => View\Helper\FormTabs::class,
             // Deprecated alias.
             'configFormTabs' => View\Helper\FormTabs::class,
+            'arrayQueriesTextareaAssets' => View\Helper\ArrayQueriesTextareaAssets::class,
+            'fieldsTextareaAssets' => View\Helper\FieldsTextareaAssets::class,
+            'pairsTextareaAssets' => View\Helper\PairsTextareaAssets::class,
+            'formArrayQueriesTextarea' => Form\View\Helper\FormArrayQueriesTextarea::class,
             'formCollection' => Form\View\Helper\FormCollection::class,
+            'formCollectionElementGroupsNested' => Form\View\Helper\FormCollectionElementGroupsNested::class,
+            'formFieldsTextarea' => Form\View\Helper\FormFieldsTextarea::class,
             'formNote' => Form\View\Helper\FormNote::class,
             'formSecret' => Form\View\Helper\FormSecret::class,
             'isHomePage' => View\Helper\IsHomePage::class,
@@ -67,19 +74,19 @@ return [
         ],
         'factories' => array_filter([
             'assetUrl' => Service\ViewHelper\AssetUrlFactory::class,
+            'formPairsTextarea' => Service\Form\View\Helper\FormPairsTextareaFactory::class,
             'dataType' => Service\ViewHelper\DataTypeFactory::class,
             'defaultSite' => Service\ViewHelper\DefaultSiteFactory::class,
             'easyMeta' => Service\ViewHelper\EasyMetaFactory::class,
             'matchedRouteName' => Service\ViewHelper\MatchedRouteNameFactory::class,
             'mediaTypeSelect' => Service\ViewHelper\MediaTypeSelectFactory::class,
             'moduleConfigNav' => Service\View\Helper\ModuleConfigNavFactory::class,
+            'formatNumber' => Service\ViewHelper\FormatNumberFactory::class,
             'prepareMessage' => Service\ViewHelper\PrepareMessageFactory::class,
             'translator' => Service\ViewHelper\TranslatorFactory::class,
             // Override of core "trigger" view helper to also fire on error pages (no route match).
-            // Drop once the upstream fix ships in Omeka S 4.3.
-            'trigger' => version_compare(\Omeka\Module::VERSION, '4.3', '<')
-                ? Service\ViewHelper\TriggerFactory::class
-                : null,
+            // @todo A check of the integration in omeka should be done to skip it via check class exits.
+            'trigger' => Service\ViewHelper\TriggerFactory::class,
         ]),
     ],
     // Add some common elements and make standard elements and some omeka ones optional.
@@ -88,18 +95,22 @@ return [
         'invokables' => [
             Form\Element\ArrayQueriesTextarea::class => Form\Element\ArrayQueriesTextarea::class,
             Form\Element\ArrayText::class => Form\Element\ArrayText::class,
+            Form\Element\ArrayTextarea::class => Form\Element\ArrayTextarea::class,
             Form\Element\DataTextarea::class => Form\Element\DataTextarea::class,
+            Form\Element\FieldsTextarea::class => Form\Element\FieldsTextarea::class,
             Form\Element\GroupTextarea::class => Form\Element\GroupTextarea::class,
             Form\Element\IniTextarea::class => Form\Element\IniTextarea::class,
             Form\Element\Note::class => Form\Element\Note::class,
             Form\Element\OptionalCheckbox::class => Form\Element\OptionalCheckbox::class,
             Form\Element\OptionalDate::class => Form\Element\OptionalDate::class,
             Form\Element\OptionalDateTime::class => Form\Element\OptionalDateTime::class,
+            Form\Element\OptionalDateTimeLocal::class => Form\Element\OptionalDateTimeLocal::class,
             Form\Element\OptionalEmail::class => Form\Element\OptionalEmail::class,
             Form\Element\OptionalMultiCheckbox::class => Form\Element\OptionalMultiCheckbox::class,
             Form\Element\OptionalNumber::class => Form\Element\OptionalNumber::class,
             Form\Element\OptionalRadio::class => Form\Element\OptionalRadio::class,
             Form\Element\OptionalSelect::class => Form\Element\OptionalSelect::class,
+            Form\Element\OptionalTime::class => Form\Element\OptionalTime::class,
             Form\Element\OptionalUrl::class => Form\Element\OptionalUrl::class,
             Form\Element\Secret::class => Form\Element\Secret::class,
             Form\Element\UrlQuery::class => Form\Element\UrlQuery::class,
@@ -142,8 +153,10 @@ return [
             'jSend' => Mvc\Controller\Plugin\JSend::class,
             'messenger' => Mvc\Controller\Plugin\Messenger::class,
             'sendFile' => Mvc\Controller\Plugin\SendFile::class,
+            'sendFilePrivate' => Mvc\Controller\Plugin\SendFilePrivate::class,
         ],
         'factories' => [
+            'checkDestinationDir' => Service\ControllerPlugin\CheckDestinationDirFactory::class,
             'easyMeta' => Service\ControllerPlugin\EasyMetaFactory::class,
             'sendEmail' => Service\ControllerPlugin\SendEmailFactory::class,
             'prepareMessage' => Service\ControllerPlugin\PrepareMessageFactory::class,

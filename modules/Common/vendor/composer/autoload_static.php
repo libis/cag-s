@@ -4,11 +4,18 @@
 
 namespace Composer\Autoload;
 
-class ComposerStaticInit1ca1732c4c75e099d820888180aa7585
+class ComposerStaticInit48332223fa84474764998a228ac6ad9e
 {
+    public static $files = array (
+        '6e3fae29631ef280660b3cdad06f25a8' => __DIR__ . '/..' . '/symfony/deprecation-contracts/function.php',
+        '320cde22f66dd4f5d3fd621d3e88b98f' => __DIR__ . '/..' . '/symfony/polyfill-ctype/bootstrap.php',
+    );
+
     public static $prefixLengthsPsr4 = array (
         'S' =>
         array (
+            'Symfony\\Polyfill\\Ctype\\' => 23,
+            'Symfony\\Component\\Yaml\\' => 23,
             'Sempia\\ExternalAssets\\' => 22,
             'Sempia\\CommonSymlink\\' => 21,
         ),
@@ -19,6 +26,14 @@ class ComposerStaticInit1ca1732c4c75e099d820888180aa7585
     );
 
     public static $prefixDirsPsr4 = array (
+        'Symfony\\Polyfill\\Ctype\\' =>
+        array (
+            0 => __DIR__ . '/..' . '/symfony/polyfill-ctype',
+        ),
+        'Symfony\\Component\\Yaml\\' =>
+        array (
+            0 => __DIR__ . '/..' . '/symfony/yaml',
+        ),
         'Sempia\\ExternalAssets\\' =>
         array (
             0 => __DIR__ . '/..' . '/sempia/external-assets/src',
@@ -40,9 +55,9 @@ class ComposerStaticInit1ca1732c4c75e099d820888180aa7585
     public static function getInitializer(ClassLoader $loader)
     {
         return \Closure::bind(function () use ($loader) {
-            $loader->prefixLengthsPsr4 = ComposerStaticInit1ca1732c4c75e099d820888180aa7585::$prefixLengthsPsr4;
-            $loader->prefixDirsPsr4 = ComposerStaticInit1ca1732c4c75e099d820888180aa7585::$prefixDirsPsr4;
-            $loader->classMap = ComposerStaticInit1ca1732c4c75e099d820888180aa7585::$classMap;
+            $loader->prefixLengthsPsr4 = ComposerStaticInit48332223fa84474764998a228ac6ad9e::$prefixLengthsPsr4;
+            $loader->prefixDirsPsr4 = ComposerStaticInit48332223fa84474764998a228ac6ad9e::$prefixDirsPsr4;
+            $loader->classMap = ComposerStaticInit48332223fa84474764998a228ac6ad9e::$classMap;
 
         }, null, ClassLoader::class);
     }
