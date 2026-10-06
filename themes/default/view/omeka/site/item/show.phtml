@@ -120,7 +120,7 @@ endif;
 <?php $this->trigger('view.show.before'); ?>
 
 <!-- Beeld centered -->
-<?php if($type == "Beeld"): ?>
+<?php if($type == "Beeld" && !$item->value('dcterms:hasFormat')): ?>
   <?php if ($embedMedia && $itemMedia): ?>
     <div class="section section--default">
       <div class="container">
@@ -288,8 +288,8 @@ endif;
     </div>
   </div>
 <?php endif; ?>
-<?php if($type == "Ledenblad"):?>
-<div class="section section--default">
+<?php if($item->value('dcterms:hasFormat')):?>
+  <div class="section section--default" style="margin-left: 1rem;margin-right: 1rem;">
     <?php if(sizeof($itemMedia) > 1):?>
       <?php
         $web_query="";        
@@ -301,7 +301,7 @@ endif;
       ?>
       <?php $this->trigger('view.show.after'); ?>
     <?php endif;?>  
-</div>
+  </div>
 <?php endif;?>  
 
 <?php if($type != 'Nieuws' && $type != 'Agendapunt'):?>
@@ -461,17 +461,21 @@ if($type != 'Nieuws' && $type != 'Agendapunt'):
         <div class="grid grid--3-col@med spacer--xsm">
           <?php foreach($resources as $resource):?>
             <?php            
-              if($type == 'Ledenblad'):
-                $title = $resource->displayTitle();
-                $title = explode(", ",$title);
-                $date = $title[1];
-                $title = explode(":",$title[2]);
-                $nr = $title[0];
-                $title = $title[1];
-                $title = trim($title).", ".$date.", ".$nr;
-              else:
-                $title = $resource->displayTitle();
-              endif;    
+              $title = $resource->displayTitle();
+
+              if ($type == 'Ledenblad') {
+                  $parts = explode(', ', $title);
+
+                  if (isset($parts[1], $parts[2])) {
+                      $date = $parts[1];
+                      $rest = explode(':', $parts[2], 2);
+
+                      if (count($rest) === 2) {
+                          $nr = $rest[0];
+                          $title = trim($rest[1]) . ', ' . $date . ', ' . $nr;
+                      }
+                  }
+              }
             ?>
           <div class="grid__item">
             <div class="card card--gray card--clickable card--link card-variant2">

@@ -1,5 +1,10 @@
 SetEnv APPLICATION_ENV "development"
 
+php_value session.gc_probability 1
+php_value session.gc_divisor 100
+php_value session.gc_maxlifetime 14400
+php_value session.cookie_lifetime 14400
+
 RewriteEngine On
 # The following rule tells Apache that if the requested filename
 # exists, simply serve it.
