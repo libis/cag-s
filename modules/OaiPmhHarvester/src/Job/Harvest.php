@@ -293,17 +293,26 @@ class Harvest extends AbstractJob
 
 
         if ($endpoint != "https://repository.teneo.libis.be/oaiprovider/request"):
+            // check idenftifier for version of
             $query['property'][0] = array(
                 'property' => 27,
                 'text' => $id_version,
                 'type' => 'eq',
                 'joiner' => 'and'
             );
+           
         else:
-            //$this->logger->info("id: ".$id_version);
+            //check title and date to avoid duplicates
             $query['property'][0] = array(
                 'property' => 1,
                 'text' => $id_version,
+                'type' => 'eq',
+                'joiner' => 'and'
+            );
+             // also query date
+            $query['property'][1] = array(
+                'property' => 7,
+                'text' => $item['dcterms:date'][0]['@value'],
                 'type' => 'eq',
                 'joiner' => 'and'
             );
@@ -320,7 +329,8 @@ class Harvest extends AbstractJob
                     //if ($result->media()):
                         unset($item['o:media']);
                     //endif;
-
+                        $this->logger->info($result->id() . " update");
+                        $this->logger->info(json_encode($query));
                     $response = $this->api->update($resource_type, $result->id(), $item, [], ['isPartial' => true, 'flushEntityManager' => true]);
                     $response = null;
                 } catch (\Throwable $t) {
@@ -513,6 +523,7 @@ class Harvest extends AbstractJob
                 $title_parts = $meta['dcterms:title'][0]['@value'];
                 //get year and number from string type KYE001403, 1959, nr. 03-07: De Boer : weekblad van de Belgische Boerenbond
                 $title_parts = explode(", ", $title_parts);
+
                 $year = trim($title_parts[1]);
                 $number = trim($title_parts[2]);
                 $number = str_replace("nr. ", "", $number);
@@ -533,6 +544,9 @@ class Harvest extends AbstractJob
                 $date_val = $meta['dcterms:date'][0]['@value'];
                 //get year from date string
                 $date_val = explode("-", $date_val);
+                $year = trim($date_val[0]);
+                //date could also be split with /
+                $date_val = explode("/", $year);
                 $year = trim($date_val[0]);
 
                 //dupicalte date to dateIssued for better filtering
