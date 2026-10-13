@@ -1,5 +1,4 @@
 <?php
-use Laminas\Session\Container;
 $translate = $this->plugin('translate');
 $escape = $this->plugin('escapeHtml');
 $this->htmlElement('body')->appendAttribute('class', 'page item resource show');
@@ -8,69 +7,52 @@ $itemMedia = $item->media();
 $template = $item->resourceTemplate();
 
 $type_array = [
-  "Beeld" => "beeldbank",
-  "Collectie" => "collecties",
-  "Nieuws" => "nieuws",
-  "Agendapunt" => "agenda",
-  "Film" => "films",
-  "Filmkopie" => "filmkopies",
-  "Ledenblad" => "ledenbladen",  
+    'Beeld'      => 'beeldbank',
+    'Collectie'  => 'collecties',
+    'Nieuws'     => 'nieuws',
+    'Agendapunt' => 'agenda',
+    'Film'       => 'films',
+    'Filmkopie'  => 'filmkopies',
+    'Ledenblad'  => 'ledenbladen',
 ];
 
-if($item->value('dcterms:hasFormat')):
-  $format = $item->value('dcterms:hasFormat')."";
-  if(str_contains($format,"manifest") && str_contains($format,"IE")):
-    $format = "IIIF";
-  endif;  
-else:
-  $format = "";
-endif;  
+$type = $template ? $template->label() : '';
 
-if($template):
-  $type = $template->label();
-else:
-  $type = "";
-endif;
+$format = (string) $item->value('dcterms:hasFormat');
+if (str_contains($format, 'manifest') && str_contains($format, 'IE')) {
+    $format = 'IIIF';
+}
 
-$searchReferer = "";  
-//check if ref is set and equals search
-if(isset($_GET['ref'])):
-  if(isset($_SESSION['searchReferer']) && $_GET['ref'] == 'search' && isset($type_array[$type])):   
-    //check if ref contains the correct type
-    if($type && str_contains($_SESSION['searchReferer'], $type_array[$type])):
-      $searchReferer = $_SESSION['searchReferer'];   
-    endif;
-  endif;
-endif;
+// Only keep the search referer if it belongs to this item's type
+$searchReferer = '';
+if ($this->params()->fromQuery('ref') === 'search' && isset($type_array[$type])) {
+    $referer = $_SESSION['searchReferer'] ?? '';
+    if (str_contains($referer, $type_array[$type])) {
+        $searchReferer = $referer;
+    }
+}
 
 $thumb = $item->primaryMedia();
 
-$old_titles = $item->value('dcterms:replaces',array('all'=>true));
-foreach($old_titles as $old_title):
-  preg_match('#\((.*?)\)#', $old_title.'', $match);
-  $old_title = explode("-",$match[1]);  
-endforeach;  
+$title = $resource->displayTitle();
+if ($type === 'Ledenblad') {
+    $parts = explode(', ', $title);
+    if (count($parts) >= 3) {
+        $date = $parts[1];
+        [$nr, $name] = array_pad(explode(':', $parts[2], 2), 2, '');
 
-if($type == 'Ledenblad'):
-  $title = $resource->displayTitle();
-  $title = explode(", ",$title);
-  $date = $title[1];
-  $title = explode(":",$title[2]);
-  $nr = $title[0];
-  $title = $title[1];
-  //check if title is correct
-  $old_titles = $item->value('dcterms:replaces',array('all'=>true));
-  foreach($old_titles as $old_title):
-    preg_match('#\((.*?)\)#', $old_title.'', $match);
-    $dates = explode("-",$match[1]);
-    if($date >= $dates[0] && $date <= $dates[1]):
-      $title = $old_title.'';
-    endif;  
-  endforeach;  
-  $title = trim($title).", ".$date.", ".$nr;
-else:
-  $title = $resource->displayTitle();
-endif;  
+        // If the date falls in the range of a previous title, use that title
+        foreach ($item->value('dcterms:replaces', ['all' => true]) as $oldTitle) {
+            if (preg_match('#\((.*?)\)#', (string) $oldTitle, $match)) {
+                [$from, $to] = array_pad(explode('-', $match[1], 2), 2, null);
+                if ($from !== null && $to !== null && $date >= $from && $date <= $to) {
+                    $name = (string) $oldTitle;
+                }
+            }
+        }
+        $title = trim($name) . ', ' . $date . ', ' . $nr;
+    }
+}
 ?>
 
 <!-- beeldbank: image / table -->
@@ -242,7 +224,7 @@ endif;
 <?php endif?>
 
 <!-- 2 columns if not Beeld and has thumbnail -->
-<?php if($type != "Beeld" && $type != "Film" && $thumb && $type != "Ledenblad"): ?>
+<?php if($type != "Beeld" && $type != "Film" && $thumb && $type != "Ledenblad" && $type != "Kookboek"): ?>
   <div class="section section--default">
     <div class="container">
       <div class="grid grid--2-col@med">
@@ -421,6 +403,8 @@ if($type != 'Nieuws' && $type != 'Agendapunt'):
       $query['property'][0]['text'] = $item->value('dcterms:subject').'';
   elseif($type == "Ledenblad"):
       parse_str("resource_template_id[]=37", $query);
+   elseif($type == "Kookboek"):
+      parse_str("resource_template_id[]=39", $query);    
       //$query['property'][0]['text'] = $item->value('dcterms:subject');
   endif;
 

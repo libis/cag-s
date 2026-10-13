@@ -157,7 +157,10 @@ $userBar = $this->userBar();
     <div class="section section--default np" style="padding:1rem 0;">
         <div class="container">
             <div style="display: flex; justify-content: space-between; align-items: center;">
+                <?php //page url contains 'page' 
+                if (strpos($url, 'page') !== false) { ?>
                     <button class="btn btn--primary" onclick="window.print();" style="padding:0.3em 0.5em;font-size:0.9rem;">&#128438; Print</button>
+                <?php } ?>
                 <div class="shareon" style="text-align:right; margin: 0;">
                     <a class="facebook"></a>
                     <a class="linkedin"></a>
