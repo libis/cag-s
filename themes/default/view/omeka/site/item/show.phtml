@@ -25,6 +25,7 @@ else:
   $type = "";
 endif;
 
+
 $searchReferer = "";  
 //check if ref is set and equals search
 if(isset($_GET['ref'])):
@@ -43,6 +44,15 @@ foreach($old_titles as $old_title):
   preg_match('#\((.*?)\)#', $old_title.'', $match);
   $old_title = explode("-",$match[1]);  
 endforeach;  
+
+if($item->value('dcterms:hasFormat')):
+  $format = $item->value('dcterms:hasFormat')."";
+  if(str_contains($format,"manifest") && str_contains($format,"IE")):
+    $format = "IIIF";
+  endif;  
+else:
+  $format = "";
+endif; 
 
 if($type == 'Ledenblad'):
   $title = $resource->displayTitle();
@@ -120,7 +130,7 @@ endif;
 <?php $this->trigger('view.show.before'); ?>
 
 <!-- Beeld centered -->
-<?php if($type == "Beeld" && !$item->value('dcterms:hasFormat')): ?>
+<?php if($type == "Beeld" && !$format): ?>
   <?php if ($embedMedia && $itemMedia): ?>
     <div class="section section--default">
       <div class="container">
@@ -287,9 +297,8 @@ endif;
     </div>
   </div>
 <?php endif; ?>
-<?php if($item->value('dcterms:hasFormat')):?>
+<?php if($format == "IIIF"):?>
 <div class="section section--default" style="margin-left: 1rem;margin-right: 1rem;">
-    <?php if(sizeof($itemMedia) > 1):?>
       <?php
         $web_query="";        
         if(isset($_GET["q"])):  
@@ -299,7 +308,6 @@ endif;
         endif;
       ?>
       <?php $this->trigger('view.show.after'); ?>
-    <?php endif;?>  
 </div>
 <?php endif;?>  
 
