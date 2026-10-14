@@ -14,7 +14,19 @@ $type_array = [
     'Film'       => 'films',
     'Filmkopie'  => 'filmkopies',
     'Ledenblad'  => 'ledenbladen',
+    'Kookboek'   => 'kookboeken',
 ];
+
+$sections = [
+      'Beeld'      => ['beeldbank',   '/beeldbank',             'Beeldbank'],
+      'Collectie'  => ['collecties',  '/collecties',            'Collectie'],
+      'Nieuws'     => ['nieuws',      '/nieuws',                'Nieuws'],
+      'Agendapunt' => ['agenda',      '/agenda',                'Agenda'],
+      'Film'       => ['films',       '/films',                 'Films'],
+      'Filmkopie'  => ['filmkopies',  '/filmkopies',            'Filmkopies'],
+      'Ledenblad'  => ['ledenbladen', '/s/start/ledenbladen?facet[resource_template_s][]=Ledenblad',   'Tijdschriften'],
+      'Kookboek'  => ['kookboeken', '/s/start/ledenbladen?facet[resource_template_s][]=Kookboek',   'Kookboeken'],
+  ];
 
 $type = $template ? $template->label() : '';
 
@@ -63,48 +75,30 @@ if ($type === 'Ledenblad') {
             <a href="<?php echo $site->url();?>" class="breadcrumb__item"><span>Home</span></a>
         </span>
         <span class="breadcrumb__scope">
-          <?php if($searchReferer):?>
-            <a href="<?= htmlspecialchars($searchReferer) ?>" class="breadcrumb__item"><span>Zoekresultaten</span></a>
-          <?php elseif($type == "Beeld"): ?>
-            <a href="/beeldbank?q=" class="breadcrumb__item"><span>Beeldbank</span></a>
-          <?php elseif($type == "Collectie"):?>
-            <a href="/collecties?q=" class="breadcrumb__item"><span>Collectie</span></a>
-          <?php elseif($type == "Nieuws"):?>
-            <a href="/nieuws?q=" class="breadcrumb__item"><span>Nieuws</span></a>
-          <?php elseif($type == "Agendapunt"):?>
-            <a href="/agenda?q=" class="breadcrumb__item"><span>Agenda</span></a>
-          <?php elseif($type == "Film"):?>
-            <a href="/films?q=" class="breadcrumb__item"><span>Films</span></a>
-          <?php elseif($type == "Filmkopie"):?>
-            <a href="/filmkopies?q=" class="breadcrumb__item"><span>Filmkopies</span></a>
-          <?php elseif($type == "Ledenblad"):?>
-            <a href="/s/start/ledenbladen?q=" class="breadcrumb__item"><span>Tijdschriften</span></a>
-          <?php endif;?>
+           <?php if ($searchReferer): ?>
+                <a href="<?= $escape($searchReferer) ?>" class="breadcrumb__item"><span>Zoekresultaten</span></a>
+            <?php elseif (isset($sections[$type])): ?>
+                <a href="<?= $escape($sections[$type][1]) ?>?q=" class="breadcrumb__item"><span><?= $sections[$type][2] ?></span></a>
+            <?php endif; ?>
         </span>
         <span class="breadcrumb__scope">
-            <span><?php echo $title;?></span>
+            <span><?= $escape($title) ?></span>
         </span>
     </div>
     <h1><?php echo $this->pageTitle($title, 2); ?></h1>
 
-
-
-    <?php if($item->value('dcterms:date') && ($type == 'Nieuws' || $type == 'Agendapunt')):?>
+    <?php if ($type === 'Nieuws' || $type === 'Agendapunt'): ?>
         <?php
-          $date = $item->value('dcterms:date');
-          //echo $date;
-          $output = DateTime::createFromFormat('Ymd', $date);
-          if(!$output){
-              $output = DateTime::createFromFormat('Y-m-d', $date);
-          }
-          $output = $output->format('d-m-Y');
+        $rawDate = (string) $item->value('dcterms:date');
+        $dateObj = DateTime::createFromFormat('Ymd', $rawDate)
+            ?: DateTime::createFromFormat('Y-m-d', $rawDate);
         ?>
-        <p class="datering"><?php echo $output;?></p>
-    <?php endif;?>
+        <?php if ($dateObj): ?>
+            <p class="datering"><?= $dateObj->format('d-m-Y') ?></p>
+        <?php endif; ?>
+    <?php endif; ?>
   </div>
 </div>
-
-
 
 <?php $this->trigger('view.show.before'); ?>
 
@@ -242,9 +236,7 @@ if ($type === 'Ledenblad') {
                     $render =  $media->render();
                     $render = str_replace('http:', '', $render);
                     echo $render;
-                    //$url = str_replace('http:', '', $media->thumbnailUrl('large'));
                   ?>
-                  <!--<img src="<?php echo $url;?>">-->
                 </div>
               <?php endforeach;?>
             </div>
@@ -268,25 +260,15 @@ if ($type === 'Ledenblad') {
                   echo $render;
                 endif;
               ?>
-              <!--<img src="<?php echo $url;?>">-->
             </div>
           <?php endif;?>
-               <?php //echo $this->thumbnail($thumb, 'large');?>
         </div>
       </div>
     </div>
   </div>
 <?php endif; ?>
 <?php if($format == "IIIF"):?>
-  <div class="section section--default" style="margin-left: 1rem;margin-right: 1rem;">
-    <?php
-        $web_query="";        
-        if(isset($_GET["q"])):  
-          $web_query = "&searchText=".htmlspecialchars(strip_tags($_GET["q"]));          
-          $count = str_word_count($web_query);
-          //echo $web_query;
-        endif;
-      ?>
+  <div class="section section--default" style="margin-left: 1rem;margin-right: 1rem;">    
       <?php $this->trigger('view.show.after'); ?>
   </div>
 <?php endif;?>  
