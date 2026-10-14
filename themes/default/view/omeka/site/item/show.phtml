@@ -78,7 +78,7 @@ if ($type === 'Ledenblad') {
            <?php if ($searchReferer): ?>
                 <a href="<?= $escape($searchReferer) ?>" class="breadcrumb__item"><span>Zoekresultaten</span></a>
             <?php elseif (isset($sections[$type])): ?>
-                <a href="<?= $escape($sections[$type][1]) ?>?q=" class="breadcrumb__item"><span><?= $sections[$type][2] ?></span></a>
+                <a href="<?= $escape($sections[$type][1]) ?>" class="breadcrumb__item"><span><?= $sections[$type][2] ?></span></a>
             <?php endif; ?>
         </span>
         <span class="breadcrumb__scope">
