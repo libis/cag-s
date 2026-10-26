@@ -236,7 +236,7 @@ class Harvest extends AbstractJob
                         $response_c = $this->api->create($args['resource_type'], $pre_record, [], []);
                         $response_c = null;
                         ++$stats['imported'];
-                    } catch (\Throwable $t) {
+                    } catch (\Throwable $t) {                        
                         $this->logger->info($pre_record['dcterms:isVersionOf'][0]['@value'] . " error");
                     }
                 } else {
@@ -244,14 +244,20 @@ class Harvest extends AbstractJob
                 }
             }
 
-            /*if ($toInsert) {
-                $this->createItems($toInsert);
-            }*/
             gc_collect_cycles();
-            $entityManager->clear();
+
+            // Detach only entities loaded since the job started, keeping user/job/etc. managed.
+            $identityMap = $entityManager->getUnitOfWork()->getIdentityMap();
+            foreach ($identityMap as $entityClass => $entities) {
+                foreach ($entities as $idHash => $entity) {
+                    if (!isset($originalIdentityMap[$entityClass][$idHash])) {
+                        $entityManager->detach($entity);
+                    }
+                }
+            }
 
             $resumptionToken = isset($response->ListRecords->resumptionToken) && $response->ListRecords->resumptionToken <> ''
-                ? $response->ListRecords->resumptionToken
+                ? (string) $response->ListRecords->resumptionToken
                 : false;
 
             // Update job.
