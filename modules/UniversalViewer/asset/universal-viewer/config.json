@@ -11,6 +11,17 @@
     "searchWithinEnabled": true
   },
   "modules": {
+    "footerPanel": {
+      "options": {
+        "downloadEnabled": false,
+        "embedEnabled": false
+      }
+    },
+    "shareDialogue": {
+      "options": {
+        "embedEnabled": false
+      }
+    },
     "headerPanel": {
       "options": {
         "localeToggleEnabled": false
@@ -45,6 +56,5 @@
         "searchWithin": "Search within this item:"
       }
     }
-
   }
 }

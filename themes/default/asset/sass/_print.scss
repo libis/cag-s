@@ -233,4 +233,24 @@
     break-inside: avoid !important;
     page-break-inside: avoid !important;
   }
+
+  .slick-list{
+    padding: 0 !important;
+  }
+
+  .slick-prev, .slick-next{
+    display: none !important;
+  }
+
+  .slick-track{
+    width:100% !important;
+    transform: none !important;
+    display: flex;
+    gap: 1em;
+
+
+    .slick-cloned{
+      display:none !important;
+    }
+  }
 }
