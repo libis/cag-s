@@ -44,15 +44,24 @@
         add_button.hide()
 
         // Add hidden facet input based on the URL
-        var facetValue = window.location.href.indexOf('kookboek') !== -1 ? 'Kookboek' : 'Ledenblad';
+        var url = window.location.href.toLowerCase();
+        var facetValue = null;
 
-        $('#form-search').append(
-            $('<input>', {
-                type: 'hidden',
-                name: 'facet[resource_template_s][]',
-                value: facetValue
-            })
-        );
+        if (url.indexOf('kookboek') !== -1) {
+            facetValue = 'Kookboek';
+        } else if (url.indexOf('tijdschrift') !== -1) {
+            facetValue = 'Ledenblad';
+        }
+
+        if (facetValue) {
+            $('#form-search').append(
+                $('<input>', {
+                    type: 'hidden',
+                    name: 'facet[resource_template_s][]',
+                    value: facetValue
+                })
+            );
+        }
 
         $('fieldset.search-form > div.field')
             .first()
