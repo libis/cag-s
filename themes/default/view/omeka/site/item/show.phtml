@@ -138,6 +138,8 @@ if ($type === 'Ledenblad') {
       </div>
     </div>
   <?php endif; ?>
+<?php endif?>
+<?php if($type == "Beeld"):?>  
   <div class="section section--default">
     <div class="container">
       <div class="panel panel--light">
@@ -145,7 +147,7 @@ if ($type === 'Ledenblad') {
       </div>
     </div>
   </div>
-<?php endif?>
+<?php endif;?>  
 
 <?php if($type == "Film" || $type == "Filmkopie"): ?>
   <?php if ($embedMedia && $itemMedia): ?>
