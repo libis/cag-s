@@ -172,7 +172,7 @@ class ContactUsForm extends Form
             'attributes' => [
                 'id' => 'submit',
                 'class' => 'btn',
-                'value' => 'VerLaminasen', // @translate
+                'value' => 'Verzenden', // @translate
             ],
         ]);
 
