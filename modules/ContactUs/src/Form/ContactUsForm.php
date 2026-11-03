@@ -58,7 +58,7 @@ class ContactUsForm extends Form
         if(isset($_GET['id']) && isset($_GET['aanvraag'])):
           if($_GET['aanvraag']):
             $aanvraag = true;
-            $value = "Graag, had ik een hoge resolutieversie van object ".$_GET['id']." en motiveer deze aanvraag als volgt: (publicatie, verzameling, commercieel, niet-commercieel…). Door deze aanvraag te verLaminasen, beloof ik de wetgeving over intellectuele eigendomsrechten te respecteren.";
+            $value = "Graag, had ik een hoge resolutieversie van object ".$_GET['id']." en motiveer deze aanvraag als volgt: (publicatie, verzameling, commercieel, niet-commercieel…). Door deze aanvraag te verzenden, beloof ik de wetgeving over intellectuele eigendomsrechten te respecteren.";
           endif;
         endif;
 
